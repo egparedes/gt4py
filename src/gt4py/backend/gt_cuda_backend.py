@@ -58,7 +58,7 @@ def cuda_is_compatible_type(field):
 class GTCUDABackend(gt_backend.BaseGTBackend):
     GENERATOR_CLASS = GTCUDAPyModuleGenerator
     name = "gtcuda"
-    options = gt_backend.BaseGTBackend.GT_BACKEND_OPTS
+    option_definitions = gt_backend.BaseGTBackend.GT_BACKEND_OPTS
     storage_info = {
         "alignment": 32,
         "device": "gpu",

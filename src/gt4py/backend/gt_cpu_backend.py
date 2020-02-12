@@ -134,7 +134,7 @@ class GTCPUBackend(gt_backend.BaseGTBackend):
 class GTX86Backend(GTCPUBackend):
 
     name = "gtx86"
-    options = gt_backend.BaseGTBackend.GT_BACKEND_OPTS
+    option_definitions = gt_backend.BaseGTBackend.GT_BACKEND_OPTS
     storage_info = {
         "alignment": 1,
         "device": "cpu",
@@ -150,7 +150,7 @@ class GTX86Backend(GTCPUBackend):
 class GTMCBackend(GTCPUBackend):
 
     name = "gtmc"
-    options = gt_backend.BaseGTBackend.GT_BACKEND_OPTS
+    option_definitions = gt_backend.BaseGTBackend.GT_BACKEND_OPTS
     storage_info = {
         "alignment": 8,
         "device": "cpu",

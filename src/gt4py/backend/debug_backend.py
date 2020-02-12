@@ -216,7 +216,7 @@ def debug_is_compatible_type(field):
 @gt_backend.register
 class DebugBackend(gt_backend.BaseBackend):
     name = "debug"
-    options = {}
+    option_definitions = {}
     storage_info = {
         "alignment": 1,
         "device": "cpu",
@@ -225,4 +225,5 @@ class DebugBackend(gt_backend.BaseBackend):
         "is_compatible_type": debug_is_compatible_type,
     }
 
-    GENERATOR_CLASS = DebugModuleGenerator
+    def __init__(self):
+        super().__init__(module_generator_class=DebugModuleGenerator)

@@ -27,23 +27,24 @@ import jinja2
 from gt4py import analysis as gt_analysis
 from gt4py import config as gt_config
 from gt4py import definitions as gt_definitions
-from gt4py import utils as gt_utils
 from gt4py import ir as gt_ir
+from gt4py import utils as gt_utils
+from gt4py import __version__ as gt_version
 
 
 REGISTRY = gt_utils.Registry()
 
 
 def from_name(name: str):
-    return REGISTRY.get(name, None)
+    backend_class = REGISTRY.get(name, None)
+    return backend_class(name) if backend_class is not None else None
 
 
 def register(backend_cls):
-    assert issubclass(backend_cls, Backend) and backend_cls.name is not None
+    assert issubclass(backend_cls, Backend)
 
     if isinstance(backend_cls.name, str):
         return REGISTRY.register(backend_cls.name, backend_cls)
-
     else:
         raise ValueError(
             "Invalid 'name' attribute ('{name}') in backend class '{cls}'".format(
@@ -55,21 +56,31 @@ def register(backend_cls):
 class Backend(abc.ABC):
     name = None
 
-    options = None
-    # Dict[str, info: Dict[str, Any]]]
-    #   + info:
-    #       - versioning: bool
-    #       - description [optional]: str
+    #: Dict[str, info: Dict[str, Any]]]
+    #:   + info:
+    #:       - versioning: bool
+    #:       - description [optional]: str
+    option_definitions = None
 
     @classmethod
-    def get_options_id(cls, options):
-        filtered_options = copy.deepcopy(options)
-        id_names = set(name for name, info in cls.options.items() if info["versioning"])
-        non_id_names = set(filtered_options.backend_opts.keys()) - id_names
-        for name in non_id_names:
-            del filtered_options.backend_opts[name]
+    def make_options_id(cls, options):
+        versioning_opts = set(
+            name for name, info in cls.option_definitions.items() if info["versioning"]
+        )
 
-        return filtered_options.shashed_id
+        result = gt_utils.shashed_id(
+            options.name,
+            options.module,
+            *tuple(
+                sorted(
+                    (key, value)
+                    for key, value in options.backend_opts.items()
+                    if key in versioning_opts
+                )
+            ),
+        )
+
+        return result
 
     @classmethod
     @abc.abstractmethod
@@ -82,33 +93,27 @@ class Backend(abc.ABC):
         pass
 
 
-class BaseBackend(Backend):
+class CacheEntry:
+    def __init__(self, root_id: str):
+        self.root_id = root_id
 
-    GENERATOR_CLASS = None
+    def get_stencil_class_name(stencil_id):
+        components = stencil_id.qualified_name.split(".")
+        class_name = "{name}__{id}".format(name=components[-1], id=stencil_id.version)
+        return class_name
 
-    @classmethod
-    def get_stencil_package_name(cls, stencil_id):
+    def get_stencil_package_name(stencil_id):
         components = stencil_id.qualified_name.split(".")
         package_name = ".".join([gt_config.code_settings["root_package_name"]] + components[:-1])
         return package_name
 
-    @classmethod
-    def get_stencil_module_name(cls, stencil_id, *, qualified=False):
-        module_name = "m_{}".format(cls.get_stencil_class_name(stencil_id))
+    def get_stencil_module_name(stencil_id, *, qualified=False):
+        module_name = "m_{}".format(get_stencil_class_name(stencil_id))
         if qualified:
-            module_name = "{}.{}".format(cls.get_stencil_package_name(stencil_id), module_name)
+            module_name = "{}.{}".format(get_stencil_package_name(stencil_id), module_name)
         return module_name
 
-    @classmethod
-    def get_stencil_class_name(cls, stencil_id):
-        components = stencil_id.qualified_name.split(".")
-        class_name = "{name}__{backend}_{id}".format(
-            name=components[-1], backend=gt_utils.slugify(cls.name), id=stencil_id.version
-        )
-        return class_name
-
-    @classmethod
-    def get_base_path(cls):
+    def get_base_path(backend_id):
         # Initialize cache folder
         cache_root = os.path.join(
             gt_config.cache_settings["root_path"], gt_config.cache_settings["dir_name"]
@@ -119,36 +124,51 @@ class BaseBackend(Backend):
         cpython_id = "py{major}{minor}_{api}".format(
             major=sys.version_info.major, minor=sys.version_info.minor, api=sys.api_version
         )
-        base_path = os.path.join(cache_root, cpython_id, gt_utils.slugify(cls.name))
+        base_path = os.path.join(cache_root, cpython_id, gt_utils.slugify(backend_id))
         return base_path
 
-    @classmethod
-    def get_stencil_package_path(cls, stencil_id):
+    def get_stencil_package_path(backend_id, stencil_id):
         components = stencil_id.qualified_name.split(".")
-        path = os.path.join(cls.get_base_path(), *components[:-1])
+        path = os.path.join(get_base_path(backend_id), *components[:-1])
         return path
 
-    @classmethod
-    def get_stencil_module_path(cls, stencil_id):
-        components = stencil_id.qualified_name.split(".")
+    def get_stencil_module_path(backend_id, stencil_id):
+        stencil_module_name = get_stencil_module_name(stencil_id)
         path = os.path.join(
-            cls.get_base_path(), *components[:-1], cls.get_stencil_module_name(stencil_id) + ".py"
+            get_stencil_package_path(backend_id, stencil_id), stencil_module_name + ".py"
         )
         return path
 
-    @classmethod
-    def get_cache_info_path(cls, stencil_id):
-        path = str(cls.get_stencil_module_path(stencil_id))[:-3] + ".cacheinfo"
+    def get_cache_info_path(backend_id, stencil_id):
+        path = str(get_stencil_module_path(backend_id, stencil_id))[:-3] + ".cacheinfo"
         return path
 
-    @classmethod
-    def generate_cache_info(cls, stencil_id, extra_cache_info):
-        module_file_name = cls.get_stencil_module_path(stencil_id)
+    def update_cache(backend_id, stencil_id, extra_cache_info):
+        cache_info = generate_cache_info(backend_id, stencil_id, extra_cache_info)
+        cache_file_name = get_cache_info_path(backend_id, stencil_id)
+        os.makedirs(os.path.dirname(cache_file_name), exist_ok=True)
+        with open(cache_file_name, "wb") as f:
+            pickle.dump(cache_info, f)
+
+    def check_cache(backend_id, stencil_id):
+        try:
+            cache_file_name = get_cache_info_path(backend_id, stencil_id)
+            with open(cache_file_name, "rb") as f:
+                cache_info = pickle.load(f)
+            assert isinstance(cache_info, dict)
+            result = validate_cache_info(backend_id, stencil_id, cache_info)
+        except Exception:
+            result = False
+
+        return result
+
+    def generate_cache_info(backend_id, stencil_id, extra_cache_info):
+        module_file_name = get_stencil_module_path(backend_id, stencil_id)
         with open(module_file_name, "r") as f:
             source = f.read()
         cache_info = {
-            # "gt4py_version": 0.5,
-            "backend": cls.name,
+            # "gt4py_version": gt_version,
+            "backend": backend_id,
             "stencil_name": stencil_id.qualified_name,
             "stencil_version": stencil_id.version,
             "module_shash": gt_utils.shash(source),
@@ -157,26 +177,17 @@ class BaseBackend(Backend):
 
         return cache_info
 
-    @classmethod
-    def update_cache(cls, stencil_id, extra_cache_info):
-        cache_info = cls.generate_cache_info(stencil_id, extra_cache_info)
-        cache_file_name = cls.get_cache_info_path(stencil_id)
-        os.makedirs(os.path.dirname(cache_file_name), exist_ok=True)
-        with open(cache_file_name, "wb") as f:
-            pickle.dump(cache_info, f)
-
-    @classmethod
-    def validate_cache_info(cls, stencil_id, cache_info):
+    def validate_cache_info(backend_id, stencil_id, cache_info):
         try:
             cache_info = types.SimpleNamespace(**cache_info)
 
-            module_file_name = cls.get_stencil_module_path(stencil_id)
+            module_file_name = get_stencil_module_path(backend_id, stencil_id)
             with open(module_file_name, "r") as f:
                 source = f.read()
             module_shash = gt_utils.shash(source)
 
             result = (
-                cache_info.backend == cls.name
+                cache_info.backend == backend_id
                 and cache_info.stencil_name == stencil_id.qualified_name
                 and cache_info.stencil_version == stencil_id.version
                 and cache_info.module_shash == module_shash
@@ -187,34 +198,25 @@ class BaseBackend(Backend):
 
         return result
 
-    @classmethod
-    def check_cache(cls, stencil_id):
-        try:
-            cache_file_name = cls.get_cache_info_path(stencil_id)
-            with open(cache_file_name, "rb") as f:
-                cache_info = pickle.load(f)
-            assert isinstance(cache_info, dict)
-            result = cls.validate_cache_info(stencil_id, cache_info)
 
-        except Exception:
-            result = False
-
-        return result
+class BaseBackend(Backend):
+    def __init__(self, module_generator_class):
+        self.module_generator_class = module_generator_class
 
     @classmethod
     def _check_options(cls, options):
-        assert cls.options is not None
-        unknown_options = set(options.backend_opts.keys()) - set(cls.options.keys())
+        assert cls.option_definitions is not None
+        unknown_options = set(options.backend_opts.keys()) - set(cls.option_definitions.keys())
         if unknown_options:
             raise ValueError("Unknown backend options: '{}'".format(unknown_options))
 
     @classmethod
     def _load(cls, stencil_id, definition_func):
-        stencil_class_name = cls.get_stencil_class_name(stencil_id)
-        file_name = cls.get_stencil_module_path(stencil_id)
+        stencil_class_name = get_stencil_class_name(stencil_id)
+        file_name = get_stencil_module_path(cls.name, stencil_id)
         stencil_module = gt_utils.make_module_from_file(stencil_class_name, file_name)
         stencil_class = getattr(stencil_module, stencil_class_name)
-        stencil_class.__module__ = cls.get_stencil_module_name(stencil_id, qualified=True)
+        stencil_class.__module__ = get_stencil_module_name(stencil_id, qualified=True)
         stencil_class._gt_id_ = stencil_id.version
         stencil_class.definition_func = staticmethod(definition_func)
 
@@ -225,7 +227,7 @@ class BaseBackend(Backend):
         stencil_class = None
         if stencil_id is not None:
             cls._check_options(options)
-            if cls.check_cache(stencil_id):
+            if check_cache(cls.name, stencil_id):
                 stencil_class = cls._load(stencil_id, definition_func)
 
         return stencil_class
@@ -234,7 +236,7 @@ class BaseBackend(Backend):
     def _generate_module(
         cls, stencil_id, implementation_ir, definition_func, generator_options, extra_cache_info
     ):
-        generator = cls.GENERATOR_CLASS(cls, options=generator_options)
+        generator = cls.module_generator_class(cls, options=generator_options)
         module_source = generator(stencil_id, implementation_ir)
 
         file_name = cls.get_stencil_module_path(stencil_id)
@@ -264,17 +266,18 @@ class BaseModuleGenerator(abc.ABC):
 
     TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "templates", "stencil_module.py.in")
 
-    def __init__(self, backend_class, options):
-        assert issubclass(backend_class, BaseBackend)
-        self.backend_class = backend_class
+    def __init__(self, backend_name, options):
+        self.backend_name = backend_name
         self.options = types.SimpleNamespace(**options)
         self.stencil_id = None
+        self.stencil_class_name = None
         self.implementation_ir = None
         with open(self.TEMPLATE_PATH, "r") as f:
             self.template = jinja2.Template(f.read())
 
-    def __call__(self, stencil_id, implementation_ir):
+    def __call__(self, stencil_id, stencil_class_name, implementation_ir):
         self.stencil_id = stencil_id
+        self.stencil_class_name = stencil_class_name
         self.implementation_ir = implementation_ir
 
         stencil_signature = self.generate_signature()
@@ -398,14 +401,6 @@ class BaseModuleGenerator(abc.ABC):
         )
 
         return module_source
-
-    @property
-    def backend_name(self):
-        return self.backend_class.name
-
-    @property
-    def stencil_class_name(self):
-        return self.backend_class.get_stencil_class_name(self.stencil_id)
 
     def generate_synchronization(self, field_names):
         return ""

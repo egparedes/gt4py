@@ -305,7 +305,7 @@ def numpy_is_compatible_type(field):
 @gt_backend.register
 class NumPyBackend(gt_backend.BaseBackend):
     name = "numpy"
-    options = {}
+    option_definitions = {}
     storage_info = {
         "alignment": 1,
         "device": "cpu",

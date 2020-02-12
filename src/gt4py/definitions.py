@@ -671,14 +671,6 @@ class BuildOptions:
         name = ".".join([self.module, self.name])
         return name
 
-    @property
-    def shashed_id(self):
-        result = gt_utils.shashed_id(
-            self.name, self.module, *tuple(sorted(self.backend_opts.items()))
-        )
-
-        return result
-
 
 @attribclass(frozen=True)
 class StencilID:

@@ -14,7 +14,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from .concepts import *
+from .base import *
 
 from .debug_backend import *
 from .numpy_backend import *

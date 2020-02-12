@@ -19,6 +19,14 @@
 __copyright__ = "ETH Zurich"
 __license__ = "gpl3"
 
+from pkg_resources import get_distribution, DistributionNotFound
+
+try:
+    __version__ = get_distribution(__name__).version
+except DistributionNotFound:
+    __version__ = "unknown"
+finally:
+    del get_distribution, DistributionNotFound
 
 from . import config
 from . import utils
@@ -44,12 +52,3 @@ from .definitions import (
     CartesianSpace,
 )
 from .stencil_object import StencilObject
-
-from pkg_resources import get_distribution, DistributionNotFound
-
-try:
-    __version__ = get_distribution(__name__).version
-except DistributionNotFound:
-    __version__ = "unknown"
-finally:
-    del get_distribution, DistributionNotFound

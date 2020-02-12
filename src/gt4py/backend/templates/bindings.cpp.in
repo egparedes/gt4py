@@ -121,6 +121,6 @@ PYBIND11_MODULE({{ module_name }}, m) {
 {%- for param in parameters -%}
           {{- comma() }}
           py::arg("{{ param.name }}")
-{%- endfor -%}, py::arg("exec_info"));
+{%- endfor -%}, py::arg("exec_info"), py::call_guard<py::gil_scoped_release>());
 
 }
