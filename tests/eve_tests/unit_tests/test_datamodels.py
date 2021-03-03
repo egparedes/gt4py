@@ -134,24 +134,36 @@ def test_datamodel_class_members(example_model_factory):
     model_class = model.__class__
 
     assert hasattr(model_class, "__init__")
+
     assert hasattr(model_class, "__datamodel_fields__")
     assert isinstance(model_class.__datamodel_fields__, utils.FrozenNamespace)
-    assert hasattr(model_class, "__datamodel_params__")
-    assert isinstance(model_class.__datamodel_params__, utils.FrozenNamespace)
+    assert all(isinstance(f, datamodels.FieldInfo) for f in model_class.__datamodel_fields__.values())
+
+    assert hasattr(model_class, "__datamodel_initializers__")
+    assert isinstance(model_class.__datamodel_initializers__, tuple)
+    assert all(callable(i) for i in model_class.__datamodel_initializers__)
+
+    assert hasattr(model_class, "__datamodel_options__")
+    assert isinstance(model_class.__datamodel_options__, datamodels.DataModelOptions)
+
     assert hasattr(model_class, "__datamodel_validators__")
     assert isinstance(model_class.__datamodel_validators__, tuple)
+    assert all(isinstance(v, classmethod) for v in model_class.__datamodel_validators__)
 
 
-def test_devtools_compatibility(example_model_factory):
+def test_attrs_compatibility(example_model_factory):
     model = example_model_factory()
     model_class = model.__class__
-    formatted_string = devtools.pformat(model)
 
-    assert hasattr(model_class, "__pretty__")
-    assert callable(model_class.__pretty__)
-    assert f"{model_class.__name__}(" in formatted_string
-    for name in model_class.__datamodel_fields__.keys():
-        assert f"{name}=" in formatted_string
+    assert hasattr(model_class, "__dataclass_fields__") and isinstance(
+        model_class.__dataclass_fields__, dict
+    )
+    assert set(model_class.__datamodel_fields__.keys()) == set(
+        model_class.__dataclass_fields__.keys()
+    )
+    assert dataclasses.is_dataclass(model_class)
+    field_names = set(model_class.__datamodel_fields__.keys())
+    assert all(f.name in field_names for f in dataclasses.fields(model))
 
 
 def test_dataclass_compatibility(example_model_factory):
@@ -167,6 +179,18 @@ def test_dataclass_compatibility(example_model_factory):
     assert dataclasses.is_dataclass(model_class)
     field_names = set(model_class.__datamodel_fields__.keys())
     assert all(f.name in field_names for f in dataclasses.fields(model))
+
+
+def test_devtools_compatibility(example_model_factory):
+    model = example_model_factory()
+    model_class = model.__class__
+    formatted_string = devtools.pformat(model)
+
+    assert hasattr(model_class, "__pretty__")
+    assert callable(model_class.__pretty__)
+    assert f"{model_class.__name__}(" in formatted_string
+    for name in model_class.__datamodel_fields__.keys():
+        assert f"{name}=" in formatted_string
 
 
 def test_init():

@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import sys
+import types
 import typing
 from typing import *
 from typing import IO, BinaryIO, TextIO
@@ -113,7 +114,9 @@ def canonicalize_forward_ref(type_hint: Union[str, Type, ForwardRef]) -> Union[T
     return ForwardRef(f"{type_hint._name}[{','.join(str_args)}]")
 
 
-def get_canonical_type_hints(cls: Type) -> Dict[str, Union[Type, ForwardRef]]:
+def get_canonical_type_hints(
+    obj: Union[Type, types.FunctionType]
+) -> Dict[str, Union[Type, ForwardRef]]:
     """Extract class type annotations returning forward references for partially undefined types.
 
     The canonicalization consists in returning either a fully-specified type
@@ -124,10 +127,14 @@ def get_canonical_type_hints(cls: Type) -> Dict[str, Union[Type, ForwardRef]]:
     """
     hints: Dict[str, Union[Type, ForwardRef]] = {}
 
-    for base in reversed(cls.__mro__):
+    if isinstance(obj, type):
+        bases = reversed(obj.__mro__)
+    else:
+        bases = (obj,)
+    for base in bases:
         base_globals = sys.modules[base.__module__].__dict__
-        ann = base.__dict__.get("__annotations__", {})
-        for name, value in ann.items():
+        orig_annotations = getattr(base, "__annotations__", {})
+        for name, value in orig_annotations.items():
             if value is None:
                 value = type(None)
             elif isinstance(value, str):
