@@ -909,13 +909,14 @@ def _make_concrete_with_cache(
     # Replace field definitions with the new actual types for generic fields
     type_params_map = dict(zip(datamodel_cls.__parameters__, type_args))
     model_fields = getattr(datamodel_cls, _MODEL_FIELDS)
+    model_attrs = getattr(datamodel_cls, "__attrs_attrs__")
     new_annotations = {}
     new_field_c_attrs = {}
     for field_name, field_type in typing.get_type_hints(datamodel_cls).items():
         new_annotation, replaced = _substitute_typevars(field_type, type_params_map)
         if replaced:
             new_annotations[field_name] = new_annotation
-            field_attrib = getattr(model_fields, field_name)
+            field_attrib = model_attrs[getattr(model_fields, field_name).attrib_index]
             new_field_c_attrs[field_name] = _make_counting_attr_from_attribute(field_attrib)
 
     # Create new concrete class
@@ -1168,7 +1169,7 @@ def update_forward_refs(
                     local_ns,
                     allow_partial=False,
                 )
-                new_attr = field_attr.evolve(type=actual_type)
+                new_attr = dataclasses.replace(field_attr, type=actual_type)
                 object.__setattr__(datamodel_fields_ns, field_name, new_attr)
                 updated_fields[field_name] = new_attr
 

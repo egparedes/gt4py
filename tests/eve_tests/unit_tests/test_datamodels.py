@@ -39,6 +39,7 @@ from typing import (
     Union,
 )
 
+import attr
 import devtools
 import factory
 import pytest
@@ -137,7 +138,9 @@ def test_datamodel_class_members(example_model_factory):
 
     assert hasattr(model_class, "__datamodel_fields__")
     assert isinstance(model_class.__datamodel_fields__, utils.FrozenNamespace)
-    assert all(isinstance(f, datamodels.FieldInfo) for f in model_class.__datamodel_fields__.values())
+    assert all(
+        isinstance(f, datamodels.FieldInfo) for f in model_class.__datamodel_fields__.values()
+    )
 
     assert hasattr(model_class, "__datamodel_initializers__")
     assert isinstance(model_class.__datamodel_initializers__, tuple)
@@ -155,15 +158,15 @@ def test_attrs_compatibility(example_model_factory):
     model = example_model_factory()
     model_class = model.__class__
 
-    assert hasattr(model_class, "__dataclass_fields__") and isinstance(
-        model_class.__dataclass_fields__, dict
+    assert hasattr(model_class, "__attrs_attrs__")
+    assert isinstance(model_class.__attrs_attrs__, tuple)
+    assert all(isinstance(a, attr.Attribute) for a in model_class.__attrs_attrs__)
+    assert attr.has(model_class)
+
+    assert all(
+        model_class.__attrs_attrs__[info.attrib_index].name == name
+        for name, info in model_class.__datamodel_fields__.items()
     )
-    assert set(model_class.__datamodel_fields__.keys()) == set(
-        model_class.__dataclass_fields__.keys()
-    )
-    assert dataclasses.is_dataclass(model_class)
-    field_names = set(model_class.__datamodel_fields__.keys())
-    assert all(f.name in field_names for f in dataclasses.fields(model))
 
 
 def test_dataclass_compatibility(example_model_factory):
@@ -177,6 +180,7 @@ def test_dataclass_compatibility(example_model_factory):
         model_class.__dataclass_fields__.keys()
     )
     assert dataclasses.is_dataclass(model_class)
+
     field_names = set(model_class.__datamodel_fields__.keys())
     assert all(f.name in field_names for f in dataclasses.fields(model))
 
@@ -204,6 +208,23 @@ def test_init():
     assert model.value == 1
     assert model.enum_value == SampleEnum.FOO
     assert model.list_value == [1, 2, 3]
+
+    with pytest.raises(TypeError, match="positional arguments"):
+        Model(1, enum_value=SampleEnum.FOO, list_value=[1, 2, 3])
+
+    # positional args
+    @datamodels.datamodel(kw_only=False)
+    class Model:
+        value: int
+        enum_value: SampleEnum
+        list_value: List[int]
+
+    model_pos = Model(1, SampleEnum.FOO, [1, 2, 3])
+    assert model_pos.value == 1
+    assert model_pos.enum_value == SampleEnum.FOO
+    assert model_pos.list_value == [1, 2, 3]
+
+    assert model_pos == Model(1, enum_value=SampleEnum.FOO, list_value=[1, 2, 3])
 
 
 def test_default_values():
@@ -705,14 +726,14 @@ def test_frozen():
     class FrozenModel:
         value: Any = None
 
-    assert FrozenModel.__datamodel_params__.frozen is True
+    assert FrozenModel.__datamodel_options__.frozen is True
     with pytest.raises(attr.exceptions.FrozenInstanceError):
         FrozenModel().value = 1
 
     class FrozenModel2(datamodels.DataModel, frozen=True):
         value: Any = None
 
-    assert FrozenModel2.__datamodel_params__.frozen is True
+    assert FrozenModel2.__datamodel_options__.frozen is True
     with pytest.raises(attr.exceptions.FrozenInstanceError):
         FrozenModel2().value = 1
 
@@ -760,14 +781,14 @@ def test_non_instantiable():
     class NonInstantiableModel:
         value: Any
 
-    assert NonInstantiableModel.__datamodel_params__.instantiable is False
+    assert NonInstantiableModel.__datamodel_options__.instantiable is False
     with pytest.raises(TypeError, match="Trying to instantiate"):
         NonInstantiableModel()
 
     class NonInstantiableModel2(datamodels.DataModel, instantiable=False):
         value: Any
 
-    assert NonInstantiableModel2.__datamodel_params__.instantiable is False
+    assert NonInstantiableModel2.__datamodel_options__.instantiable is False
     with pytest.raises(TypeError, match="Trying to instantiate"):
         NonInstantiableModel2()
 
