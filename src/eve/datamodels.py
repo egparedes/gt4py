@@ -226,7 +226,7 @@ class GenericDataModelAlias(typing._GenericAlias, _root=True):  # type: ignore[c
 
 
 # Implementation
-_DERIVED_FIELD_TAG = "_DERIVED_FIELD_TAG_"
+_AUTO_FIELD_TAG = "_AUTO_FIELD_TAG_"
 _FIELD_INITIALIZERS = "__datamodel_initializers__"
 _FIELD_VALIDATOR_TAG = "_FIELD_VALIDATOR_TAG_"
 _MODEL_FIELDS = "__datamodel_fields__"
@@ -486,19 +486,19 @@ def _collect_root_validators(cls: Type, *, delete_tag: bool = True) -> List[Root
     return result
 
 
-def _collect_derived_fields(
+def _collect_auto_fields(
     cls: Type, *, delete_tag: bool = True
 ) -> List[Tuple[str, Any, attr._make._CountingAttr, Callable[[DataModelTp], None]]]:
     fields = []
     for name, member_func in cls.__dict__.items():
-        if hasattr(member_func, _DERIVED_FIELD_TAG):
+        if hasattr(member_func, _AUTO_FIELD_TAG):
             assert callable(member_func)
-            options = getattr(member_func, _DERIVED_FIELD_TAG)
+            options = getattr(member_func, _AUTO_FIELD_TAG)
 
             annotations = typingx.get_canonical_type_hints(member_func)
             if "ClassVar[" in repr(typing.get_origin(field_type_hint := annotations["return"])):
                 raise TypeError(
-                    f"Invalid type annotation for '{name}' derived field ({field_type_hint})."
+                    f"Invalid type annotation for '{name}' auto field ({field_type_hint})."
                 )
             member_validator = strict_type_attrs_validator(annotations["return"])
 
@@ -516,20 +516,20 @@ def _collect_derived_fields(
                         metadata=options.metadata,
                         on_setattr=attr.setters.frozen,
                     ),
-                    _make_derived_field_initializer(name, member_func, member_validator),
+                    _make_auto_field_initializer(name, member_func, member_validator),
                 )
             )
 
             if delete_tag:
-                delattr(member_func, _DERIVED_FIELD_TAG)
+                delattr(member_func, _AUTO_FIELD_TAG)
 
     return fields
 
 
-def _make_derived_field_initializer(
+def _make_auto_field_initializer(
     field_name: str, init_func: Callable[[DataModelTp], V], validator: ValidatorType
 ) -> Callable[[DataModelTp], None]:
-    def _derived_field_initializer(
+    def _auto_field_initializer(
         instance: DataModelTp, instance_values: Optional[utils.FrozenNamespace] = None
     ) -> None:
         if instance_values is None:
@@ -539,7 +539,7 @@ def _make_derived_field_initializer(
         validator(instance, getattr(instance.__datamodel_fields__, field_name), value)
         object.__setattr__(instance, field_name, value)
 
-    return _derived_field_initializer
+    return _auto_field_initializer
 
 
 def _get_attribute_from_bases(
@@ -727,11 +727,9 @@ def _make_datamodel(
             if key not in cls.__dict__:
                 setattr(cls, key, attr.ib(validator=type_validator))
             elif not isinstance(default_value := cls.__dict__[key], attr._make._CountingAttr):  # type: ignore[attr-defined]  # attr._make is not visible for mypy
-                if hasattr(default_value, _DERIVED_FIELD_TAG):
-                    raise TypeError(
-                        f"Duplicated '{key}' definition as a regular and derived field."
-                    )
-                setattr(cls, key, attr.ib(default=default_value, validator=type_validator))
+                if not hasattr(default_value, _AUTO_FIELD_TAG):
+                    # If it is an auto field, it will be added later
+                    setattr(cls, key, attr.ib(default=default_value, validator=type_validator))
             else:
                 # A field() function has been used to customize the definition:
                 # prepend the type validator to the list of provided validators (if any)
@@ -745,14 +743,19 @@ def _make_datamodel(
                 # TODO: if cls.__dict__[key].converter is True:
                 # TODO:    cls.__dict__[key].converter = _make_type_coercer(type_hint)
 
-    # Add derived field definitions
-    derived_fields_data = _collect_derived_fields(cls)
-    derived_fields = set()
+    # Add auto field definitions
+    auto_fields_data = _collect_auto_fields(cls)
+    auto_fields = set()
     initializers = []
-    for name, annotation, attr_def, initializer in derived_fields_data:
-        annotations[name] = annotation
+    for name, annotation, attr_def, initializer in auto_fields_data:
+        if annotations.setdefault(name, annotation) != annotation:
+            raise TypeError(
+                f"Conflicting type definition for '{key}' auto field: "
+                f"'{annotations[name]}' expected but initializer returns '{annotation}'."
+            )
+
         setattr(cls, name, attr_def)
-        derived_fields.add(name)
+        auto_fields.add(name)
         initializers.append(initializer)
 
     setattr(cls, _FIELD_INITIALIZERS, tuple(initializers))
@@ -762,7 +765,7 @@ def _make_datamodel(
             new_values = fields_view(instance)
             object.__setattr__(new_values, attribute.name, value)
 
-            # update derived fields using new value
+            # update auto fields using new value
             for initializer in type(instance).__datamodel_initializers__:
                 initializer(instance, new_values)
 
@@ -867,7 +870,7 @@ def _make_datamodel(
                     converter=f_attr.converter,
                     validator=f_attr.validator,
                     inherited=f_attr.inherited,
-                    auto=f_attr.name in derived_fields,
+                    auto=f_attr.name in auto_fields,
                     attrib_index=i,
                 )
                 for i, f_attr in enumerate(cls.__attrs_attrs__)
@@ -1273,42 +1276,41 @@ def root_validator(
     return cls_method
 
 
-def derived_field(
-    func: Optional[Callable[[DataModelTp], V]] = None,
-    /,
+def auto_field(
+    initializer: Optional[Callable[[DataModelTp], V]] = None,
     *,
     repr: bool = True,  # noqa: A002   # shadowing 'repr' python builtin
     hash: Optional[bool] = None,  # noqa: A002   # shadowing 'hash' python builtin
     compare: bool = True,
     metadata: Optional[Mapping[Any, Any]] = None,
 ) -> NonDataDescriptor[DataModelTp, V]:
-    def _derived_field_maker(func: Callable[[DataModelTp], V]) -> Callable[[DataModelTp], V]:
-        if not callable(func) or not "return" in func.__annotations__:
+    def _auto_field_maker(initializer: Callable[[DataModelTp], V]) -> Callable[[DataModelTp], V]:
+        if not callable(initializer) or not "return" in initializer.__annotations__:
             raise TypeError(
-                f"Invalid derived field initializer function: '{func}' "
+                f"Invalid auto field initializer function: '{initializer}' "
                 f"(expected callable with return type annotation)."
             )
 
         setattr(
-            func,
-            _DERIVED_FIELD_TAG,
+            initializer,
+            _AUTO_FIELD_TAG,
             utils.FrozenNamespace(repr=repr, hash=hash, compare=compare, metadata=metadata),
         )
-        return func
+        return initializer
 
-    return _derived_field_maker(func) if func else _derived_field_maker
+    return _auto_field_maker(initializer) if initializer else _auto_field_maker
 
 
 def field(
     *,
     default: Any = NOTHING,
     default_factory: Callable[[None], Any] = NOTHING,
-    # default_if_none: Union[Any, Callable[[None], Any]] = NOTHING,
+    # converter: when(filter_func, callable_func: Callable[[None], Any])= None,
     init: bool = True,
     repr: bool = True,  # noqa: A002   # shadowing 'repr' python builtin
     hash: Optional[bool] = None,  # noqa: A002   # shadowing 'hash' python builtin
     compare: bool = True,
-    kw_only: bool = True,
+    kw_only: bool = None,
     metadata: Optional[Mapping[Any, Any]] = None,
 ) -> Any:  # attr.s lies on purpose in some typings
     """Define a new attribute on a class with advanced options.
