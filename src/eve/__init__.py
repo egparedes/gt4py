@@ -22,7 +22,8 @@ on some of the previous ones):
   - typingx  (no dependencies)
   - exceptions, type_definitions
   - utils
-  - concepts <-> iterators  (circular dependency only inside methods, it should be safe)
+  - concepts <-> iterators  (circular dependency only inside methods
+                             and annotations, it should be safe)
   - traits, visitors
   - codegen
 

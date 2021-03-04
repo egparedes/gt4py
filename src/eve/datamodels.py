@@ -43,16 +43,31 @@ Examples:
     ...             raise ValueError(
     ...                 f"Provided value '{value}' for '{attribute.name}' field is too short."
     ...             )
+    ...
+    >>> model = SampleModel(name="Diane", value=32)  # use keyword arguments by default
+    >>> print(model)
+    SampleModel(name='Diane', value=32)
+    >>> SampleModel(name="Diane", value=1.32)
+    Traceback (most recent call last):
+        ...
+    TypeError: 'value' must be <class 'int'> (got '1.32' that is a <class 'float'>).
 
-
-    >>> class AnotherSampleModel(DataModel):
+    >>> class AnotherSampleModel(DataModel, kw_only=False):
     ...     name: str
     ...     friends: List[str]
     ...
     ...     @root_validator
     ...     def _root_validator(cls, instance):
-    ...         if instace.name in instance.friends:
+    ...         if instance.name in instance.friends:
     ...             raise ValueError("'name' value cannot appear in 'friends' list.")
+    ...
+    >>> model = AnotherSampleModel("John", ["Kate", "Alice"])  # positional arguments are ok when 'kw_only=False'
+    >>> print(model)
+    AnotherSampleModel(name='John', friends=['Kate', 'Alice'])
+    >>> AnotherSampleModel("John", ["Kate", "Alice", "John"])
+    Traceback (most recent call last):
+        ...
+    ValueError: 'name' value cannot appear in 'friends' list.
 """
 
 from __future__ import annotations
@@ -957,7 +972,15 @@ def _make_concrete_with_cache(
             concrete_cls,
             **{
                 name: getattr(params, name)
-                for name in ("repr", "eq", "order", "unsafe_hash", "frozen", "instantiable")
+                for name in (
+                    "repr",
+                    "eq",
+                    "order",
+                    "unsafe_hash",
+                    "frozen",
+                    "kw_only",
+                    "instantiable",
+                )
             },
         )
 
@@ -1022,9 +1045,9 @@ def get_fields(
         ...     name: str
         ...     numbers: List[float]
         >>> fields(Model)  # doctest:+ELLIPSIS
-        FrozenNamespace(amount=Attribute(name='amount', default=1, ...),\
- name=Attribute(name='name', default=NOTHING, ...),\
- numbers=Attribute(name='numbers', default=NOTHING, ...))
+        FrozenNamespace(amount=FieldInfo(name='amount', default=1, ...),\
+ name=FieldInfo(name='name', default=NOTHING, ...),\
+ numbers=FieldInfo(name='numbers', default=NOTHING, ...))
 
         >>> fields(Model, as_dataclass=True)  # doctest:+ELLIPSIS
         (Field(name='amount',type=<class 'int'>,default=1,default_factory=...),\
