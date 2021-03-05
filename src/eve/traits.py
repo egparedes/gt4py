@@ -19,7 +19,7 @@
 
 from __future__ import annotations
 
-import pydantic
+from eve import datamodels
 
 from . import concepts, visitors
 from .type_definitions import SymbolName
@@ -27,39 +27,30 @@ from .typingx import Any, Dict, Type
 
 
 class _CollectSymbols(visitors.NodeVisitor):
+    @classmethod
+    def apply(cls, node: concepts.TreeNode) -> Dict[str, Any]:
+        instance = cls()
+        instance.visit(node)
+        return instance.collected
+
     def __init__(self) -> None:
         self.collected: Dict[str, Any] = {}
 
     def visit_Node(self, node: concepts.Node) -> None:
-        for name, metadata in node.__node_children__.items():
-            if isinstance(metadata["definition"].type_, type) and issubclass(
-                metadata["definition"].type_, SymbolName
-            ):
+        for name, field_info in node.__datamodel_fields__.items():
+            if isinstance(t := field_info.type, type) and issubclass(t, SymbolName):
                 self.collected[getattr(node, name)] = node
         if not isinstance(node, SymbolTableTrait):
             # don't recurse into a new scope (i.e. node with SymbolTableTrait)
             self.generic_visit(node)
 
-    @classmethod
-    def apply(cls, node: concepts.TreeNode) -> Dict[str, Any]:
-        instance = cls()
-        instance.generic_visit(node)
-        return instance.collected
 
+class SymbolTableTrait(datamodels.DataModel):
+    symtable_: Dict[str, Any] = datamodels.field(default_factory=dict)
 
-class SymbolTableTrait(concepts.Model):
-    symtable_: Dict[str, Any] = pydantic.Field(default_factory=dict)
-
-    @staticmethod
-    def _collect_symbols(root_node: concepts.TreeNode) -> Dict[str, Any]:
-        return _CollectSymbols.apply(root_node)
-
-    @pydantic.root_validator(skip_on_failure=True)
-    def _collect_symbols_validator(  # type: ignore  # validators are classmethods
-        cls: Type[SymbolTableTrait], values: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        values["symtable_"] = cls._collect_symbols(values)
-        return values
+    @datamodels.root_validator
+    def _collect_symbols_validator(cls: Type[SymbolTableTrait], instance: SymbolTableTrait) -> None:
+        instance.collect_symbols()
 
     def collect_symbols(self) -> None:
-        self.symtable_ = self._collect_symbols(self)
+        self.symtable_ = _CollectSymbols.apply(self)

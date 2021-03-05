@@ -22,7 +22,6 @@ from pydantic import validator
 from pydantic.class_validators import root_validator
 
 from eve import (
-    GenericNode,
     IntEnum,
     Node,
     NodeVisitor,
@@ -209,7 +208,7 @@ class LocNode(Node):
     loc: Optional[SourceLocation]
 
 
-class Expr(LocNode):
+class Expr(LocNode, instantiable=False):
     """
     Expression base class.
 
@@ -221,19 +220,9 @@ class Expr(LocNode):
     dtype: Optional[DataType]
     kind: ExprKind
 
-    # TODO Eve could provide support for making a node abstract
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        if type(self) is Expr:
-            raise TypeError("Trying to instantiate `Expr` abstract class.")
-        super().__init__(*args, **kwargs)
 
-
-class Stmt(LocNode):
-    # TODO Eve could provide support for making a node abstract
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        if type(self) is Stmt:
-            raise TypeError("Trying to instantiate `Stmt` abstract class.")
-        super().__init__(*args, **kwargs)
+class Stmt(LocNode, instantiable=False):
+    pass
 
 
 def verify_condition_is_boolean(parent_node_cls: Node, cond: Expr) -> Expr:
@@ -314,11 +303,11 @@ class FieldAccess(LocNode):
         return cls(name=name, loc=loc, offset=CartesianOffset.zero())
 
 
-class BlockStmt(GenericNode, SymbolTableTrait, Generic[StmtT]):
+class BlockStmt(SymbolTableTrait, Generic[StmtT]):
     body: List[StmtT]
 
 
-class IfStmt(GenericNode, Generic[StmtT, ExprT]):
+class IfStmt(Generic[StmtT, ExprT]):
     """
     Generic if statement.
 
@@ -334,7 +323,7 @@ class IfStmt(GenericNode, Generic[StmtT, ExprT]):
         return verify_condition_is_boolean(cls, cond)
 
 
-class AssignStmt(GenericNode, Generic[TargetT, ExprT]):
+class AssignStmt(Generic[TargetT, ExprT]):
     left: TargetT
     right: ExprT
 
@@ -349,7 +338,7 @@ def assign_stmt_dtype_validation(*, strict: bool) -> RootValidatorType:
     return root_validator(allow_reuse=True, skip_on_failure=True)(_impl)
 
 
-class UnaryOp(GenericNode, Generic[ExprT]):
+class UnaryOp(Generic[ExprT]):
     """
     Generic unary operation with type propagation.
 
@@ -385,7 +374,7 @@ class UnaryOp(GenericNode, Generic[ExprT]):
         return values
 
 
-class BinaryOp(GenericNode, Generic[ExprT]):
+class BinaryOp(Generic[ExprT]):
     """Generic binary operation with type propagation.
 
     The generic BinaryOp already contains logic for
@@ -431,7 +420,7 @@ def binary_op_dtype_propagation(*, strict: bool) -> RootValidatorType:
     return root_validator(allow_reuse=True, skip_on_failure=True)(_impl)
 
 
-class TernaryOp(GenericNode, Generic[ExprT]):
+class TernaryOp(Generic[ExprT]):
     """
     Generic ternary operation with type propagation.
 
@@ -470,7 +459,7 @@ def ternary_op_dtype_propagation(*, strict: bool) -> RootValidatorType:
     return root_validator(allow_reuse=True, skip_on_failure=True)(_impl)
 
 
-class Cast(GenericNode, Generic[ExprT]):
+class Cast(Generic[ExprT]):
     dtype: DataType
     expr: ExprT
 
@@ -480,7 +469,7 @@ class Cast(GenericNode, Generic[ExprT]):
         return values
 
 
-class NativeFuncCall(GenericNode, Generic[ExprT]):
+class NativeFuncCall(Generic[ExprT]):
     func: NativeFunction
     args: List[ExprT]
 
