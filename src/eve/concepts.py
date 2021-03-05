@@ -118,6 +118,9 @@ class BaseNode(datamodels.DataModel):
             self, traversal_order=traversal_order or iterators.TraversalOrder.PRE_ORDER
         )
 
+    def to_dict(self) -> Dict[str, Any]:
+        return datamodels.asdict(self)
+
 
 class Node(BaseNode):
     """Default public name for a base node class."""
