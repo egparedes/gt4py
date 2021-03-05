@@ -28,7 +28,6 @@ from eve import (
     StrEnum,
     SymbolTableTrait,
 )
-from eve import datamodels
 from eve.datamodels import Attribute, DataModel, derived_field, root_validator, validator
 from eve import exceptions as eve_exceptions
 from eve.type_definitions import SymbolRef

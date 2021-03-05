@@ -14,8 +14,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""
-GridTools Intermediate Representation.
+"""GridTools Intermediate Representation.
 
 GTIR represents a computation with the semantics of the
 `GTScript parallel model <https://github.com/GridTools/concepts/wiki/GTScript-Parallel-model>`.
@@ -27,10 +26,12 @@ Analysis is required to generate valid code (complying with the parallel model)
 - `FieldIfStmt` expansion to comply with the parallel model
 """
 
+from __future__ import annotations
+
 from typing import Any, Dict, Generator, List, Set
 
-from pydantic import validator
-from pydantic.class_validators import root_validator
+
+from eve.datamodels import Attribute, DataModel, derived_field, root_validator, validator
 
 from eve import Node, Str, SymbolName, SymbolTableTrait, utils
 from eve.iterators import TreeIterationItem
@@ -39,20 +40,12 @@ from gtc import common
 from gtc.common import AxisBound, LocNode
 
 
-class Expr(common.Expr):
-    # TODO Eve could provide support for making a node abstract
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        if type(self) is Expr:
-            raise TypeError("Trying to instantiate `Expr` abstract class.")
-        super().__init__(*args, **kwargs)
+class Expr(common.Expr, instantiable=False):
+    pass
 
 
-class Stmt(common.Stmt):
-    # TODO Eve could provide support for making a node abstract
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        if type(self) is Stmt:
-            raise TypeError("Trying to instantiate `Stmt` abstract class.")
-        super().__init__(*args, **kwargs)
+class Stmt(common.Stmt, instantiable=False):
+    pass
 
 
 class BlockStmt(common.BlockStmt[Stmt], Stmt):
@@ -69,7 +62,7 @@ class CartesianOffset(Node):
     k: int
 
     @classmethod
-    def zero(cls) -> "CartesianOffset":
+    def zero(cls) -> CartesianOffset:
         return cls(i=0, j=0, k=0)
 
     def to_dict(self) -> Dict[str, int]:

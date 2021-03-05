@@ -99,6 +99,7 @@ from typing import (
 )
 
 import attr
+from attr import validators
 
 from eve import typingx, utils
 from eve.type_definitions import NOTHING
@@ -244,6 +245,7 @@ _MODEL_FIELDS = "__datamodel_fields__"
 _MODEL_OPTIONS = "__datamodel_options__"
 _ROOT_VALIDATOR_TAG = "_ROOT_VALIDATOR_TAG_"
 _ROOT_VALIDATORS = "__datamodel_validators__"
+_STRICT_TYPE_VALIDATOR_TAG = "_STRICT_TYPE_VALIDATOR_TAG_"
 
 
 # -- Validators --
@@ -411,9 +413,7 @@ def union_type_attrs_validator(*type_args: Type) -> ValidatorType:
         )
 
 
-def strict_type_attrs_validator(
-    type_hint: Any, *, forward_eval_module: Optional[str] = None
-) -> ValidatorType:
+def strict_type_attrs_validator(type_hint: Any) -> ValidatorType:
     """Create an ``attr.s`` strict type validator for a specific typing hint."""
     type_args = typing.get_args(type_hint)
 
@@ -468,52 +468,16 @@ def strict_type_attrs_validator(
     raise TypeError(f"Type description '{type_hint}' is not supported.")
 
 
-AnyTyping = Union[ForwardRef, Type, TypeVar]
+@dataclasses.dataclass
+class AutoTypeValidator:
+    validator: ValidatorType
+
+    def __call__(self, instance: DataModelTp, attribute: Attribute, value: Any) -> None:
+        return self.validator(instance, attribute, value)
 
 
-class TypeValidatorDispatcher(utils.Dispatcher[AnyTyping, Callable]):
-    def dispatch(self, data: AnyTyping, **kwargs: Any) -> Any:
-        type_args = typing.get_args(data)
-
-        # Custom type validator
-        if isinstance(data, TypeWithAttrValidatorTp):
-            return "TypeWithValidator"
-
-        # Non-generic types
-        if isinstance(data, type) and data is not type(None):  # noqa: E721  # use isinstance
-            assert not type_args
-            if data is int:
-                return "int"
-            else:
-                return "Type"
-        if isinstance(data, typing.TypeVar):
-            return "TypeVar"
-        if isinstance(data, ForwardRef):
-            return "ForwardRef"
-        if data is Any:
-            return "Any"
-
-        # Generic and parametrized type hints
-        origin_type = typing.get_origin(data)
-        if origin_type is typing.Literal:
-            return "Literal"
-        if origin_type is typing.Union:
-            return "Union"
-        if isinstance(origin_type, type):
-            # Deal with generic collections
-            if issubclass(origin_type, tuple):
-                return "Tuple"
-            if issubclass(origin_type, (collections.abc.Sequence, collections.abc.Set)):
-                assert len(type_args) == 1
-                return "Sequence" if origin_type == collections.abc.Sequence else "Set"
-            if issubclass(origin_type, collections.abc.Mapping):
-                assert len(type_args) == 2
-                return "Mapping"
-
-        return None
-
-    def generic_call(self, data: AnyTyping, **kwargs: Any) -> Any:
-        raise TypeError(f"Type description '{data}' is not supported.")
+def make_auto_type_validator(type_hint: Any) -> ValidatorType:
+    return AutoTypeValidator(strict_type_attrs_validator(type_hint))
 
 
 # -- DataModel --
@@ -583,21 +547,38 @@ def _collect_derived_fields(
                     f"'{return_type_hint}' (expected '{field_type_hint}')."
                 )
 
-            member_validator = strict_type_attrs_validator(field_type_hint)
+            member_validator = make_auto_type_validator(field_type_hint)
+            if name in cls.__datamodel_fields__.keys():
+                inherited_validator = getattr(cls.__datamodel_fields__, name).validator
+                if isinstance(inherited_validator, attr._make._AndValidator):
+                    custom_validators = [
+                        v
+                        for v in inherited_validator._validators
+                        if not isinstance(v, AutoTypeValidator)
+                    ]
+                    print(f"{custom_validators=}")
+                    if custom_validators:
+                        member_validator = attr.validators.and_(
+                            member_validator, *custom_validators
+                        )
+                else:
+                    member_validator = attr.validators.and_(member_validator, inherited_validator)
+
+            field_attr_def = attr.ib(
+                init=False,
+                repr=options.repr,
+                hash=options.hash,
+                eq=options.compare,
+                order=options.compare,
+                validator=member_validator,
+                metadata=options.metadata,
+                on_setattr=attr.setters.frozen,
+            )
             fields.append(
                 (
                     name,
-                    field_type_hint,
-                    attr.ib(
-                        init=False,
-                        repr=options.repr,
-                        hash=options.hash,
-                        eq=options.compare,
-                        order=options.compare,
-                        validator=member_validator,
-                        metadata=options.metadata,
-                        on_setattr=attr.setters.frozen,
-                    ),
+                    member_func.__annotations__.get("return", None),
+                    field_attr_def,
                     _make_derived_field_initializer(name, member_func, member_validator),
                 )
             )
@@ -618,8 +599,8 @@ def _make_derived_field_initializer(
             instance_values = fields_view(instance)
 
         value = init_func(instance_values)
-        validator(instance, getattr(instance.__datamodel_fields__, field_name), value)
         object.__setattr__(instance, field_name, value)
+        validator(instance, getattr(instance.__datamodel_fields__, field_name), value)
 
     return _derived_field_initializer
 
@@ -809,7 +790,7 @@ def _make_datamodel(
             continue
         type_hint = annotations[key] = canonicalized_annotations[key]
         if typing.get_origin(type_hint) is not ClassVar:
-            type_validator = strict_type_attrs_validator(type_hint)
+            type_validator = make_auto_type_validator(type_hint)
             if key not in cls.__dict__:
                 setattr(cls, key, attr.ib(validator=type_validator))
             elif not isinstance(default_value := cls.__dict__[key], attr._make._CountingAttr):  # type: ignore[attr-defined]  # attr._make is not visible for mypy
@@ -822,7 +803,7 @@ def _make_datamodel(
                 cls.__dict__[key]._validator = (
                     type_validator
                     if cls.__dict__[key]._validator is None
-                    else attr._make.and_(type_validator, cls.__dict__[key]._validator)  # type: ignore[attr-defined]  # attr._make is not visible for mypy
+                    else attr.validators.and_(type_validator, cls.__dict__[key]._validator)  # type: ignore[attr-defined]  # attr._make is not visible for mypy
                 )
 
                 # TODO(egparedes): implement type coercing
@@ -834,12 +815,8 @@ def _make_datamodel(
     derived_fields = set()
     initializers = []
     for name, annotation, attr_def, initializer in derived_fields_data:
-        if annotations.setdefault(name, annotation) != annotation:
-            raise TypeError(
-                f"Conflicting type definition for '{key}' derived field: "
-                f"'{annotations[name]}' expected but initializer returns '{annotation}'."
-            )
-
+        if annotation:
+            annotations.setdefault(name, annotation)
         setattr(cls, name, attr_def)
         derived_fields.add(name)
         initializers.append(initializer)
@@ -957,7 +934,8 @@ def _make_datamodel(
                     converter=f_attr.converter,
                     validator=f_attr.validator,
                     inherited=f_attr.inherited,
-                    auto=f_attr.name in derived_fields,
+                    derived=f_attr.name in derived_fields,
+                    inherit_validators=False,
                     attrib_index=i,
                 )
                 for i, f_attr in enumerate(cls.__attrs_attrs__)
@@ -1398,7 +1376,7 @@ def field(
     *,
     default: Any = NOTHING,
     default_factory: Callable[[None], Any] = NOTHING,
-    default_if_none: bool = False,
+    # default_if_none: bool = False,
     init: bool = True,
     repr: bool = True,  # noqa: A002   # shadowing 'repr' python builtin
     hash: Optional[bool] = None,  # noqa: A002   # shadowing 'hash' python builtin
@@ -1453,14 +1431,14 @@ def field(
     if default_factory is not NOTHING:
         defaults_kwargs["factory"] = default_factory
 
-    if default_if_none:
-        if not defaults_kwargs:
-            raise ValueError(
-                "Cannot specify 'default_if_none' without 'default' or 'default_factory'."
-            )
-        converter = attr.converters.default_if_none(**defaults_kwargs)
-    else:
-        converter = None
+    # if default_if_none:
+    #     if not defaults_kwargs:
+    #         raise ValueError(
+    #             "Cannot specify 'default_if_none' without 'default' or 'default_factory'."
+    #         )
+    #     converter = attr.converters.default_if_none(**defaults_kwargs)
+    # else:
+    #     converter = None
 
     return attr.ib(  # type: ignore[call-overload]  # attr.s lies on purpose in some typings
         **defaults_kwargs,
@@ -1470,7 +1448,7 @@ def field(
         eq=compare,
         order=compare,
         kw_only=kw_only,
-        converter=converter,
+        # converter=converter,
         metadata=metadata,
     )
 
@@ -1575,7 +1553,8 @@ class FieldInfo:
     converter: Optional[Callable]
     validator: Optional[ValidatorType]
     inherited: bool
-    auto: bool
+    derived: bool
+    inherit_validators: bool
     attrib_index: int
 
 
