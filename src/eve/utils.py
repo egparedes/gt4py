@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import abc
 import collections.abc
 import enum
 import functools
@@ -50,6 +51,7 @@ from .typingx import (
     Any,
     AnyCallable,
     Callable,
+    ClassVar,
     Collection,
     Dict,
     Generic,
@@ -58,6 +60,7 @@ from .typingx import (
     List,
     Literal,
     Optional,
+    Protocol,
     Set,
     Tuple,
     Type,
@@ -487,6 +490,31 @@ class UIDGenerator:
         if start < next(cls.__counter):
             warnings.warn("Unsafe reset of global UIDGenerator", RuntimeWarning)
         cls.__counter = itertools.count(start)
+
+
+T_co = TypeVar("T_co", covariant=True)
+V_co = TypeVar("V_co", covariant=True)
+
+
+class Dispatcher(Protocol[T_co, V_co]):
+    def __call__(self, data: T_co, **kwargs: Any) -> V_co:
+        method = self.generic_call
+
+        case = self.dispatch(data, **kwargs)
+        if case is not None:
+            method_name = f"call_{case}"
+            if hasattr(self, method_name):
+                method = getattr(self, method_name)
+
+        return method(data, **kwargs)
+
+    @abc.abstractmethod
+    def dispatch(self, data: T_co, **kwargs: Any) -> str:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def generic_call(self, data: T_co, **kwargs: Any) -> V_co:
+        raise NotImplementedError()
 
 
 # -- Iterators --

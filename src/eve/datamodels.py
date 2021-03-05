@@ -91,6 +91,7 @@ from typing import (
     Optional,
     Protocol,
     Sequence,
+    Set,
     Tuple,
     Type,
     TypeVar,
@@ -136,9 +137,7 @@ class DataModelTp(_AttrClassTp, _DataClassTp, _DevToolsPrettyPrintable, Protocol
     __datamodel_fields__: ClassVar[utils.FrozenNamespace[FieldInfo]]
     __datamodel_initializers__: ClassVar[Tuple[Callable[[DataModelTp], None], ...]]
     __datamodel_options__: ClassVar[DataModelOptions]
-    __datamodel_validators__: ClassVar[
-        Tuple[NonDataDescriptor[DataModelTp, BoundRootValidatorType], ...]
-    ]
+    __datamodel_validators__: ClassVar[Tuple[RootValidatorType, ...]]
 
 
 class GenericDataModelTp(DataModelTp, Protocol):
@@ -154,10 +153,7 @@ class GenericDataModelTp(DataModelTp, Protocol):
 
 
 ValidatorType = Callable[[DataModelTp, Attribute, T], None]
-BoundValidatorType = Callable[[Attribute, T], None]
-
 RootValidatorType = Callable[[Type[DataModelTp], DataModelTp], None]
-BoundRootValidatorType = Callable[[DataModelTp], None]
 
 
 @typing.runtime_checkable
@@ -241,7 +237,7 @@ class GenericDataModelAlias(typing._GenericAlias, _root=True):  # type: ignore[c
 
 
 # Implementation
-_AUTO_FIELD_TAG = "_AUTO_FIELD_TAG_"
+_DERIVED_FIELD_TAG = "_DERIVED_FIELD_TAG_"
 _FIELD_INITIALIZERS = "__datamodel_initializers__"
 _FIELD_VALIDATOR_TAG = "_FIELD_VALIDATOR_TAG_"
 _MODEL_FIELDS = "__datamodel_fields__"
@@ -472,15 +468,68 @@ def strict_type_attrs_validator(
     raise TypeError(f"Type description '{type_hint}' is not supported.")
 
 
+AnyTyping = Union[ForwardRef, Type, TypeVar]
+
+
+class TypeValidatorDispatcher(utils.Dispatcher[AnyTyping, Callable]):
+    def dispatch(self, data: AnyTyping, **kwargs: Any) -> Any:
+        type_args = typing.get_args(data)
+
+        # Custom type validator
+        if isinstance(data, TypeWithAttrValidatorTp):
+            return "TypeWithValidator"
+
+        # Non-generic types
+        if isinstance(data, type) and data is not type(None):  # noqa: E721  # use isinstance
+            assert not type_args
+            if data is int:
+                return "int"
+            else:
+                return "Type"
+        if isinstance(data, typing.TypeVar):
+            return "TypeVar"
+        if isinstance(data, ForwardRef):
+            return "ForwardRef"
+        if data is Any:
+            return "Any"
+
+        # Generic and parametrized type hints
+        origin_type = typing.get_origin(data)
+        if origin_type is typing.Literal:
+            return "Literal"
+        if origin_type is typing.Union:
+            return "Union"
+        if isinstance(origin_type, type):
+            # Deal with generic collections
+            if issubclass(origin_type, tuple):
+                return "Tuple"
+            if issubclass(origin_type, (collections.abc.Sequence, collections.abc.Set)):
+                assert len(type_args) == 1
+                return "Sequence" if origin_type == collections.abc.Sequence else "Set"
+            if issubclass(origin_type, collections.abc.Mapping):
+                assert len(type_args) == 2
+                return "Mapping"
+
+        return None
+
+    def generic_call(self, data: AnyTyping, **kwargs: Any) -> Any:
+        raise TypeError(f"Type description '{data}' is not supported.")
+
+
 # -- DataModel --
 def _collect_field_validators(cls: Type, *, delete_tag: bool = True) -> Dict[str, ValidatorType]:
     result = {}
     for member in cls.__dict__.values():
         if hasattr(member, _FIELD_VALIDATOR_TAG):
             field_name = getattr(member, _FIELD_VALIDATOR_TAG)
-            result[field_name] = member
+            result.setdefault(field_name, []).append(member)
             if delete_tag:
                 delattr(member, _FIELD_VALIDATOR_TAG)
+
+    result = {
+        name: (v_list[0] if len(v_list) == 0 else attr.validators.and_(*v_list))
+        for name, v_list in result.items()
+    }
 
     return result
 
@@ -501,22 +550,40 @@ def _collect_root_validators(cls: Type, *, delete_tag: bool = True) -> List[Root
     return result
 
 
-def _collect_auto_fields(
-    cls: Type, *, delete_tag: bool = True
+def _collect_derived_fields(
+    cls: Type,
+    canonicalized_annotations: Dict[str, Any],
+    skip_private: bool,
+    *,
+    delete_tag: bool = True,
 ) -> List[Tuple[str, Any, attr._make._CountingAttr, Callable[[DataModelTp], None]]]:
     fields = []
     for name, member_func in cls.__dict__.items():
-        if hasattr(member_func, _AUTO_FIELD_TAG):
+        if skip_private and name.startswith("_"):
+            continue
+
+        if hasattr(member_func, _DERIVED_FIELD_TAG):
             assert callable(member_func)
-            options = getattr(member_func, _AUTO_FIELD_TAG)
+            options = getattr(member_func, _DERIVED_FIELD_TAG)
 
-            annotations = typingx.get_canonical_type_hints(member_func)
-            if "ClassVar[" in repr(typing.get_origin(field_type_hint := annotations["return"])):
+            field_type_hint = canonicalized_annotations.get(name, None)
+            if "ClassVar[" in repr(typing.get_origin(field_type_hint)):
                 raise TypeError(
-                    f"Invalid type annotation for '{name}' auto field ({field_type_hint})."
+                    f"Invalid type annotation for '{name}' derived field ({field_type_hint})."
                 )
-            member_validator = strict_type_attrs_validator(annotations["return"])
 
+            return_type_hint = typingx.get_canonical_type_hints(member_func).get("return", None)
+            if field_type_hint is None and return_type_hint is None:
+                raise TypeError(f"Missing type annotation for '{name}' derived type initializer.")
+            if field_type_hint is None:
+                field_type_hint = return_type_hint
+            elif return_type_hint is not None and field_type_hint != return_type_hint:
+                raise TypeError(
+                    f"Wrong return type for '{name}' derived type initializer: "
+                    f"'{return_type_hint}' (expected '{field_type_hint}')."
+                )
+
+            member_validator = strict_type_attrs_validator(field_type_hint)
             fields.append(
                 (
                     name,
@@ -531,20 +598,20 @@ def _collect_auto_fields(
                         metadata=options.metadata,
                         on_setattr=attr.setters.frozen,
                     ),
-                    _make_auto_field_initializer(name, member_func, member_validator),
+                    _make_derived_field_initializer(name, member_func, member_validator),
                 )
             )
 
             if delete_tag:
-                delattr(member_func, _AUTO_FIELD_TAG)
+                delattr(member_func, _DERIVED_FIELD_TAG)
 
     return fields
 
 
-def _make_auto_field_initializer(
+def _make_derived_field_initializer(
     field_name: str, init_func: Callable[[DataModelTp], V], validator: ValidatorType
 ) -> Callable[[DataModelTp], None]:
-    def _auto_field_initializer(
+    def _derived_field_initializer(
         instance: DataModelTp, instance_values: Optional[utils.FrozenNamespace] = None
     ) -> None:
         if instance_values is None:
@@ -554,7 +621,7 @@ def _make_auto_field_initializer(
         validator(instance, getattr(instance.__datamodel_fields__, field_name), value)
         object.__setattr__(instance, field_name, value)
 
-    return _auto_field_initializer
+    return _derived_field_initializer
 
 
 def _get_attribute_from_bases(
@@ -662,11 +729,12 @@ def _make_post_init(has_post_init: bool) -> Callable[[DataModelTp], None]:
             pass
 
     def __attrs_post_init__(self: DataModelTp) -> None:
-        if attr._config._run_validators is True:  # type: ignore[attr-defined]  # attr._config is not visible for mypy
-            for validator in type(self).__datamodel_validators__:
-                validator.__get__(self)(self)
-        for initializer in type(self).__datamodel_initializers__:
+        cls = type(self)
+        for initializer in cls.__datamodel_initializers__:
             initializer(self)
+        if attr._config._run_validators is True:  # type: ignore[attr-defined]  # attr._config is not visible for mypy
+            for validator in cls.__datamodel_validators__:
+                validator(cls, self)
         call_post_init(self)
 
     return __attrs_post_init__
@@ -721,6 +789,7 @@ def _make_datamodel(
     frozen: bool,
     kw_only: bool,
     instantiable: bool,
+    skip_private: bool,
 ) -> Type:
     """Actual implementation of the Data Model creation.
 
@@ -728,22 +797,24 @@ def _make_datamodel(
     """
     if "__annotations__" not in cls.__dict__:
         cls.__annotations__ = {}
-    annotations = cls.__dict__["__annotations__"]
+    annotations: Dict[str, Any] = cls.__dict__["__annotations__"]
     mro_bases: Tuple[Type, ...] = cls.__mro__[1:]
-    canonicalized_annotations = typingx.get_canonical_type_hints(cls)
+    canonicalized_annotations: Dict[str, Any] = typingx.get_canonical_type_hints(cls)
 
     # Create attrib definitions with automatic type validators (and converters)
     # for the annotated fields. The original annotations are used for iteration
     # since the resolved annotations may also contain superclasses' annotations
     for key in annotations:
+        if skip_private and key.startswith("_"):
+            continue
         type_hint = annotations[key] = canonicalized_annotations[key]
         if typing.get_origin(type_hint) is not ClassVar:
             type_validator = strict_type_attrs_validator(type_hint)
             if key not in cls.__dict__:
                 setattr(cls, key, attr.ib(validator=type_validator))
             elif not isinstance(default_value := cls.__dict__[key], attr._make._CountingAttr):  # type: ignore[attr-defined]  # attr._make is not visible for mypy
-                if not hasattr(default_value, _AUTO_FIELD_TAG):
-                    # If it is an auto field, it will be added later
+                if not hasattr(default_value, _DERIVED_FIELD_TAG):
+                    # If it is an derived field, it will be added later
                     setattr(cls, key, attr.ib(default=default_value, validator=type_validator))
             else:
                 # A field() function has been used to customize the definition:
@@ -758,19 +829,19 @@ def _make_datamodel(
                 # TODO: if cls.__dict__[key].converter is True:
                 # TODO:    cls.__dict__[key].converter = _make_type_coercer(type_hint)
 
-    # Add auto field definitions
-    auto_fields_data = _collect_auto_fields(cls)
-    auto_fields = set()
+    # Add derived field definitions
+    derived_fields_data = _collect_derived_fields(cls, canonicalized_annotations, skip_private)
+    derived_fields = set()
     initializers = []
-    for name, annotation, attr_def, initializer in auto_fields_data:
+    for name, annotation, attr_def, initializer in derived_fields_data:
         if annotations.setdefault(name, annotation) != annotation:
             raise TypeError(
-                f"Conflicting type definition for '{key}' auto field: "
+                f"Conflicting type definition for '{key}' derived field: "
                 f"'{annotations[name]}' expected but initializer returns '{annotation}'."
             )
 
         setattr(cls, name, attr_def)
-        auto_fields.add(name)
+        derived_fields.add(name)
         initializers.append(initializer)
 
     setattr(cls, _FIELD_INITIALIZERS, tuple(initializers))
@@ -780,7 +851,7 @@ def _make_datamodel(
             new_values = fields_view(instance)
             object.__setattr__(new_values, attribute.name, value)
 
-            # update auto fields using new value
+            # update derived fields using new value
             for initializer in type(instance).__datamodel_initializers__:
                 initializer(instance, new_values)
 
@@ -791,15 +862,15 @@ def _make_datamodel(
 
     # All fields should be annotated with type hints
     for key, value in cls.__dict__.items():
+        if skip_private and key.startswith("_"):
+            continue
         if isinstance(value, attr._make._CountingAttr) and (  # type: ignore[attr-defined]  # attr._make is not visible for mypy
             key not in annotations
         ):
             raise TypeError(f"Missing type annotation in '{key}' field.")
 
-    root_validators = _collect_root_validators(cls)
+    # Collect and validators
     field_validators = _collect_field_validators(cls)
-
-    # Add collected field validators
     for field_name, field_validator in field_validators.items():
         field_c_attr = cls.__dict__.get(field_name, None)
         if not field_c_attr:
@@ -820,6 +891,7 @@ def _make_datamodel(
         assert isinstance(field_c_attr, attr._make._CountingAttr)  # type: ignore[attr-defined]  # attr._make is not visible for mypy
         field_c_attr.validator(field_validator)
 
+    root_validators = _collect_root_validators(cls)
     setattr(cls, _ROOT_VALIDATORS, tuple(root_validators))
 
     # Update class with attr.s features
@@ -836,7 +908,7 @@ def _make_datamodel(
 
     cls.__class_getitem__ = _make_data_model_class_getitem()
 
-    attr_settings = {"auto_attribs": True, "slots": False}
+    attr_settings = {"auto_attribs": False, "slots": False}
     hash_arg = None if not unsafe_hash else True
     new_cls = attr.define(  # type: ignore[attr-defined]  # attr.define is not visible for mypy
         **attr_settings,
@@ -885,7 +957,7 @@ def _make_datamodel(
                     converter=f_attr.converter,
                     validator=f_attr.validator,
                     inherited=f_attr.inherited,
-                    auto=f_attr.name in auto_fields,
+                    auto=f_attr.name in derived_fields,
                     attrib_index=i,
                 )
                 for i, f_attr in enumerate(cls.__attrs_attrs__)
@@ -1269,7 +1341,7 @@ def validator(name: str) -> Callable[[ValidatorType], ValidatorType]:
         name: Name of the field to be validated by the decorated function.
 
     The decorated functions should have the following signature:
-    ``def _validator_function(self, attribute, value):``
+    ``def _validator_function(self, attribute, value) -> None:``
     where ``self`` will be the model instance being validated, ``attribute``
     the definition information of the attribute (the value of
     ``__datamodel_fields__.field_name``) and ``value`` the actual value
@@ -1284,51 +1356,49 @@ def validator(name: str) -> Callable[[ValidatorType], ValidatorType]:
     return _field_validator_maker
 
 
-def root_validator(
-    func: RootValidatorType, /
-) -> NonDataDescriptor[DataModelTp, BoundRootValidatorType]:
+def root_validator(func: RootValidatorType, /) -> RootValidatorType:
     """Define a custom root validator (decorator function).
 
     The decorated functions should have the following signature:
-    ``def _root_validator_function(cls, instance):``
+    ``def _root_validator_function(cls, instance) -> None:``
     where ``cls`` will be the class of the model and ``instance`` the
     actual instance being validated.
     """
-    cls_method = classmethod(func)
-    setattr(cls_method, _ROOT_VALIDATOR_TAG, None)
-    return cls_method
+    setattr(func, _ROOT_VALIDATOR_TAG, None)
+    return func
 
 
-def auto_field(
+def derived_field(
     initializer: Optional[Callable[[DataModelTp], V]] = None,
     *,
     repr: bool = True,  # noqa: A002   # shadowing 'repr' python builtin
     hash: Optional[bool] = None,  # noqa: A002   # shadowing 'hash' python builtin
     compare: bool = True,
     metadata: Optional[Mapping[Any, Any]] = None,
-) -> NonDataDescriptor[DataModelTp, V]:
-    def _auto_field_maker(initializer: Callable[[DataModelTp], V]) -> Callable[[DataModelTp], V]:
-        if not callable(initializer) or not "return" in initializer.__annotations__:
+) -> Union[
+    Callable[[DataModelTp], V], Callable[[Callable[[DataModelTp], V]], Callable[[DataModelTp], V]]
+]:
+    def _derived_field_maker(initializer: Callable[[DataModelTp], V]) -> Callable[[DataModelTp], V]:
+        if not callable(initializer):
             raise TypeError(
-                f"Invalid auto field initializer function: '{initializer}' "
-                f"(expected callable with return type annotation)."
+                f"Invalid derived field initializer function: '{initializer}' (expected callable)."
             )
 
         setattr(
             initializer,
-            _AUTO_FIELD_TAG,
+            _DERIVED_FIELD_TAG,
             utils.FrozenNamespace(repr=repr, hash=hash, compare=compare, metadata=metadata),
         )
         return initializer
 
-    return _auto_field_maker(initializer) if initializer else _auto_field_maker
+    return _derived_field_maker(initializer) if initializer else _derived_field_maker
 
 
 def field(
     *,
     default: Any = NOTHING,
     default_factory: Callable[[None], Any] = NOTHING,
-    # converter: when(filter_func, callable_func: Callable[[None], Any])= None,
+    default_if_none: bool = False,
     init: bool = True,
     repr: bool = True,  # noqa: A002   # shadowing 'repr' python builtin
     hash: Optional[bool] = None,  # noqa: A002   # shadowing 'hash' python builtin
@@ -1376,12 +1446,21 @@ def field(
     """
     defaults_kwargs = {}
     if default is not NOTHING and default_factory is not NOTHING:
-        raise ValueError("Cannot specify both default and default_factory.")
+        raise ValueError("Cannot specify both 'default' and 'default_factory'.")
 
     if default is not NOTHING:
         defaults_kwargs["default"] = default
     if default_factory is not NOTHING:
         defaults_kwargs["factory"] = default_factory
+
+    if default_if_none:
+        if not defaults_kwargs:
+            raise ValueError(
+                "Cannot specify 'default_if_none' without 'default' or 'default_factory'."
+            )
+        converter = attr.converters.default_if_none(**defaults_kwargs)
+    else:
+        converter = None
 
     return attr.ib(  # type: ignore[call-overload]  # attr.s lies on purpose in some typings
         **defaults_kwargs,
@@ -1391,6 +1470,7 @@ def field(
         eq=compare,
         order=compare,
         kw_only=kw_only,
+        converter=converter,
         metadata=metadata,
     )
 
@@ -1406,6 +1486,7 @@ def datamodel(
     frozen: bool = False,
     kw_only: bool = True,
     instantiable: bool = True,
+    skip_private: bool = False,
 ) -> Union[Type, Callable[[Type], Type]]:
     """Add generated special methods to classes according to the specified attributes (class decorator).
 
@@ -1445,6 +1526,7 @@ def datamodel(
         kw_only: Make all attributes keyword-only in the generated ``__init__``.
         instantiable: If ``False`` the class will contain an invalid ``__init__()``
             method that raises an exception.
+        skip_private: If ``True``, skip private field definitions (names starting with `_`).
 
     Note:
         Currently implemented using :func:`attr.s` from `attrs <https://www.attrs.org/>`_
@@ -1460,6 +1542,7 @@ def datamodel(
             frozen=frozen,
             kw_only=kw_only,
             instantiable=instantiable,
+            skip_private=skip_private,
         )
 
     # This works for both @datamodel or @datamodel() decorations
@@ -1519,6 +1602,7 @@ class DataModel(DataModelTp):
         frozen: bool = False,
         kw_only: bool = True,
         instantiable: bool = True,
+        skip_private: bool = False,
         **kwargs: Any,
     ) -> None:
         skip_datamodel_init = kwargs.pop("__skip_datamodel_init__", False)
@@ -1533,6 +1617,7 @@ class DataModel(DataModelTp):
                 frozen=frozen,
                 kw_only=kw_only,
                 instantiable=instantiable,
+                skip_private=skip_private,
             )
 
 
@@ -1553,6 +1638,7 @@ class FrozenDataModel(DataModel, __skip_datamodel_init__=True):
         unsafe_hash: bool = False,
         kw_only: bool = True,
         instantiable: bool = True,
+        skip_private: bool = False,
         **kwargs: Any,
     ) -> None:
         assert "frozen" not in kwargs
@@ -1564,6 +1650,7 @@ class FrozenDataModel(DataModel, __skip_datamodel_init__=True):
             frozen=True,
             kw_only=kw_only,
             instantiable=instantiable,
+            skip_private=skip_private,
             **kwargs,
         )
 

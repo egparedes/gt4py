@@ -34,9 +34,12 @@ AnyNoArgCallable = Callable[[], Any]
 
 
 T = TypeVar("T")
-V = TypeVar("V")
+T_co = TypeVar("T_co", covariant=True)
 T_contra = TypeVar("T_contra", contravariant=True)
+
+V = TypeVar("V")
 V_co = TypeVar("V_co", covariant=True)
+V_contra = TypeVar("V_contra", contravariant=True)
 
 
 class NonDataDescriptor(Protocol[T_contra, V_co]):
@@ -222,3 +225,4 @@ def resolve_type(
                 raise e
 
     return actual_type
+

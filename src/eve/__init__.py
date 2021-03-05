@@ -22,8 +22,8 @@ on some of the previous ones):
   - typingx  (no dependencies)
   - exceptions, type_definitions
   - utils
-  - concepts <-> iterators  (circular dependency only inside methods
-                             and annotations, it should be safe)
+  - datamodels
+  - concepts <-> iterators  (safe circular dependencies inside methods and annotations)
   - traits, visitors
   - codegen
 
@@ -33,17 +33,15 @@ from __future__ import annotations  # isort:skip
 
 from .version import __version__, __versioninfo__  # isort:skip
 
-from .concepts import (
-    FieldKind,
-    FrozenModel,
-    FrozenNode,
-    GenericNode,
-    Model,
-    Node,
-    VType,
+from .concepts import Node, VType
+from .datamodels import (
+    datamodel,
+    derived_field,
     field,
-    in_field,
-    out_field,
+    root_validator,
+    validator,
+    DataModel,
+    FrozenDataModel,
 )
 from .iterators import iter_tree
 from .traits import SymbolTableTrait
