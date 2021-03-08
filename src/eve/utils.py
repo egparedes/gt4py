@@ -508,6 +508,8 @@ class Dispatcher(Protocol[T_co, V_co]):
 
         return method(data, **kwargs)
 
+    call = __call__
+
     @abc.abstractmethod
     def dispatch(self, data: T_co, **kwargs: Any) -> str:
         raise NotImplementedError()

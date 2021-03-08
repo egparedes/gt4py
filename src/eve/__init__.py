@@ -36,8 +36,8 @@ from .version import __version__, __versioninfo__  # isort:skip
 from .concepts import Node, VType
 from .datamodels import (
     datamodel,
-    derived_field,
     field,
+    property_field,
     root_validator,
     validator,
     DataModel,
