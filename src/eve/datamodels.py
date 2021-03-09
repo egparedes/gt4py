@@ -1293,9 +1293,8 @@ def update_forward_refs(
                     local_ns,
                     allow_partial=False,
                 )
-                new_attr = dataclasses.replace(field_attr, type=actual_type)
-                object.__setattr__(datamodel_fields_ns, field_name, new_attr)
-                updated_fields[field_name] = new_attr
+                object.__setattr__(field_attr, "type", actual_type)
+                updated_fields[field_name] = field_attr
 
     except Exception as e:
         raise TypeError(
@@ -1606,6 +1605,24 @@ class FieldInfo(attr.Attribute):
             f"{name}={getattr(self, name)}" for name in super().__slots__ + self.__slots__
         )
         return f"{self.__class__.__name__}({values})"
+
+    def as_attr(self):
+        return attr.Attribute(
+            name=self.name,
+            default=self.default,
+            validator=self.validator,
+            repr=self.repr,
+            cmp=None,
+            hash=self.hash,
+            init=self.init,
+            inherited=self.inherited,
+            metadata=self.metadata,
+            type=self.type,
+            kw_only=self.kw_only,
+            eq=self.eq,
+            order=self.order,
+            on_setattr=self.on_setattr,
+        )
 
 
 class DataModel(DataModelTp):

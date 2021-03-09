@@ -142,10 +142,6 @@ def test_datamodel_class_members(example_model_factory):
         isinstance(f, datamodels.FieldInfo) for f in model_class.__datamodel_fields__.values()
     )
 
-    assert hasattr(model_class, "__datamodel_initializers__")
-    assert isinstance(model_class.__datamodel_initializers__, tuple)
-    assert all(callable(i) for i in model_class.__datamodel_initializers__)
-
     assert hasattr(model_class, "__datamodel_options__")
     assert isinstance(model_class.__datamodel_options__, datamodels.DataModelOptions)
 
@@ -164,8 +160,8 @@ def test_attrs_compatibility(example_model_factory):
     assert attr.has(model_class)
 
     assert all(
-        model_class.__attrs_attrs__[info.attrib_index].name == name
-        for name, info in model_class.__datamodel_fields__.items()
+        info.as_attr() in model_class.__attrs_attrs__
+        for info in model_class.__datamodel_fields__.values()
     )
 
 
