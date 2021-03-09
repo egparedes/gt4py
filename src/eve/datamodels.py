@@ -246,8 +246,6 @@ _MODEL_FIELDS = "__datamodel_fields__"
 _MODEL_OPTIONS = "__datamodel_options__"
 _ROOT_VALIDATOR_TAG = "_ROOT_VALIDATOR_TAG_"
 _ROOT_VALIDATORS = "__datamodel_validators__"
-_STRICT_TYPE_VALIDATOR_TAG = "_STRICT_TYPE_VALIDATOR_TAG_"
-_PRE_VALIDATOR_TAG = "_PRE_VALIDATOR_TAG_"
 
 
 # -- Validators --
@@ -476,23 +474,6 @@ class AutoTypeValidator:
 
     def __call__(self, instance: DataModelTp, attribute: Attribute, value: Any) -> None:
         return self.validator(instance, attribute, value)
-
-
-@dataclasses.dataclass
-class PreprocessValidator:
-    preprocessors: List[ValidatorType] = dataclasses.field(default_factory=list)
-
-    def __call__(self, instance: DataModelTp, attribute: Attribute, value: Any) -> None:
-        for p in self.preprocessors:
-            value = p(instance, attribute, value)
-
-        return value
-
-    def append(self, another_validator: ValidatorType):
-        self.preprocessors.append(another_validator)
-
-    def prepend(self, another_validator: ValidatorType):
-        self.preprocessors.insert(0, another_validator)
 
 
 def make_auto_type_validator(type_hint: Any) -> ValidatorType:
