@@ -176,13 +176,13 @@ class Param(LocNode):
     #     pass
 
     # TODO see https://github.com/eth-cscs/eve_toolchain/issues/40
-    def __hash__(self) -> int:
-        return hash(self.name)
+    # def __hash__(self) -> int:
+    #     return hash(self.name)
 
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Param):
-            return NotImplemented
-        return self.name == other.name
+    # def __eq__(self, other: object) -> bool:
+    #     if not isinstance(other, Param):
+    #         return NotImplemented
+    #     return self.name == other.name
 
 
 class Arg(LocNode):
@@ -192,13 +192,13 @@ class Arg(LocNode):
     #     pass
 
     # TODO see https://github.com/eth-cscs/eve_toolchain/issues/40
-    def __hash__(self) -> int:
-        return hash(self.name)
+    # def __hash__(self) -> int:
+    #     return hash(self.name)
 
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Arg):
-            return NotImplemented
-        return self.name == other.name
+    # def __eq__(self, other: object) -> bool:
+    #     if not isinstance(other, Arg):
+    #         return NotImplemented
+    #     return self.name == other.name
 
 
 class ApiParamDecl(LocNode, instantiable=False):

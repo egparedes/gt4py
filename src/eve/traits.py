@@ -46,7 +46,7 @@ class _CollectSymbols(visitors.NodeVisitor):
 
 
 class SymbolTableTrait(datamodels.DataModel):
-    symtable_: Dict[str, Any] = datamodels.field(default_factory=dict)
+    symtable_: Dict[str, Any] = datamodels.field(default_factory=dict, compare=False)
 
     @datamodels.root_validator
     def _collect_symbols_validator(cls: Type[SymbolTableTrait], instance: SymbolTableTrait) -> None:

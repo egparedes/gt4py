@@ -82,7 +82,7 @@ class BaseNode(datamodels.DataModel):
 
     # Node fields
     #: Unique node-id (implementation field)
-    id_: str = field(default_factory=utils.UIDGenerator.sequential_id)
+    id_: str = field(default_factory=utils.UIDGenerator.sequential_id, compare=False)
 
     def iter_impl_fields(self) -> Generator[Tuple[str, Any], None, None]:
         for name in self.__datamodel_fields__.keys():
@@ -121,6 +121,10 @@ class BaseNode(datamodels.DataModel):
     def to_dict(self) -> Dict[str, Any]:
         return datamodels.asdict(self)
 
+    @property
+    def content_id_(self):
+        return hash(tuple(getattr(self, f) for f in self.__datamodel_fields__.keys()))
+
 
 class Node(BaseNode):
     """Default public name for a base node class."""
@@ -133,9 +137,13 @@ class FrozenNode(BaseNode, datamodels.FrozenDataModel):
 
     pass
 
+    # @cached_property
+    # def content_id_(self):
+    #     return super(FrozenNode, self).content_id_
+
 
 # -- Misc --
-class VType(datamodels.FrozenDataModel):
+class VType(datamodels.FrozenDataModel, kw_only=False):
 
     # VType fields
     #: Unique name

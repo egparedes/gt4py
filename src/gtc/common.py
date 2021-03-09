@@ -28,7 +28,7 @@ from eve import (
     StrEnum,
     SymbolTableTrait,
 )
-from eve.datamodels import Attribute, DataModel, property_field, root_validator, validator
+from eve.datamodels import Attribute, DataModel, field, property_field, root_validator, validator
 from eve import exceptions as eve_exceptions
 from eve.type_definitions import SymbolRef
 from eve.typingx import RootValidatorType, RootValidatorValuesType
@@ -204,7 +204,7 @@ class ExprKind(IntEnum):
 
 
 class LocNode(Node):
-    loc: Optional[SourceLocation]
+    loc: Optional[SourceLocation] = field(compare=False)
 
 
 class Expr(LocNode, instantiable=False):
