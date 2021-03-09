@@ -31,7 +31,7 @@ from __future__ import annotations
 from typing import Any, Dict, Generator, List, Set
 
 
-from eve.datamodels import Attribute, DataModel, derived_field, root_validator, validator
+from eve.datamodels import Attribute, DataModel, property_field, root_validator, validator
 
 from eve import Node, Str, SymbolName, SymbolTableTrait, utils
 from eve.iterators import TreeIterationItem
@@ -87,28 +87,23 @@ class ParAssignStmt(common.AssignStmt[FieldAccess, Expr], Stmt):
     """
 
     @validator("left")
-    def no_horizontal_offset_in_assignment(cls, v: Expr) -> Expr:
+    def no_horizontal_offset_in_assignment(self, v: Expr) -> Expr:
         if v.offset.i != 0 or v.offset.j != 0:
             raise ValueError("Lhs of assignment must not have a horizontal offset.")
         return v
 
-    @root_validator(skip_on_failure=True)
-    def no_write_and_read_with_offset_of_same_field(
-        cls, values: RootValidatorValuesType
-    ) -> RootValidatorValuesType:
-        if isinstance(values["left"], FieldAccess):
+    @root_validator
+    def no_write_and_read_with_offset_of_same_field(cls, instance: ParAssignStmt) -> None:
+        if isinstance(instance.left, FieldAccess):
             offset_reads = (
-                values["right"]
-                .iter_tree()
+                instance.right.iter_tree()
                 .if_isinstance(FieldAccess)
                 .filter(lambda acc: acc.offset.i != 0 or acc.offset.j != 0)
                 .getattr("name")
                 .to_set()
             )
-            if values["left"].name in offset_reads:
+            if instance.left.name in offset_reads:
                 raise ValueError("Self-assignment with offset is illegal.")
-
-        return values
 
     _dtype_validation = common.assign_stmt_dtype_validation(strict=False)
 
@@ -131,10 +126,9 @@ class FieldIfStmt(common.IfStmt[BlockStmt, Expr], Stmt):
     """
 
     @validator("cond")
-    def verify_scalar_condition(cls, cond: Expr) -> Expr:
+    def verify_scalar_condition(self, cond: Expr) -> None:
         if cond.kind != common.ExprKind.FIELD:
             raise ValueError("Condition is not a field expression")
-        return cond
 
     # TODO(havogt) add validator for the restriction (it's a pass over the subtrees...)
 
@@ -147,10 +141,9 @@ class ScalarIfStmt(common.IfStmt[BlockStmt, Expr], Stmt):
     """
 
     @validator("cond")
-    def verify_scalar_condition(cls, cond: Expr) -> Expr:
+    def verify_scalar_condition(self, cond: Expr) -> None:
         if cond.kind != common.ExprKind.SCALAR:
             raise ValueError("Condition is not scalar")
-        return cond
 
 
 class UnaryOp(common.UnaryOp[Expr], Expr):
@@ -173,14 +166,9 @@ class NativeFuncCall(common.NativeFuncCall[Expr], Expr):
     _dtype_propagation = common.native_func_call_dtype_propagation(strict=False)
 
 
-class Decl(LocNode):  # TODO probably Stmt
+class Decl(LocNode, instantiable=False):  # TODO probably Stmt
     name: SymbolName
     dtype: common.DataType
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        if type(self) is Decl:
-            raise TypeError("Trying to instantiate `Decl` abstract class.")
-        super().__init__(*args, **kwargs)
 
 
 class FieldDecl(Decl):
@@ -204,10 +192,8 @@ class VerticalLoop(LocNode):
     temporaries: List[FieldDecl]
     body: List[Stmt]
 
-    @root_validator(skip_on_failure=True)
-    def no_write_and_read_with_horizontal_offset(
-        cls, values: RootValidatorValuesType
-    ) -> RootValidatorValuesType:
+    @root_validator
+    def no_write_and_read_with_horizontal_offset(cls, instance: VerticalLoop) -> None:
         """
         In the same VerticalLoop a field must not be written and read with a horizontal offset.
 
@@ -238,18 +224,17 @@ class VerticalLoop(LocNode):
                 .to_set()
             )
 
-        writes = _writes(values["body"])
-        reads_with_offset = _reads_with_offset(values["body"])
+        writes = _writes(instance.body)
+        reads_with_offset = _reads_with_offset(instance.body)
 
         intersec = writes.intersection(reads_with_offset)
         non_tmp_fields = {
-            acc for acc in intersec if acc not in {tmp.name for tmp in values["temporaries"]}
+            acc for acc in intersec if acc not in {tmp.name for tmp in instance.temporaries}
         }
         if len(non_tmp_fields) > 0:
             raise ValueError(
                 f"Illegal write and read with horizontal offset detected for {non_tmp_fields}."
             )
-        return values
 
 
 class Stencil(LocNode, SymbolTableTrait):

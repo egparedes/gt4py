@@ -28,7 +28,7 @@ from eve import (
     StrEnum,
     SymbolTableTrait,
 )
-from eve.datamodels import Attribute, DataModel, derived_field, root_validator, validator
+from eve.datamodels import Attribute, DataModel, property_field, root_validator, validator
 from eve import exceptions as eve_exceptions
 from eve.type_definitions import SymbolRef
 from eve.typingx import RootValidatorType, RootValidatorValuesType
@@ -318,8 +318,8 @@ class IfStmt(Node, Generic[StmtT, ExprT]):
     false_branch: Optional[StmtT]
 
     @validator("cond")
-    def condition_is_boolean(self, attrib: Attribute, cond: Expr) -> Expr:
-        return verify_condition_is_boolean(self.__class__, cond)
+    def condition_is_boolean(self, cond: Expr) -> None:
+        verify_condition_is_boolean(self.__class__, cond)
 
 
 class AssignStmt(Node, Generic[TargetT, ExprT]):
@@ -345,23 +345,23 @@ class UnaryOp(Node, Generic[ExprT]):
     expr: ExprT
 
     @root_validator
-    def dtype_propagation(cls, unary_op: UnaryOp) -> None:
-        unary_op.dtype = unary_op.expr.dtype
+    def dtype_propagation(cls, instance: UnaryOp) -> None:
+        instance.dtype = instance.expr.dtype
 
     @root_validator
-    def kind_propagation(cls, unary_op: UnaryOp) -> None:
-        unary_op.kind = unary_op.expr.kind
+    def kind_propagation(cls, instance: UnaryOp) -> None:
+        instance.kind = instance.expr.kind
 
     @root_validator
-    def op_to_dtype_check(cls, unary_op: UnaryOp) -> None:
-        if unary_op.expr.dtype:
-            if unary_op.op == UnaryOperator.NOT:
-                if not unary_op.expr.dtype == DataType.BOOL:
+    def op_to_dtype_check(cls, instance: UnaryOp) -> None:
+        if instance.expr.dtype:
+            if instance.op == UnaryOperator.NOT:
+                if not instance.expr.dtype == DataType.BOOL:
                     raise ValueError("Unary operator `NOT` only allowed with boolean expression.")
             else:
-                if unary_op.expr.dtype == DataType.BOOL:
+                if instance.expr.dtype == DataType.BOOL:
                     raise ValueError(
-                        f"Unary operator `{unary_op.name}` not allowed with boolean expression."
+                        f"Unary operator `{instance.name}` not allowed with boolean expression."
                     )
 
 
@@ -377,7 +377,7 @@ class BinaryOp(Node, Generic[ExprT]):
     op: Union[ArithmeticOperator, ComparisonOperator, LogicalOperator]
     left: ExprT
     right: ExprT
-    kind: ExprKind = derived_field(lambda self: compute_kind([self.left, self.right]))
+    kind: ExprKind = property_field(lambda self: compute_kind([self.left, self.right]))
     # @root_validator(pre=True)
     # def kind_propagation(cls, values: RootValidatorValuesType) -> RootValidatorValuesType:
     #     values["kind"] = compute_kind([values["left"], values["right"]])
@@ -422,13 +422,13 @@ class TernaryOp(Node, Generic[ExprT]):
     true_expr: ExprT
     false_expr: ExprT
 
-    @derived_field
+    @property_field()
     def kind(self) -> ExprKind:
         return compute_kind([self.true_expr, self.false_expr])
 
     @validator("cond")
-    def condition_is_boolean(cls, cond: ExprT) -> ExprT:
-        return verify_condition_is_boolean(cls, cond)
+    def condition_is_boolean(self, cond: ExprT) -> None:
+        verify_condition_is_boolean(self.__class__, cond)
 
     # @root_validator(pre=True)
     # def kind_propagation(cls, values: RootValidatorValuesType) -> RootValidatorValuesType:
@@ -451,7 +451,7 @@ class Cast(Node, Generic[ExprT]):
     dtype: DataType
     expr: ExprT
 
-    @derived_field
+    @property_field
     def kind(self) -> ExprKind:
         return compute_kind([self.expr])
 
@@ -465,7 +465,7 @@ class NativeFuncCall(Node, Generic[ExprT]):
     func: NativeFunction
     args: List[ExprT]
 
-    @derived_field
+    @property_field
     def kind(self) -> ExprKind:
         return compute_kind([self.args])
 
@@ -475,10 +475,10 @@ class NativeFuncCall(Node, Generic[ExprT]):
     #     return values
 
     @root_validator
-    def arity_check(cls, func_call: NativeFuncCall) -> None:
-        if func_call.func.arity != len(func_call.args):
+    def arity_check(cls, instance: NativeFuncCall) -> None:
+        if instance.func.arity != len(instance.args):
             raise ValueError(
-                f"'{func_call.func}'' accepts {func_call.arity} arguments, {func_call.args} were passed."
+                f"'{instance.func}'' accepts {instance.arity} arguments, {instance.args} were passed."
             )
 
 
@@ -507,7 +507,7 @@ def validate_dtype_is_set() -> RootValidatorType:
         if len(nodes_without_dtype) > 0:
             raise ValueError(f"Nodes without dtype detected {nodes_without_dtype}")
 
-    return root_validator(allow_reuse=True, skip_on_failure=True)(_impl)
+    return root_validator(_impl)
 
 
 def validate_symbol_refs() -> RootValidatorType:

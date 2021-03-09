@@ -21,31 +21,22 @@ OIR represents a computation at the level of GridTools stages and multistages,
 e.g. stage merging, staged computations to compute-on-the-fly, cache annotations, etc.
 """
 
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import root_validator, validator
-
+from eve.datamodels import Attribute, DataModel, property_field, root_validator, validator
 from eve import Str, SymbolName, SymbolRef, SymbolTableTrait
 from gtc import common
 from gtc.common import AxisBound, LocNode
 
 
-class Expr(common.Expr):
+class Expr(common.Expr, instantiable=False):
     dtype: Optional[common.DataType]
 
-    # TODO Eve could provide support for making a node abstract
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        if type(self) is Expr:
-            raise TypeError("Trying to instantiate `Expr` abstract class.")
-        super().__init__(*args, **kwargs)
 
-
-class Stmt(common.Stmt):
-    # TODO Eve could provide support for making a node abstract
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        if type(self) is Stmt:
-            raise TypeError("Trying to instantiate `Stmt` abstract class.")
-        super().__init__(*args, **kwargs)
+class Stmt(common.Stmt, instantiable=False):
+    pass
 
 
 class Literal(common.Literal, Expr):  # type: ignore
@@ -62,12 +53,9 @@ class FieldAccess(common.FieldAccess, Expr):  # type: ignore
 
 class AssignStmt(common.AssignStmt[Union[ScalarAccess, FieldAccess], Expr], Stmt):
     @validator("left")
-    def no_horizontal_offset_in_assignment(
-        cls, v: Union[ScalarAccess, FieldAccess]
-    ) -> Union[ScalarAccess, FieldAccess]:
+    def no_horizontal_offset_in_assignment(self, v: Union[ScalarAccess, FieldAccess]) -> None:
         if isinstance(v, FieldAccess) and (v.offset.i != 0 or v.offset.j != 0):
             raise ValueError("Lhs of assignment must not have a horizontal offset.")
-        return v
 
     _dtype_validation = common.assign_stmt_dtype_validation(strict=True)
 
@@ -101,14 +89,9 @@ class NativeFuncCall(common.NativeFuncCall[Expr], Expr):
     _dtype_propagation = common.native_func_call_dtype_propagation(strict=True)
 
 
-class Decl(LocNode):
+class Decl(LocNode, instantiable=False):
     name: SymbolName
     dtype: common.DataType
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        if type(self) is Decl:
-            raise TypeError("Trying to instantiate `Decl` abstract class.")
-        super().__init__(*args, **kwargs)
 
 
 class FieldDecl(Decl):
@@ -134,11 +117,10 @@ class HorizontalExecution(LocNode):
     declarations: List[LocalScalar]
 
     @validator("mask")
-    def mask_is_boolean_field_expr(cls, v: Optional[Expr]) -> Optional[Expr]:
+    def mask_is_boolean_field_expr(self, v: Optional[Expr]) -> None:
         if v:
             if v.dtype != common.DataType.BOOL:
                 raise ValueError("Mask must be a boolean expression.")
-        return v
 
 
 class Interval(LocNode):
@@ -146,15 +128,14 @@ class Interval(LocNode):
     end: AxisBound
 
     @root_validator
-    def check(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        start, end = values["start"], values["end"]
+    def check(cls, instance: Interval) -> None:
+        start, end = instance.start, instance.end
         if start.level == common.LevelMarker.END and end.level == common.LevelMarker.START:
             raise ValueError("Start level must be smaller or equal end level")
         if start.level == end.level and not start.offset < end.offset:
             raise ValueError(
                 "Start offset must be smaller than end offset if start and end levels are equal"
             )
-        return values
 
 
 class CacheDesc(LocNode):
@@ -181,14 +162,13 @@ class VerticalLoop(LocNode):
     caches: List[CacheDesc]
 
     @validator("sections")
-    def nonempty_loop(cls, v: List[VerticalLoopSection]) -> List[VerticalLoopSection]:
+    def nonempty_loop(self, v: List[VerticalLoopSection]) -> None:
         if not v:
             raise ValueError("Empty vertical loop is not allowed")
-        return v
 
     @root_validator
-    def valid_section_intervals(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        loop_order, sections = values["loop_order"], values["sections"]
+    def valid_section_intervals(cls, instance: VerticalLoop) -> None:
+        loop_order, sections = instance["loop_order"], instance["sections"]
         starts, ends = zip(*((s.interval.start, s.interval.end) for s in sections))
         if loop_order == common.LoopOrder.BACKWARD:
             starts, ends = starts[:-1], ends[1:]
@@ -200,7 +180,7 @@ class VerticalLoop(LocNode):
             for start, end in zip(starts, ends)
         ):
             raise ValueError("Loop intervals not contiguous or in wrong order")
-        return values
+        return instance
 
 
 class Stencil(LocNode, SymbolTableTrait):

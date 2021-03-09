@@ -18,31 +18,20 @@
 import enum
 from typing import Any, List, Optional, Tuple, Union
 
-from pydantic.class_validators import validator
-
 import eve
+from eve.datamodels import Attribute, DataModel, property_field, root_validator, validator
 from eve import Str, StrEnum, SymbolName, SymbolTableTrait
 from eve.type_definitions import SymbolRef
 from gtc import common
 from gtc.common import LocNode
 
 
-class Expr(common.Expr):
+class Expr(common.Expr, instantiable=False):
     dtype: Optional[common.DataType]
 
-    # TODO Eve could provide support for making a node abstract
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        if type(self) is Expr:
-            raise TypeError("Trying to instantiate `Expr` abstract class.")
-        super().__init__(*args, **kwargs)
 
-
-class Stmt(common.Stmt):
-    # TODO Eve could provide support for making a node abstract
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        if type(self) is Stmt:
-            raise TypeError("Trying to instantiate `Stmt` abstract class.")
-        super().__init__(*args, **kwargs)
+class Stmt(common.Stmt, instantiable=False):
+    pass
 
 
 class Offset(common.CartesianOffset):
@@ -67,12 +56,9 @@ class BlockStmt(common.BlockStmt[Stmt], Stmt):
 
 class AssignStmt(common.AssignStmt[Union[ScalarAccess, AccessorRef], Expr], Stmt):
     @validator("left")
-    def no_horizontal_offset_in_assignment(
-        cls, v: Union[ScalarAccess, AccessorRef]
-    ) -> Union[ScalarAccess, AccessorRef]:
+    def no_horizontal_offset_in_assignment(self, v: Union[ScalarAccess, AccessorRef]) -> None:
         if isinstance(v, AccessorRef) and (v.offset.i != 0 or v.offset.j != 0):
             raise ValueError("Lhs of assignment must not have a horizontal offset.")
-        return v
 
     _dtype_validation = common.assign_stmt_dtype_validation(strict=True)
 
@@ -119,10 +105,9 @@ class GTLevel(LocNode):
     offset: int
 
     @validator("offset")
-    def offset_must_not_be_zero(cls, v: int) -> int:
+    def offset_must_not_be_zero(self, v: int) -> None:
         if v == 0:
             raise ValueError("GridTools level offset must be != 0")
-        return v
 
 
 class GTInterval(LocNode):
@@ -187,8 +172,8 @@ class GTFunctor(LocNode, SymbolTableTrait):
 class Param(LocNode):
     name: SymbolName
 
-    class Config(eve.concepts.FrozenModel.Config):
-        pass
+    # class Config(eve.concepts.FrozenModel.Config):
+    #     pass
 
     # TODO see https://github.com/eth-cscs/eve_toolchain/issues/40
     def __hash__(self) -> int:
@@ -203,8 +188,8 @@ class Param(LocNode):
 class Arg(LocNode):
     name: SymbolRef
 
-    class Config(eve.concepts.FrozenModel.Config):
-        pass
+    # class Config(eve.concepts.FrozenModel.Config):
+    #     pass
 
     # TODO see https://github.com/eth-cscs/eve_toolchain/issues/40
     def __hash__(self) -> int:
@@ -216,14 +201,9 @@ class Arg(LocNode):
         return self.name == other.name
 
 
-class ApiParamDecl(LocNode):
+class ApiParamDecl(LocNode, instantiable=False):
     name: SymbolName
     dtype: common.DataType
-
-    def __init__(self, *args: Any, **kwargs: Any):
-        if type(self) is ApiParamDecl:
-            raise TypeError("Trying to instantiate `ApiParamDecl` abstract class.")
-        super().__init__(*args, **kwargs)
 
 
 class FieldDecl(ApiParamDecl):
