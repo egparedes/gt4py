@@ -204,7 +204,7 @@ class ExprKind(IntEnum):
 
 
 class LocNode(Node):
-    loc: Optional[SourceLocation] = field(compare=False)
+    loc: Optional[SourceLocation] = field(default=None, compare=False)
 
 
 class Expr(LocNode, instantiable=False):

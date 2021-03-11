@@ -403,7 +403,7 @@ def tuple_type_attrs_validator(*type_args: Type, tuple_type: Type = tuple) -> Va
 
 def union_type_attrs_validator(*type_args: Type) -> ValidatorType:
     """Create an ``attr.s`` strict type validator for Union typings."""
-    if len(type_args) == 2 and (type_args[1] is type(None)):  # noqa: E721  # use isinstance()
+    if len(type_args) == 2 and (type_args[1] is type(None)):  # noqa: E721  [use isinstance]
         non_optional_validator = strict_type_attrs_validator(type_args[0])
         return attr.validators.optional(non_optional_validator)
     else:
@@ -422,7 +422,7 @@ def strict_type_attrs_validator(type_hint: Any) -> ValidatorType:
         return type_hint.__type_validator__()
 
     # Non-generic types
-    if isinstance(type_hint, type) and type_hint is not type(None):  # noqa: E721  # use isinstance
+    if isinstance(type_hint, type) and type_hint is not type(None):  # noqa: E721  [use isinstance]
         assert not type_args
         if type_hint is int:
             return instance_of_int_attrs_validator()

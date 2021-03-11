@@ -111,10 +111,12 @@ def canonicalize_forward_ref(type_hint: Union[str, Type, ForwardRef]) -> Union[T
             str_args.append(t)
         elif isinstance(t, ForwardRef):
             str_args.append(t.__forward_arg__)
+        elif isinstance(t, type):
+            str_args.append(t.__name__)
         else:
             str_args.append(repr(t))
 
-    return ForwardRef(f"{type_hint._name}[{','.join(str_args)}]")
+    return ForwardRef(f"{type_hint._name or type_hint.__origin__._name}[{','.join(str_args)}]")
 
 
 def get_canonical_type_hints(
