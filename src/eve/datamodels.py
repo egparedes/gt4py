@@ -765,8 +765,14 @@ def _make_post_init(has_post_init: bool) -> Callable[[DataModelTp], None]:
     def __attrs_post_init__(self: DataModelTp) -> None:
         cls = type(self)
         if attr._config._run_validators is True:  # type: ignore[attr-defined]  # attr._config is not visible for mypy
+            # root validators
             for validator in cls.__datamodel_validators__:
                 validator(cls, self)
+            # property field validators
+            for field_info in cls.__datamodel_fields__.values():
+                if field_info.is_property and (v := field_info.validator) is not None:
+                    v(self, field_info, getattr(self, field_info.name))
+
         call_post_init(self)
 
     return __attrs_post_init__
@@ -879,7 +885,7 @@ def _make_datamodel(
         ):
             raise TypeError(f"Missing type annotation in '{key}' field.")
 
-    # Collect and validators
+    # Collect validators
     field_validators = _collect_field_validators(cls)
     for field_name, field_validator in field_validators.items():
         field_c_attr = cls.__dict__.get(field_name, None)
