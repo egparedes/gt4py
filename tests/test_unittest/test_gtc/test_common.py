@@ -69,6 +69,9 @@ class TernaryOp(Expr, common.TernaryOp[Expr]):
     _dtype_propagation = common.ternary_op_dtype_propagation(strict=True)
 
 
+import inspect
+print(inspect.getsource(TernaryOp.__init__))
+
 class BinaryOpUpcasting(Expr, common.BinaryOp[Expr]):
     dtype_propagation = common.binary_op_dtype_propagation(strict=False)
 
