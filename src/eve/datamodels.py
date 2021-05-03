@@ -75,10 +75,14 @@ from __future__ import annotations
 import abc
 import collections
 import dataclasses
+import enum
 import functools
 import linecache
 import inspect
+import pickle
+import random
 import sys
+import textwrap
 import typing
 import warnings
 from typing import (
@@ -102,6 +106,9 @@ from typing import (
     TypeVar,
     Union,
 )
+
+import attr
+import xxhash
 
 from eve import typingx, utils
 from eve.type_definitions import NOTHING
@@ -132,10 +139,10 @@ class DataModelTp(DataClassTp, DevToolsPrettyPrintable, Protocol):
     # def __init__(self, *args: Any, **kwargs: Any) -> None:
     #     raise NotImplementedError()
 
-    __datamodel_enabled_checks__: ClassVar[bool]
+    __datamodel_validation__: ClassVar[ValidationSettings]
     __datamodel_fields__: ClassVar[Mapping[str, Field]]
     __datamodel_options__: ClassVar[DataModelOptions]
-    __datamodel_field_validators__: ClassVar[Mapping[str, FieldValidators]]
+    __datamodel_field_validators__: ClassVar[Dict[str, FieldValidators]]
     __datamodel_root_validators__: ClassVar[Sequence[RootValidatorType]]
 
 
@@ -155,10 +162,28 @@ ValidatorType = Callable[[DataModelTp, Field, T], None]
 RootValidatorType = Callable[[Type[DataModelTp], DataModelTp], None]
 
 
-class FieldValidators(NamedTuple):
-    pre: Sequence[ValidatorType]
-    type_hint: ValidatorType
-    post: Sequence[ValidatorType]
+@dataclasses.dataclass(frozen=True)
+class ValidationSettings:
+    custom: bool = True
+    type: Optional[bool] = None
+
+    def __init__(self, custom=True, type=None):
+        object.__setattr__(self, "custom", bool(custom))
+        object.__setattr__(
+            self,
+            "type",
+            bool(type) if type is not None else self.custom,
+        )
+
+    def __bool__(self):
+        return self.custom or self.type
+
+
+@dataclasses.dataclass(frozen=True)
+class FieldValidators:
+    value_type: Optional[ValidatorType] = None
+    pre: Sequence[ValidatorType] = dataclasses.field(default_factory=tuple)
+    post: Sequence[ValidatorType] = dataclasses.field(default_factory=tuple)
 
 
 @typing.runtime_checkable
@@ -249,6 +274,30 @@ _MODEL_OPTIONS = "__datamodel_options__"
 _ROOT_VALIDATOR_TAG = "_ROOT_VALIDATOR_TAG_"
 _ROOT_VALIDATORS = "__datamodel_root_validators__"
 _FIELD_VALIDATORS = "__datamodel_field_validators__"
+_UNIQUE_FILENAME_TEMPLATE = "<__datamodels_generated__:{fname}[{tag}]>"
+
+
+class _FieldValidatorKind(enum.Enum):
+    PRE = "pre"
+    POST = "post"
+
+
+@dataclasses.dataclass(frozen=True)
+class _FieldValidatorWrapper:
+    func: ValidatorType
+    name: Optional[str] = None
+    kind: _FieldValidatorKind = _FieldValidatorKind.POST
+
+    def __call__(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
+
+
+@dataclasses.dataclass(frozen=True)
+class _RootValidatorWrapper:
+    func: RootValidatorType
+
+    def __call__(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
 
 
 # -- Validators --
@@ -420,10 +469,6 @@ def strict_type_attrs_validator(type_hint: Any) -> ValidatorType:
     """Create an ``attr.s`` strict type validator for a specific typing hint."""
     type_args = typing.get_args(type_hint)
 
-    # Custom type validator
-    if isinstance(type_hint, TypeWithAttrValidatorTp):
-        return type_hint.__type_validator__()
-
     # Non-generic types
     if isinstance(type_hint, type) and type_hint is not type(None):  # noqa: E721  [use isinstance]
         assert not type_args
@@ -484,38 +529,89 @@ def make_auto_type_validator(type_hint: Any) -> ValidatorType:
 
 
 # -- DataModel --
-def _generate_unique_filename(qualname: str, extra: str):
-    """
-    Create a "filename" suitable for a function being generated.
-    """
-    count = 0
+# Adapted from attr._make.generate_unique_filename()
+def _generate_source_filename(
+    fname: str,
+    tag: str,
+    inspectable: bool = True,
+    overwrite_linecache: bool = True,
+    __template__: str = _UNIQUE_FILENAME_TEMPLATE,
+    **kwargs,
+) -> str:
+    SALT_DIGITS = 6
     while True:
-        suffix = (f"_{extra}" if extra else "") + (f"_{count}" if count else "")
-        unique_filename = f"<generated {qualname}{suffix}>"
-        cache_line = (1, None, (unique_filename,), unique_filename)
-        if linecache.cache.setdefault(unique_filename, cache_line) == cache_line:
-            return unique_filename
+        filename = __template__.format(fname=fname, tag=tag, **kwargs)
+        if not inspectable:
+            return filename
+        else:
+            # To handle concurrency we essentially "reserve" our spot in
+            # the linecache with a dummy line. The caller can then
+            # set this value correctly.
+            cache_line = (1, None, (tag,), filename)
+            if (
+                linecache.cache.setdefault(filename, cache_line) == cache_line
+                or overwrite_linecache
+            ):
+                return filename
+            else:
+                # Looks like this spot is taken, change the tag and try again
+                salt = f"{random.randint(0, (10**SALT_DIGITS)-1):0{SALT_DIGITS}}"
+                tag = f"{tag}-{salt}"
 
-        count += 1
 
-
+# Adapted from attr._make._make_method() and dataclasses._create_fn()
 def _make_function(
     name: str,
+    qualname: str,
     source: str,
-    filename: str,
     global_ns: Optional[Dict[str, Any]] = None,
-    *,
+    local_ns: Optional[Dict[str, Any]] = None,
     inspectable: bool = True,
 ):
-    """
-    Create the method with the script given and return the method object.
-    """
-    local_ns = {}
     if global_ns is None:
         global_ns = {}
+    if local_ns is None:
+        local_ns = {}
+
+    try:
+        # If the contents of global and local namespaces are serializable
+        # use them to compute a function id key which relies on its values
+        tag = xxhash.xxh128_hexdigest(
+            pickle.dumps(
+                (
+                    name,
+                    qualname,
+                    source,
+                    *global_ns.items(),
+                    *local_ns.items(),
+                )
+            )
+        )
+        overwrite_linecache = True
+
+    except TypeError:
+        # Otherwise, use only the namespace keys for the id and create a new entry in linecache
+        # to avoid overwriting a different generated function by (a very unlikely) coincidence
+        tag = xxhash.xxh128_hexdigest(
+            pickle.dumps(
+                (
+                    name,
+                    qualname,
+                    source,
+                    *global_ns.keys(),
+                    *local_ns.keys(),
+                )
+            )
+        )
+        overwrite_linecache = False
+
+    filename = _generate_source_filename(
+        qualname, tag, inspectable=inspectable, overwrite_linecache=overwrite_linecache
+    )
 
     bytecode = compile(source, filename, "exec")
     eval(bytecode, global_ns, local_ns)
+    method = local_ns[name]
 
     if inspectable:
         # In order of debuggers like PDB being able to step through the code,
@@ -527,10 +623,10 @@ def _make_function(
             filename,
         )
 
-    return local_ns[name]
+    return method
 
 
-def _validator_without_field(func: Callable[[DataModelTp, T], None]) -> ValidatorType:
+def _validator_without_field_arg(func: Callable[[DataModelTp, T], None]) -> ValidatorType:
     @functools.wraps(func)
     def _wrappper(instance, _, value) -> None:
         return func(instance, value)
@@ -538,14 +634,44 @@ def _validator_without_field(func: Callable[[DataModelTp, T], None]) -> Validato
     return _wrappper
 
 
-def _collect_field_validators(cls: Type) -> Dict[str, List[ValidatorType]]:
-    result: Dict[str, List[ValidatorType]] = {}
-    for member in cls.__dict__.values():
-        if hasattr(member, _FIELD_VALIDATOR_TAG):
-            assert callable(member)
-            field_name = getattr(member, _FIELD_VALIDATOR_TAG)
+def _make_validators(cls: Type) -> None:
+    # Class should have canonicalized annotations
+    assert "__annotations__" in cls.__dict__
+    # canonicalized_annotations: Dict[str, Any] = typingx.get_canonical_type_hints(cls)
+    annotations: Dict[str, Any] = cls.__annotations__
 
-            signature = inspect.signature(member)
+    # # Add property field definitions
+    # property_fields: Dict[str, utils.FrozenNamespace] = _collect_property_fields(
+    #     cls, canonicalized_annotations, skip_private
+    # )
+    # for name, info in property_fields.items():
+    #     if info.type:
+    #         annotations.setdefault(name, info.type)
+    #     setattr(cls, name, info.attr_def)
+
+    # Create attrib definitions with automatic type validators (and converters)
+    # for the annotated fields. The original annotations are used for iteration
+    # since the resolved annotations may also contain superclasses' annotations
+    for name, field in cls.__dataclass_fields__.items():
+        field_validators = FieldValidators(value_type=make_auto_type_validator(field.type))
+
+
+def _update_field_validators(cls: Type) -> None:
+    class_field_validators: Dict[str, FieldValidators] = getattr(cls, _FIELD_VALIDATORS)
+
+    for key, value in cls.__dict__.items():
+        if isinstance(value, _FieldValidatorWrapper):
+            func = value.func
+            assert callable(func)
+
+            field_name = value.name
+            if field_name not in cls.__dataclass_fields__:
+                raise TypeError(
+                    f"Validator '{func}' assigned to non existing '{field_name}' field."
+                )
+            assert field_name in class_field_validators
+
+            signature = inspect.signature(func)
             if (
                 any(
                     p.kind
@@ -558,30 +684,44 @@ def _collect_field_validators(cls: Type) -> Dict[str, List[ValidatorType]]:
                 or not 2 <= (num_params := len(signature.parameters)) <= 3
             ):
                 raise TypeError(
-                    f"Invalid validator function signature: {member}. "
+                    f"Invalid '{key}' validator function signature: {func}. "
                     f"Expected 'function(instance, field, value)' or 'function(instance, value)'."
                 )
             if num_params == 2:
-                member = _validator_without_field(member)
+                func = _validator_without_field_arg(func)
 
-            result.setdefault(field_name, ([], [], []))[2].append(member)
+            # Update the __datamodel_field_validators__ entry
+            field_validators = class_field_validators[field_name]
+            assert isinstance(value.kind, _FieldValidatorKind)
+            validator_kind_name = value.kind.value
+            object.__setattr__(
+                field_validators,
+                validator_kind_name,
+                (*getattr(field_validators, validator_kind_name), func),
+            )
 
-    return result
+            # Unwrap the original member function
+            setattr(cls, key, func)
 
 
-def _collect_root_validators(cls: Type) -> List[RootValidatorType]:
-    result = []
+def _update_root_validators(cls: Type) -> None:
+    root_validators: List[RootValidatorType] = []
+
     for base in reversed(cls.__mro__[1:]):
         for validator in getattr(base, _ROOT_VALIDATORS, []):
-            if validator not in result:
-                result.append(validator)
+            if validator not in root_validators:
+                root_validators.append(validator)
 
-    for member in cls.__dict__.values():
-        if hasattr(member, _ROOT_VALIDATOR_TAG):
-            assert callable(member)
-            result.append(member)
+    for member_name, member in cls.__dict__.items():
+        if isinstance(member, _RootValidatorWrapper):
+            assert callable(member.func)
+            root_validators.append(member.func)
 
-    return result
+            # Unwrap the original member function
+            setattr(cls, member_name, member.func)
+
+    if root_validators:
+        setattr(cls, _ROOT_VALIDATORS, tuple(root_validators))
 
 
 def _collect_property_fields(
@@ -709,63 +849,117 @@ def _substitute_typevars(
         return type_hint, False
 
 
-def _make_non_instantiable_init() -> Callable[..., None]:
+def _make_non_instantiable_init_fn() -> Callable[..., None]:
     def __init__(self: DataModelTp, *args: Any, **kwargs: Any) -> None:
-        raise TypeError(f"Trying to instantiate '{type(self).__name__}' abstract class.")
+        raise TypeError(f"Trying to instantiate '{type(self).__name__}' non-instantiable class.")
 
     return __init__
 
 
-def _make_init(cls):
-    input_args = ["*"]
-    call_args = []
-    for name, info in cls.__dataclass_fields__.items():
-        if not info.init:
-            continue
-        default = info.default if info.default is not MISSING else "MISSING"
-        hint_str = ""
-        #         if (hint := cls.__annotations__.get(name, MISSING)) is not MISSING:
-        #             hint_str = f": {hint}"
-        input_args.append(f"{name}{hint_str}={default}")
-        call_args.append(f"{name}={name}")
+def _make_init_datamodel_fn(cls):
+    _FACTORY_SENTINEL_NAME = "dataclasses._HAS_DEFAULT_FACTORY"
+    _POST_INIT_NAME = dataclasses._POST_INIT_NAME
 
-    source = f"""
-def __init__(self, {', '.join(input_args)}) -> None:
-    self.__class__.__init_datamodel({', '.join(call_args)})
-"""
-    filename = _generate_unique_filename("a.b.c", xxhash.xxh128_hexdigest(source))
-    print(filename, source)
-    return _make_function("__init__", source, filename, {"MISSING": MISSING})
-
-
-def _make_post_init(has_post_init: bool) -> Callable[[DataModelTp], None]:
-    if has_post_init:
-
-        def call_post_init(self):
-            self.__post_init__()
-
+    global_ns: Dict[str, Any] = {}
+    # Use the module globals to make typing.get_type_hints() work
+    if cls.__module__ in sys.modules:
+        global_ns = sys.modules[cls.__module__].__dict__
     else:
+        # Weird corner case: the class module is not properly set.
+        # The datamodel will work but typing.get_type_hints() may fail.
+        pass
 
-        def call_post_init(self):
-            pass
+    fields = cls.__dataclass_fields__
+    params = cls.__dataclass_params__
+    self_name = "__dataclass_self__" if "self" in fields else "self"
+    if params.frozen:
+        assignment_template = f'object.__setattr__({self_name}, "{{name}}", {{name}})'
+        factory_assignment_template = f"""object.__setattr__({self_name}, "{{name}}",
+                       {{name}} if {{name}} is not {_FACTORY_SENTINEL_NAME} else {{name}}_factory_())"""
+    else:
+        assignment_template = f"{self_name}.{{name}} = {{name}}"
+        factory_assignment_template = f"{self_name}.{{name}} = {{name}} if {{name}} is not {_FACTORY_SENTINEL_NAME} else {{name}}_factory_()"
 
-    def __attrs_post_init__(self: DataModelTp) -> None:
-        cls = type(self)
-        if attr._config._run_validators is True:  # type: ignore[attr-defined]  # attr._config is not visible for mypy
-            # root validators
-            for validator in cls.__datamodel_validators__:
-                validator(cls, self)
-            # property field validators
-            for field_info in cls.__datamodel_fields__.values():
-                if field_info.is_property and (v := field_info.validator) is not None:
-                    v(self, field_info, getattr(self, field_info.name))
+    local_ns: Dict[str, Any] = {"dataclasses": dataclasses}
+    init_args: List[str] = []
+    body_lines: List[str] = []
 
-        call_post_init(self)
+    for name, field in fields.items():
+        if field._field_type in (dataclasses._FIELD, dataclasses._FIELD_INITVAR):
+            if isinstance(field.type, str):
+                print(field.name, field.type)
+                type_hint = field.type
+            else:
+                type_hint = f"{name}_type_"
+                local_ns[type_hint] = field.type
 
-    return __attrs_post_init__
+            if field.default is not dataclasses.MISSING:
+                default = f"{name}_default_"
+                local_ns[default] = field.default
+                line_template = assignment_template
+            elif field.default_factory is not dataclasses.MISSING:
+                default = f"{_FACTORY_SENTINEL_NAME}"
+                factory = f"{name}_factory_"
+                local_ns[factory] = field.default_factory
+                line_template = factory_assignment_template
+            else:
+                default = ""
+                line_template = assignment_template
+
+            init_args.append(f"{field.name}: {type_hint}{f' = {default}' if default else ''}")
+
+            if field._field_type == dataclasses._FIELD:
+                body_lines.append(line_template.format(name=name))
+
+    body_lines.append(f"if {self_name}.__datamodel_validation__:")
+    body_lines.append(f"    {self_name}.__validate_datamodel__()")
+
+    if hasattr(cls, _POST_INIT_NAME):
+        init_vars_args = ", ".join(
+            f.name for f in fields.values() if f._field_type is dataclasses._FIELD_INITVAR
+        )
+        body_lines.append(f"{self_name}.{_POST_INIT_NAME}({init_vars_args})")
+
+    args = ", ".join(init_args)
+    body = textwrap.indent("\n".join(body_lines), "    ")
+    source = f"""
+def __init_datamodel__({self_name}, {args}) -> None:
+{body}
+    """
+
+    method = _make_function(
+        "__init_datamodel__",
+        f"{cls.__qualname__}.__init_datamodel__",
+        source,
+        global_ns,
+        local_ns,
+    )
+
+    return method
 
 
-def _make_devtools_pretty() -> Callable[
+def _make_validate_datamodel_fn():
+    def __validate_datamodel__(self, *, force=False):
+        type_validation = self.__datamodel_validation__.type
+
+        if self.__datamodel_validation__.custom:
+            for name, validators in self.__datamodel_field_validators__.items():
+                value = getattr(self, name)
+                for validator in validators.pre:
+                    value = validator(self, self.__dataclass_fields__[name], value)
+                if type_validation:
+                    validators.value_type(self, self.__dataclass_fields__[name], getattr(self, name))
+            for name, validators in self.__datamodel_field_validators__.items():
+                for validator in validators.post:
+                    validator(self, self.__dataclass_fields__[name], getattr(self, name))
+
+            for root_validator in self.__datamodel_root_validators__:
+                root_validator()
+
+    return __validate_datamodel__
+
+
+def _make_devtools_pretty_fn() -> Callable[
     [DataModelTp, Callable[[Any], Any]], Generator[Any, None, None]
 ]:
     def __pretty__(
@@ -789,7 +983,7 @@ def _make_devtools_pretty() -> Callable[
     return __pretty__
 
 
-def _make_datamodel_class_getitem() -> classmethod:
+def _make_datamodel_class_getitem_fn() -> classmethod:
     def __class_getitem__(
         cls: Type[GenericDataModelTp], args: Union[Type, Tuple[Type]]
     ) -> GenericDataModelAlias:
@@ -815,45 +1009,29 @@ def _make_datamodel(
     frozen: bool,
     kw_only: bool,
     instantiable: bool,
-    include_private: bool,
-    show_private: bool,
+    skip_private: bool,
 ) -> Type:
     """Actual implementation of the Data Model creation.
 
     See :func:`datamodel` for the description of the parameters.
     """
-    if "__annotations__" not in cls.__dict__:
-        cls.__annotations__ = {}
+    has_custom_init = "__init__" in cls.__dict__
+
+    # Canonicalize annotations
+    cls.__annotations__ = typingx.get_canonical_type_hints(cls)
+
+    # Hide private members from dataclasses
     orig_annotations: Dict[str, Any] = cls.__dict__["__annotations__"]
-    mro_bases: Tuple[Type, ...] = cls.__mro__[1:]
-    canonicalized_annotations: Dict[str, Any] = typingx.get_canonical_type_hints(cls)
-
-    # Create attrib definitions with automatic type validators for the annotated fields.
-    # The original annotations are used for iteration since the resolved annotations
-    # also contain the annotation of the base classes.
-    annotations = {
-        key: value
-        for key, value in orig_annotations.items()
-        if include_private or not key.startswith("_")
-    }
-
-    # # Add property field definitions
-    # property_fields: Dict[str, utils.FrozenNamespace] = _collect_property_fields(
-    #     cls, canonicalized_annotations, skip_private
-    # )
-    # for name, info in property_fields.items():
-    #     if info.type:
-    #         annotations.setdefault(name, info.type)
-    #     setattr(cls, name, info.attr_def)
-
-    # All fields should be annotated with type hints
-    for key, value in cls.__dict__.items():
-        if (
-            isinstance(value, Field)
-            and key not in annotations
-            and (include_private or not key.startswith("_"))
-        ):
-            raise TypeError(f"Missing type annotation in '{key}' field.")
+    if skip_private:
+        private_members: Set[str] = {key for key in orig_annotations if key.startswith("_")}
+        cls.__annotations__ = {
+            key: value for key, value in orig_annotations.items() if not key in private_members
+        }
+        for name in private_members:
+            if name in cls.__dict__ and isinstance(getattr(cls, name), dataclasses.Field):
+                raise ValueError(
+                    f"'{name}' private member found in a datamodel with 'skip_private=True'."
+                )
 
     # Update class with dataclass features
     new_cls = dataclasses.dataclass(
@@ -866,42 +1044,36 @@ def _make_datamodel(
     )(cls)
     assert new_cls is cls
 
-    # Collect and add validators
-    collected_field_validators = _collect_field_validators(cls)
-    for field_name in collected_field_validators.keys():
-        if field_name not in cls.__dataclass_fields__:
-            raise TypeError(f"Validator assigned to non existing '{field_name}' field.")
-
-    field_validators = {**getattr(cls, _FIELD_VALIDATORS, {})}
-    for key, value in collected_field_validators.items():
-        current = field_validators.setdefault(key, FieldValidators([], None, []))
-        field_validators[key] = FieldValidators(
-            tuple(*current.pre, value.pre), value.instance, tuple(*current.post, value.post)
-        )
+    # Generate model validators data structures
+    field_validators = {
+        name: FieldValidators(value_type=make_auto_type_validator(field.type))
+        for name, field in cls.__dataclass_fields__.items()
+    }
     setattr(cls, _FIELD_VALIDATORS, field_validators)
+    setattr(cls, _ROOT_VALIDATORS, ())
 
-    root_validators = _collect_root_validators(cls)
-    setattr(cls, _ROOT_VALIDATORS, tuple(root_validators))
+    # Add custom validators
+    _update_field_validators(cls)
+    _update_root_validators(cls)
 
-    # # Update class with attr.s features
-    # if "__init__" in cls.__dict__:
-    #     raise TypeError(
-    #         "datamodel(init=True) is incompatible with custom '__init__' methods, use '__post_init__' instead."
-    #     )
+    # Add generated members
+    if instantiable:
+        cls.__init_datamodel__ = _make_init_datamodel_fn(cls)
+        cls.__validate_datamodel__ = _make_validate_datamodel_fn()
 
-    if not instantiable:
-        cls.__init__ = _make_non_instantiable_init()
-    # else:
-    #     # For dataclasses emulation, __attrs_post_init__ calls __post_init__ (if it exists)
-    #     cls.__attrs_post_init__ = _make_post_init(has_post_init="__post_init__" in cls.__dict__)
+        if not has_custom_init and cls.__dataclass_params__.init:
+            cls.__init__ = cls.__init_datamodel__
+    else:
+        cls.__init__ = _make_non_instantiable_init_fn()
 
-    cls.__class_getitem__ = _make_datamodel_class_getitem()
+    cls.__class_getitem__ = _make_datamodel_class_getitem_fn()
+    cls.__datamodel_validation__ = ValidationSettings(True)
+    cls.__pretty__ = _make_devtools_pretty_fn()
 
     # Final postprocessing
     # for name, info in property_fields.items():
     #     setattr(cls, name, info.descriptor)  # Restore property field descriptors in class body
 
-    cls.__pretty__ = _make_devtools_pretty()
     # setattr(
     #     cls,
     #     _MODEL_OPTIONS,
@@ -939,6 +1111,10 @@ def _make_datamodel(
     #     field_attr.name: _make_dataclass_field_from_attr(field_attr)
     #     for field_attr in cls.__attrs_attrs__
     # }
+
+    # Restore private members
+    if skip_private:
+        cls.__annotations__ = orig_annotations
 
     return cls
 
@@ -1302,7 +1478,7 @@ def concretize(
     return concrete_cls
 
 
-def validator(name: str) -> Callable[[ValidatorType], ValidatorType]:
+def validator(name: str, *, pre: bool = False) -> Callable[[ValidatorType], ValidatorType]:
     """Define a custom field validator for a specific field (decorator function).
 
     Arguments:
@@ -1317,14 +1493,15 @@ def validator(name: str) -> Callable[[ValidatorType], ValidatorType]:
     """
     assert isinstance(name, str)
 
-    def _field_validator_maker(func: ValidatorType) -> ValidatorType:
-        setattr(func, _FIELD_VALIDATOR_TAG, name)
-        return func
+    def _field_validator_maker(func: ValidatorType) -> _FieldValidatorWrapper:
+        return _FieldValidatorWrapper(
+            func, name, kind=_FieldValidatorKind.PRE if pre else _FieldValidatorKind.POST
+        )
 
     return _field_validator_maker
 
 
-def root_validator(func: RootValidatorType, /) -> RootValidatorType:
+def root_validator(func: RootValidatorType, /) -> _RootValidatorWrapper:
     """Define a custom root validator (decorator function).
 
     The decorated functions should have the following signature:
@@ -1332,8 +1509,7 @@ def root_validator(func: RootValidatorType, /) -> RootValidatorType:
     where ``cls`` will be the class of the model and ``instance`` the
     actual instance being validated.
     """
-    setattr(func, _ROOT_VALIDATOR_TAG, None)
-    return func
+    return _RootValidatorWrapper(func)
 
 
 def property_field(
@@ -1454,8 +1630,7 @@ def datamodel(
     frozen: bool = False,
     kw_only: bool = True,
     instantiable: bool = True,
-    include_private: bool = False,
-    show_private: bool = False,
+    skip_private: bool = False,
 ) -> Union[Type, Callable[[Type], Type]]:
     """Add generated special methods to classes according to the specified attributes (class decorator).
 
@@ -1497,8 +1672,6 @@ def datamodel(
             method that raises an exception.
         skip_private: If ``True``, skip private field definitions (names starting with `_`).
 
-    Note:
-        Currently implemented using :func:`attr.s` from `attrs <https://www.attrs.org/>`_
     """
 
     def _decorator(cls: Type) -> Type:
@@ -1512,8 +1685,7 @@ def datamodel(
             frozen=frozen,
             kw_only=kw_only,
             instantiable=instantiable,
-            include_private=include_private,
-            show_private=include_private,
+            skip_private=skip_private,
         )
 
     # This works for both @datamodel or @datamodel() decorations
