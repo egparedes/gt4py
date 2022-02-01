@@ -1,0 +1,45 @@
+- case: my_plugin
+  mypy_config:
+    plugins = functional.ffront.experiments.plugin
+  main: |
+    from functional.ffront.experiments.builtins import Field
+
+    field = Field[["I", "E2V"], float]
+    reveal_type(field)
+
+  out: |
+    main:3: note: Revealed type is "Field"
+
+
+
+# - case: compose_two_functions
+#   main: |
+#     from myapp import first, second
+
+#     reveal_type(second(first(1)))  # N: Revealed type is "builtins.str"
+#   files:
+#     - path: myapp.py
+#       content: |
+#         def first(num: int) -> float:
+#             return float(num)
+
+#         def second(num: float) -> str:
+#             return str(num)
+
+# - case: compose_two_functions_with_out
+#   main: |
+#     from myapp import first, second
+
+#     reveal_type(second(first(1)))
+#   files:
+#     - path: myapp.py
+#       content: |
+#         def first(num: int) -> float:
+#             return float(num)
+
+#         def second(num: float) -> str:
+#             return str(num)
+
+#   out: |
+#     main:3: note: Revealed type is "builtins.str"
+
