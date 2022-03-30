@@ -28,11 +28,11 @@ from . import iterators, utils
 from .type_definitions import NOTHING, IntEnum, Str, StrEnum
 from .typingx import (
     Any,
-    AnyNoArgCallable,
     ClassVar,
     Dict,
     Generator,
     List,
+    NoArgsCallable,
     Optional,
     Set,
     Tuple,
@@ -75,7 +75,7 @@ _EVE_METADATA_KEY = "_EVE_META_"
 def field(
     default: Any = NOTHING,
     *,
-    default_factory: Optional[AnyNoArgCallable] = None,
+    default_factory: Optional[NoArgsCallable] = None,
     kind: Optional[FieldKind] = None,
     constraints: Optional[FieldConstraintsDict] = None,
     schema_config: Dict[str, Any] = None,

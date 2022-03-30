@@ -49,7 +49,6 @@ from boltons.typeutils import classproperty  # noqa: F401
 from .type_definitions import NOTHING
 from .typingx import (
     Any,
-    AnyCallable,
     Callable,
     Collection,
     Dict,

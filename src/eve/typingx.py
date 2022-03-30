@@ -31,9 +31,7 @@ from typing import *
 from typing import IO, BinaryIO, Dict, FrozenSet, List, Set, TextIO, Tuple
 
 
-AnyCallable = Callable[..., Any]
-AnyNoneCallable = Callable[..., None]
-AnyNoArgCallable = Callable[[], Any]
+NoArgsCallable = Callable[[], Any]
 
 
 T = TypeVar("T")
