@@ -18,19 +18,226 @@
 
 
 
-# def canonicalize_forward_ref(type_hint: Union[str, Type, ForwardRef]) -> Union[Type, ForwardRef]:
-#     """Return the original type hint or a ``ForwardRef``s without nested ``ForwardRef``s.
+# -- Validators --
+@dataclasses.dataclass
+class _ForwardRefValidator:
+    """Implementation of ``attr.s`` type validator for ``ForwardRef`` typings."""
 
-#     Examples:
-#         >>> import typing
-#         >>> canonicalize_forward_ref(typing.List[typing.ForwardRef('my_type')])
-#         ForwardRef('List[my_type]')
-#         >>> canonicalize_forward_ref("List[typing.ForwardRef('my_type')]")
-#         ForwardRef('List[my_type]')
-#         >>> canonicalize_forward_ref(typing.ForwardRef("typing.List[typing.ForwardRef('my_type')]"))
-#         ForwardRef('typing.List[my_type]')
+    #: Actual type validators created after resolving the forward references.
+    validator: Optional[ValidatorType] = None
 
-#     """
+    def __call__(self, instance: DataModelTp, attribute: Attribute, value: Any) -> None:
+        if self.validator is None:
+            model_cls = instance.__class__
+            update_forward_refs(model_cls)
+            self.validator = strict_type_attrs_validator(
+                getattr(getattr(model_cls, _MODEL_FIELDS), attribute.name).type
+            )
+
+        self.validator(instance, attribute, value)
+
+
+@dataclasses.dataclass
+class _TupleValidator:
+    """Implementation of ``attr.s`` type validator for ``Tuple`` typings."""
+
+    #: Collection of validators.
+    validators: Tuple[ValidatorType, ...]
+    #: Class used in the container ``isintance()`` check.
+    tuple_type: Type[Tuple]
+
+    def __call__(self, instance: DataModelTp, attribute: Attribute, value: Any) -> None:
+        if not isinstance(value, self.tuple_type):
+            raise TypeError(
+                f"In '{attribute.name}' validation, got '{value}' that is a {type(value)} instead of {self.tuple_type}."
+            )
+        if len(value) != len(self.validators):
+            raise TypeError(
+                f"In '{attribute.name}' validation, got '{value}' tuple which contains {len(value)} elements instead of {len(self.validators)}."
+            )
+
+        _i = None
+        item_value = ""
+        try:
+            for _i, (item_value, item_validator) in enumerate(zip(value, self.validators)):
+                item_validator(instance, attribute, item_value)
+        except Exception as e:
+            raise TypeError(
+                f"In '{attribute.name}' validation, tuple '{value}' contains invalid value '{item_value}' at position {_i}."
+            ) from e
+
+
+@dataclasses.dataclass
+class _OrValidator:
+    """Implementation of ``attr.s`` validator composing multiple validators together using OR."""
+
+    #: Collection of validators.
+    validators: Tuple[ValidatorType, ...]
+    #: Exception class for validation errors.
+    error_type: Type[Exception]
+
+    def __call__(self, instance: DataModelTp, attribute: Attribute, value: Any) -> None:
+        passed = False
+        for v in self.validators:
+            try:
+                v(instance, attribute, value)
+                passed = True
+                break
+            except Exception:
+                pass
+
+        if not passed:
+            raise self.error_type(
+                f"In '{attribute.name}' validation, provided value '{value}' fails for all the possible validators."
+            )
+
+
+@dataclasses.dataclass
+class _LiteralValidator:
+    """Implementation of ``attr.s`` type validator for ``Literal`` typings."""
+
+    literal: Any
+
+    def __call__(self, instance: DataModelTp, attribute: Attribute, value: Any) -> None:
+        if isinstance(self.literal, bool):
+            valid = value is self.literal
+        else:
+            valid = value == self.literal
+        if not valid:
+            raise ValueError(
+                f"Provided value '{value}' field does not match {self.literal} during '{attribute.name}' validation."
+            )
+
+
+def empty_attrs_validator() -> ValidatorType:
+    """Create an ``attr.s`` empty validator which always succeeds."""
+
+    def _empty_validator(instance: DataModelTp, attribute: Attribute, value: Any) -> None:
+        pass
+
+    return _empty_validator
+
+
+def forward_ref_type_attrs_validator() -> ValidatorType:
+    """Create an ``attr.s`` strict type validator for ``ForwardRef`` typings.
+
+    The generated validator will resolve the field type to an actual type
+    the first time is called.
+    """
+    return _ForwardRefValidator()
+
+
+def instance_of_int_attrs_validator() -> ValidatorType:
+    """Create an ``attr.s`` validator for ``int`` values which fails with ``bool`` values."""
+
+    def _int_validator(instance: DataModelTp, attribute: Attribute, value: Any) -> None:
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise TypeError(
+                f"'{attribute.name}' must be {int} (got '{value}' that is a {type(value)})."
+            )
+
+    return _int_validator
+
+
+def or_attrs_validator(*validators: ValidatorType, error_type: Type[Exception]) -> ValidatorType:
+    """Create an ``attr.s`` validator combinator where only one of the validators needs to pass."""
+    if len(validators) == 1:
+        return validators[0]
+    else:
+        return _OrValidator(validators, error_type=error_type)
+
+
+def literal_type_attrs_validator(*type_args: Type) -> ValidatorType:
+    """Create an ``attr.s`` strict type validator for ``Literal`` typings."""
+    return or_attrs_validator(*(_LiteralValidator(t) for t in type_args), error_type=ValueError)
+
+
+def tuple_type_attrs_validator(*type_args: Type, tuple_type: Type = tuple) -> ValidatorType:
+    """Create an ``attr.s`` strict type validator for ``Tuple`` typings."""
+    if len(type_args) == 2 and (type_args[1] is Ellipsis):
+        # Tuple as an immutable sequence type: Tuple[int, ...]
+        if not issubclass(tuple_type, tuple):
+            raise TypeError(f"Invalid 'tuple' subclass '{tuple_type}'.")
+        member_type_hint = type_args[0]
+        return attr.validators.deep_iterable(
+            member_validator=strict_type_attrs_validator(member_type_hint),
+            iterable_validator=attr.validators.instance_of(tuple_type),
+        )
+    else:
+        # Tuple as a heterogeneous container: Tuple[int, float]
+        return _TupleValidator(
+            tuple(strict_type_attrs_validator(t) for t in type_args),
+            tuple_type,
+        )
+
+
+def union_type_attrs_validator(*type_args: Type) -> ValidatorType:
+    """Create an ``attr.s`` strict type validator for Union typings."""
+    if len(type_args) == 2 and (type_args[1] is type(None)):  # noqa: E721  # use isinstance()
+        non_optional_validator = strict_type_attrs_validator(type_args[0])
+        return attr.validators.optional(non_optional_validator)
+    else:
+        return or_attrs_validator(
+            *(strict_type_attrs_validator(t) for t in type_args),
+            error_type=TypeError,
+        )
+
+
+def strict_type_attrs_validator(
+    type_hint: Any, *, forward_eval_module: Optional[str] = None
+) -> ValidatorType:
+    """Create an ``attr.s`` strict type validator for a specific typing hint."""
+    type_args = typing.get_args(type_hint)
+
+    # Custom type validator
+    if isinstance(type_hint, TypeWithAttrValidatorTp):
+        return type_hint.__type_validator__()
+
+    # Non-generic types
+    if isinstance(type_hint, type) and type_hint is not type(None):  # noqa: E721  # use isinstance
+        assert not type_args
+        if type_hint is int:
+            return instance_of_int_attrs_validator()
+        else:
+            return attr.validators.instance_of(type_hint)
+    if isinstance(type_hint, typing.TypeVar):
+        if type_hint.__bound__:
+            return attr.validators.instance_of(type_hint.__bound__)
+        else:
+            return empty_attrs_validator()
+    if isinstance(type_hint, ForwardRef):
+        return forward_ref_type_attrs_validator()
+    if type_hint is Any:
+        return empty_attrs_validator()
+
+    # Generic and parametrized type hints
+    origin_type = typing.get_origin(type_hint)
+
+    if origin_type is typing.Literal:
+        return literal_type_attrs_validator(*type_args)
+    if origin_type is typing.Union:
+        return union_type_attrs_validator(*type_args)
+    if isinstance(origin_type, type):
+        # Deal with generic collections
+        if issubclass(origin_type, tuple):
+            return tuple_type_attrs_validator(*type_args, tuple_type=origin_type)
+        if issubclass(origin_type, (collections.abc.Sequence, collections.abc.Set)):
+            assert len(type_args) == 1
+            member_type_hint = type_args[0]
+            return attr.validators.deep_iterable(
+                member_validator=strict_type_attrs_validator(member_type_hint),
+                iterable_validator=attr.validators.instance_of(origin_type),
+            )
+        if issubclass(origin_type, collections.abc.Mapping):
+            assert len(type_args) == 2
+            key_type_hint, value_type_hint = type_args
+            return attr.validators.deep_mapping(
+                key_validator=strict_type_attrs_validator(key_type_hint),
+                value_validator=strict_type_attrs_validator(value_type_hint),
+                mapping_validator=attr.validators.instance_of(origin_type),
+            )
+
+    raise TypeError(f"Type description '{type_hint}' is not supported.")
 
 
 # class __MissingRef:
@@ -62,290 +269,3 @@
 #         for cls in new_missing_refs:
 #             monkey_patch_as_subscriptable(cls)
 #         new_missing_refs.clear()
-
-
-# def canonicalize_forward_ref(type_hint: Union[str, Type, ForwardRef]) -> Union[Type, ForwardRef]:
-#     """Return the original type hint or a ``ForwardRef``s without nested ``ForwardRef``s.
-
-#     Examples:
-#         >>> import typing
-#         >>> canonicalize_forward_ref(typing.List[typing.ForwardRef('my_type')])
-#         ForwardRef('List[my_type]')
-#         >>> canonicalize_forward_ref("List[typing.ForwardRef('my_type')]")
-#         ForwardRef('List[my_type]')
-#         >>> canonicalize_forward_ref(typing.ForwardRef("typing.List[typing.ForwardRef('my_type')]"))
-#         ForwardRef('typing.List[my_type]')
-
-#     """
-#     if isinstance(type_hint, ForwardRef):
-#         return canonicalize_forward_ref(type_hint.__forward_arg__)
-#     if isinstance(type_hint, str):
-#         new_hint = type_hint
-#         for pattern in ("typing.ForwardRef(", "ForwardRef("):
-#             offset = len(pattern)
-#             while pattern in new_hint:
-#                 start = new_hint.find(pattern)
-#                 nested = 0
-#                 for i, c in enumerate(new_hint[start + offset :]):
-#                     if c == ")":
-#                         if nested == 0:
-#                             end = start + offset + i
-#                             break
-#                         else:
-#                             nested -= 1
-#                     elif c == "(":
-#                         nested += 1
-#                 content = (new_hint[start + offset : end]).strip(" \n\r\t\"'")
-#                 new_hint = new_hint[:start] + content + new_hint[end + 1 :]
-
-#         return ForwardRef(new_hint)
-
-#     if not (type_args := typing.get_args(type_hint)):
-#         return type_hint
-
-#     assert isinstance(type_hint, typing._GenericAlias)  # type: ignore[attr-defined]  # typing._GenericAlias is not public
-#     new_type_args = tuple(canonicalize_forward_ref(t) for t in type_args)
-#     if not any(isinstance(t, ForwardRef) for t in new_type_args):
-#         return type_hint
-
-#     str_args = []
-#     for t in new_type_args:
-#         if isinstance(t, str):
-#             str_args.append(t)
-#         elif isinstance(t, ForwardRef):
-#             str_args.append(t.__forward_arg__)
-#         else:
-#             str_args.append(repr(t))
-
-#     return ForwardRef(f"{type_hint._name}[{','.join(str_args)}]")
-
-
-# def get_canonical_type_hints(cls: Type) -> Dict[str, Union[Type, ForwardRef]]:
-#     """Extract class type annotations returning forward references for partially undefined types.
-
-#     The canonicalization consists in returning either a fully-specified type
-#     annotation or a :class:`typing.ForwarRef` instance with the type annotation
-#     for not fully-specified types.
-
-#     Based on :func:`typing.get_type_hints` implementation.
-#     """
-#     hints: Dict[str, Union[Type, ForwardRef]] = {}
-
-#     for base in reversed(cls.__mro__):
-#         base_globals = sys.modules[base.__module__].__dict__
-#         ann = base.__dict__.get("__annotations__", {})
-#         for name, value in ann.items():
-#             if value is None:
-#                 value = type(None)
-#             elif isinstance(value, str):
-#                 value = ForwardRef(value, is_argument=False)
-
-#             try:
-#                 value = typing._eval_type(value, base_globals, None)  # type: ignore[attr-defined]  # typing._eval_type is not public
-#             except NameError as e:
-#                 if "ForwardRef(" not in repr(value):
-#                     raise e
-#             if not isinstance(value, ForwardRef) and "ForwardRef(" in repr(value):
-#                 value = canonicalize_forward_ref(value)
-
-#             hints[name] = value
-
-#     return hints
-
-
-# @typing.overload
-# def resolve_type(
-#     type_hint: Any,
-#     global_ns: Optional[Dict[str, Any]] = None,
-#     local_ns: Optional[Dict[str, Any]] = None,
-#     *,
-#     allow_partial: Literal[False],
-# ) -> Type:
-#     ...
-
-
-# @typing.overload
-# def resolve_type(
-#     type_hint: Any,
-#     global_ns: Optional[Dict[str, Any]] = None,
-#     local_ns: Optional[Dict[str, Any]] = None,
-#     *,
-#     allow_partial: Literal[True],
-# ) -> Union[Type, ForwardRef]:
-#     ...
-
-
-# def resolve_type(
-#     type_hint: Any,
-#     global_ns: Optional[Dict[str, Any]] = None,
-#     local_ns: Optional[Dict[str, Any]] = None,
-#     *,
-#     allow_partial: bool = False,
-# ) -> Union[Type, ForwardRef]:
-#     """Resolve forward references in type annotations.
-
-#     Arguments:
-#         global_ns: globals dict used in the evaluation of the annotations.
-#         local_ns: locals dict used in the evaluation of the annotations.
-
-#     Keyword Arguments:
-#         allow_partial: if ``True``, the resolution is allowed to fail and
-#             a :class:`typing.ForwardRef` will be returned.
-
-#     Examples:
-#         >>> import typing
-#         >>> resolve_type(
-#         ...     typing.Dict[typing.ForwardRef('str'), 'typing.Tuple["int", typing.ForwardRef("float")]']
-#         ... )
-#         typing.Dict[str, typing.Tuple[int, float]]
-
-#     """
-#     actual_type = ForwardRef(type_hint) if isinstance(type_hint, str) else type_hint
-#     while "ForwardRef(" in repr(actual_type):
-#         try:
-#             if local_ns:
-#                 safe_local_ns = {**local_ns}
-#                 safe_local_ns.setdefault("typing", sys.modules["typing"])
-#                 safe_local_ns.setdefault("NoneType", type(None))
-#             else:
-#                 safe_local_ns = {"typing": sys.modules["typing"], "NoneType": type(None)}
-#             actual_type = typing._eval_type(  # type: ignore[attr-defined]  # typing._eval_type is not visible for mypy
-#                 actual_type,
-#                 global_ns,
-#                 safe_local_ns,
-#             )
-#         except Exception as e:
-#             if allow_partial:
-#                 actual_type = canonicalize_forward_ref(actual_type)
-#                 break
-#             else:
-#                 raise e
-
-#     return actual_type
-
-
-# def _collapse_type_args(*args: Any) -> Tuple[bool, Tuple]:
-#     if args and all(args[0] == a for a in args):
-#         return (True, args)
-#     else:
-#         return (False, args)
-
-
-# @dataclasses.dataclass
-# class CallableKwargsInfo:
-#     data: Dict[str, Any]
-
-
-# @functools.singledispatch
-# def get_typing(value: Any, *, annotate_callable_kwargs: bool = False) -> Any:
-#     """Generate a typing definition from a value.
-
-#     The implementation uses :func:`functools.singledispatch`. Customized or
-#     more detailed annotations can be generated by registering alternative
-#     implementations.
-
-#     Examples:
-#         >>> get_typing(3)
-#         <class 'int'>
-
-#         >>> get_typing((3, "four"))
-#         typing.Tuple[int, str]
-
-#         >>> get_typing((3, 4))
-#         typing.Tuple[int, ...]
-
-#         >>> get_typing(frozenset([1, 2, 3]))
-#         frozenset[int]
-
-#         >>> get_typing({'a': 0, 'b': 1})
-#         typing.Dict[str, int]
-
-#         >>> get_typing({'a': 0, 'b': 'B'})
-#         typing.Dict[str, typing.Any]
-
-#         >>> get_typing(lambda a, b: a + b)
-#         typing.Callable[[typing.Any, typing.Any], typing.Any]
-
-#         >>> def f(a: int, b) -> int: ...
-#         >>> get_typing(f)
-#         typing.Callable[[int, typing.Any], int]
-
-#         >>> def f(a: int, b) -> int: ...
-#         >>> get_typing(f)
-#         typing.Callable[..., int]
-
-#         # >>> get_typing(Dict[int, Union[int, float]])
-#         # typing.Dict[int, typing.Union[int, float]]
-
-#         # >>> print(get_typing(Dict[int, Union[TypeVar("T", bound=int), float]]))
-#         # typing.Dict[int, typing.Union[int, float]]
-
-#         # >>> print(get_typing(Dict[int, Union[int, float]], get_origins=False))
-#         # typing.Dict[int, typing.Union[int, float]]
-
-#         >>> import numbers
-#         >>> @get_typing.register(int)
-#         ... @get_typing.register(float)
-#         ... @get_typing.register(complex)
-#         ... def _get_typing_number(value, *, get_origins: bool = True):
-#         ...    return numbers.Number
-#         >>> get_typing(3.4)
-#         <class 'numbers.Number'>
-
-#     """
-#     recursive_get = functools.partial(get_typing, annotate_callable_kwargs=annotate_callable_kwargs)
-#     if isinstance(value, type):
-#         return value
-
-#     elif value in (None, types.NoneType):
-#         return None
-
-#     elif isinstance(value, tuple):
-#         unique_type, args = _collapse_type_args(*(recursive_get(item) for item in value))
-#         if unique_type and len(args) > 1:
-#             return Tuple[args[0], ...]
-#         elif args:
-#             return Tuple[args]
-#         else:
-#             return Tuple[Any, ...]
-
-#     elif isinstance(value, (list, set, frozenset)):
-#         t: Union[Type[List], Type[Set], Type[FrozenSet]] = type(value)
-#         unique_type, args = _collapse_type_args(*(recursive_get(item) for item in value))
-#         return t[args[0]] if unique_type else t[Any]  # type: ignore[index]  # build annotation at runtime
-
-#     elif isinstance(value, dict):
-#         unique_key_type, keys = _collapse_type_args(*(recursive_get(key) for key in value.keys()))
-#         unique_value_type, values = _collapse_type_args(*(recursive_get(v) for v in value.values()))
-#         kt = keys[0] if unique_key_type else Any
-#         vt = values[0] if unique_value_type else Any
-#         return Dict[kt, vt]  # type: ignore[valid-type]  # build annotation at runtime
-
-#     elif isinstance(value, types.FunctionType):
-#         try:
-#             annotations = get_type_hints(value)
-#             return_type = annotations.get("return", Any)
-
-#             sig = inspect.signature(value)
-#             arg_types: List = []
-#             kwonly_arg_types: Dict[str, Any] = {}
-#             for p in sig.parameters.values():
-#                 if p.kind in (
-#                     inspect.Parameter.POSITIONAL_ONLY,
-#                     inspect.Parameter.POSITIONAL_OR_KEYWORD,
-#                 ):
-#                     arg_types.append(annotations.get(p.name, None) or Any)
-#                 elif p.kind == inspect.Parameter.KEYWORD_ONLY:
-#                     kwonly_arg_types[p.name] = annotations.get(p.name, None) or Any
-#                 elif p.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
-#                     raise TypeError(f"Variadic callables are not supported")
-
-#             result: Any = Callable[arg_types, return_type]  # type: ignore[misc]  # build annotation at runtime
-#             if annotate_callable_kwargs:
-#                 result = Annotated[result, CallableKwargsInfo(kwonly_arg_types)]
-#             return result
-#         except:
-#             return Callable
-
-#     else:
-#         return type(value)

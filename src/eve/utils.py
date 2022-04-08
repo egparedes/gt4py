@@ -290,16 +290,30 @@ def register_subclasses(*subclasses: Type) -> Callable[[Type], Type]:
     return _decorator
 
 
-def noninstantiable(cls: Type) -> Type:
-    original_init = cls.__init__
+_T = TypeVar("_T")
 
-    def _noninstantiable_init(self: Any, *args: Any, **kwargs: Any) -> None:
-        if self.__class__ is cls:
+
+def non_instantiable(cls: Type[_T]) -> Type[_T]:
+    def _non_instantiable_new(cls: Type[_T], *args: Any, **kwargs: Any) -> None:
+        if "__non_instantiable__" in cls.__dict__:
             raise TypeError(f"Trying to instantiate `{cls.__name__}` non-instantiable class.")
         else:
-            original_init(self, *args, **kwargs)
+            top_instantiable_child = None
+            for base in cls.__mro__:
+                if "__non_instantiable__" in base.__dict__:
+                    break
+                if "__new__" not in base.__dict__:
+                    top_instantiable_child = base
 
-    cls.__init__ = _noninstantiable_init
+            if top_instantiable_child is not None:
+                top_instantiable_child.__new__ = cls._instantiable_new_method
+
+        return cls.__new__(cls, *args, **kwargs)
+
+    cls.__non_instantiable__ = True
+    cls._instantiable_new_method = cls.__new__
+    cls.__new__ = _non_instantiable_new
+
     return cls
 
 
