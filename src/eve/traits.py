@@ -26,7 +26,7 @@ import pydantic
 
 from . import concepts, visitors
 from .type_definitions import SymbolName
-from .typingx import Any, Dict, Iterator, Type
+from .extended_typing import Any, Dict, Iterator, Type
 
 
 class _CollectSymbols(visitors.NodeVisitor):

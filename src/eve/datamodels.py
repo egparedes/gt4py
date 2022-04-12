@@ -68,7 +68,7 @@ import warnings
 import attr
 import attrs
 
-from eve import typingx, utils, python_info
+from eve import utils, python_info, _typingx as typingx
 from eve import extended_typing as xtyping
 from eve.extended_typing import (
     Any,

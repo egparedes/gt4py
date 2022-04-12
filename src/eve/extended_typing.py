@@ -130,6 +130,7 @@ def is_namedtuple(tp: type) -> bool:
 _T_co = TypeVar("_T_co", covariant=True)
 
 FrozenList: TypeAlias = Tuple[_T_co, ...]
+NoArgsCallable = Callable[[], Any]
 
 # Typing of annotations
 _TypingGenericAliasType: TypeAlias = (

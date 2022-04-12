@@ -26,7 +26,7 @@ import pydantic.generics
 
 from . import iterators, utils
 from .type_definitions import NOTHING, IntEnum, Str, StrEnum
-from .typingx import (
+from .extended_typing import (
     Any,
     ClassVar,
     Dict,

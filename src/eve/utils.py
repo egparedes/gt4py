@@ -47,7 +47,7 @@ from boltons.strutils import (  # noqa: F401
 from boltons.typeutils import classproperty  # noqa: F401
 
 from .type_definitions import NOTHING
-from .typingx import (
+from .extended_typing import (
     Any,
     Callable,
     Collection,
