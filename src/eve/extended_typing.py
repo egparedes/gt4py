@@ -26,7 +26,7 @@ from typing import *
 
 from typing_extensions import *
 
-from .constants import IS_PYTHON_AT_LEAST_3_9
+from .python_info import IS_PYTHON_AT_LEAST_3_9
 
 
 if IS_PYTHON_AT_LEAST_3_9:
@@ -126,29 +126,27 @@ def is_namedtuple(tp: type) -> bool:
     return isinstance(tp, this_module.NamedTupleMeta)
 
 
-# Aliases
+# Common type aliases
 _T_co = TypeVar("_T_co", covariant=True)
 
-FrozenList = Tuple[_T_co]
+FrozenList: TypeAlias = Tuple[_T_co, ...]
 
-# Annotations
-_TypingGenericAliasTypes: TypeAlias = (
-    Union[
-        __types.GenericAlias, __typing.GenericAlias, __typing._SpecialGenericAlias  # type: ignore[name-defined]
-    ]
+# Typing of annotations
+_TypingGenericAliasType: TypeAlias = (
+    Union[__types.GenericAlias, __typing.GenericAlias, __typing._SpecialGenericAlias]
     if IS_PYTHON_AT_LEAST_3_9
     else __typing._GenericAlias
 )
 
-_TypingSpecialFormTypes = __typing._SpecialForm
+_TypingSpecialFormType = __typing._SpecialForm
 
 
-TypingAnnotation = Union[Type, ForwardRef, _TypingGenericAliasTypes, _TypingSpecialFormTypes]
+TypingAnnotation = Union[Type, ForwardRef, _TypingGenericAliasType, _TypingSpecialFormType]
 RawTypingAnnotation = Union[str, TypingAnnotation]
 
-# Other protocols
+# Third party protocols
 class DevToolsPrettyPrintable(Protocol):
-    """Used by Python devtools: https://python-devtools.helpmanual.io/"""
+    """Used by python-devtools: https://python-devtools.helpmanual.io/"""
 
     def __pretty__(self, fmt: Callable[[Any], Any], **kwargs: Any) -> Generator[Any, None, None]:
         ...

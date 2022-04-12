@@ -58,6 +58,7 @@ from .typingx import (
     List,
     Literal,
     Optional,
+    Protocol,
     Set,
     Tuple,
     Type,
@@ -315,6 +316,11 @@ def non_instantiable(cls: Type[_T]) -> Type[_T]:
     cls.__new__ = _non_instantiable_new
 
     return cls
+
+
+def is_non_instantiable(cls: Type[_T]) -> bool:
+    """Return True if `model` is a non instantiable class."""
+    return "__non_instantiable__" in cls.__dict__
 
 
 def shash(*args: Any, hash_algorithm: Optional[Any] = None) -> str:

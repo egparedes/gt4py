@@ -16,14 +16,14 @@
 
 from __future__ import annotations
 
-from sys import version_info
+import sys
 from typing import Final
 
-IS_PYTHON_AT_LEAST_3_8: Final = version_info >= (3, 8)
-IS_PYTHON_AT_LEAST_3_9: Final = version_info >= (3, 9)
-IS_PYTHON_AT_LEAST_3_10: Final = version_info >= (3, 10)
-IS_PYTHON_AT_LEAST_3_11: Final = version_info >= (3, 11)
+IS_PYTHON_AT_LEAST_3_8: Final = sys.version_info >= (3, 8)
+IS_PYTHON_AT_LEAST_3_9: Final = sys.version_info >= (3, 9)
+IS_PYTHON_AT_LEAST_3_10: Final = sys.version_info >= (3, 10)
+IS_PYTHON_AT_LEAST_3_11: Final = sys.version_info >= (3, 11)
 IS_PYTHON_3_8: Final = IS_PYTHON_AT_LEAST_3_8 and not IS_PYTHON_AT_LEAST_3_9
 IS_PYTHON_3_9: Final = IS_PYTHON_AT_LEAST_3_9 and not IS_PYTHON_AT_LEAST_3_10
 IS_PYTHON_3_10: Final = IS_PYTHON_AT_LEAST_3_10 and not IS_PYTHON_AT_LEAST_3_11
-IS_PYTHON_3_11: Final = IS_PYTHON_AT_LEAST_3_11 and not version_info > (3, 11)
+IS_PYTHON_3_11: Final = IS_PYTHON_AT_LEAST_3_11 and not sys.version_info > (3, 11)
