@@ -295,25 +295,16 @@ _T = TypeVar("_T")
 
 
 def non_instantiable(cls: Type[_T]) -> Type[_T]:
-    def _non_instantiable_new(cls: Type[_T], *args: Any, **kwargs: Any) -> None:
-        if "__non_instantiable__" in cls.__dict__:
+    original_new = cls.__dict__.get("__new__")
+
+    def _non_instantiable_new(current_cls: Type[_T], *args: Any, **kwargs: Any) -> None:
+        if current_cls is cls:
             raise TypeError(f"Trying to instantiate `{cls.__name__}` non-instantiable class.")
-        else:
-            top_instantiable_child = None
-            for base in cls.__mro__:
-                if "__non_instantiable__" in base.__dict__:
-                    break
-                if "__new__" not in base.__dict__:
-                    top_instantiable_child = base
+        elif original_new is not None:
+            original_new(current_cls, *args, **kwargs)
 
-            if top_instantiable_child is not None:
-                top_instantiable_child.__new__ = cls._instantiable_new_method
-
-        return cls.__new__(cls, *args, **kwargs)
-
-    cls.__non_instantiable__ = True
-    cls._instantiable_new_method = cls.__new__
     cls.__new__ = _non_instantiable_new
+    cls.__non_instantiable__ = True
 
     return cls
 
