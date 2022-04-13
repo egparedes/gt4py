@@ -524,9 +524,10 @@ class UIDGenerator:
         """
         if start < 0:
             raise ValueError(f"Starting value must be a positive number ({start} provided).")
-        warn_unsafe = warn_unsafe or self.warn_unsafe
+        if warn_unsafe is None:
+            warn_unsafe = self.warn_unsafe
         if warn_unsafe and start < next(self._counter):
-            warnings.warn("Unsafe reset of UIDGenerator ({self})", RuntimeWarning)
+            warnings.warn("Unsafe reset of UIDGenerator ({self})")
         self._counter = itertools.count(start)
 
         return self
@@ -572,7 +573,7 @@ class XIterable(Iterable[T]):
     def __iter__(self) -> Iterator[T]:
         return self.iterator
 
-    def map(self, func: AnyCallable) -> XIterable[Any]:  # noqa  # A003: shadowing a python builtin
+    def map(self, func: Callable) -> XIterable[Any]:  # noqa  # A003: shadowing a python builtin
         """Apply a callable to every iterator element.
 
         Equivalent to ``map(func, self)``.

@@ -6,14 +6,14 @@ from eve import Node
 from eve.pattern_matching import ObjectPattern, get_differences
 
 
-class TestNode(Node):
+class SampleNode(Node):
     foo: str
     bar: str
 
 
-class NestedTestNode(Node):
+class NestedSampleNode(Node):
     foo: str
-    bar: TestNode
+    bar: SampleNode
 
 
 test_data: list[tuple[str, Any, Any, list[tuple[str, str]]]] = [
@@ -67,26 +67,26 @@ test_data: list[tuple[str, Any, Any, list[tuple[str, str]]]] = [
     ),
     (
         "node_pattern_match",
-        ObjectPattern(TestNode, bar="baz"),
-        TestNode(bar="baz", foo="bar"),
+        ObjectPattern(SampleNode, bar="baz"),
+        SampleNode(bar="baz", foo="bar"),
         [],
     ),
     (
         "node_pattern_no_match",
-        ObjectPattern(TestNode, bar="bar"),
-        TestNode(bar="baz", foo="bar"),
+        ObjectPattern(SampleNode, bar="bar"),
+        SampleNode(bar="baz", foo="bar"),
         [("a.bar", "Values are not equal. `bar` != `baz`")],
     ),
     (
         "nested_node_pattern_match",
-        ObjectPattern(NestedTestNode, bar=ObjectPattern(TestNode, foo="baz")),
-        NestedTestNode(foo="bar", bar=TestNode(bar="baz", foo="baz")),
+        ObjectPattern(NestedSampleNode, bar=ObjectPattern(SampleNode, foo="baz")),
+        NestedSampleNode(foo="bar", bar=SampleNode(bar="baz", foo="baz")),
         [],
     ),
     (
         "nested_node_pattern_no_match",
-        ObjectPattern(NestedTestNode, bar=ObjectPattern(TestNode, foo="bar")),
-        NestedTestNode(foo="bar", bar=TestNode(bar="baz", foo="baz")),
+        ObjectPattern(NestedSampleNode, bar=ObjectPattern(SampleNode, foo="bar")),
+        NestedSampleNode(foo="bar", bar=SampleNode(bar="baz", foo="baz")),
         [("a.bar.foo", "Values are not equal. `bar` != `baz`")],
     ),
 ]
