@@ -1,9 +1,26 @@
+# -*- coding: utf-8 -*-
+#
+# Eve Toolchain - GT4Py Project - GridTools Framework
+#
+# Copyright (c) 2020, CSCS - Swiss National Supercomputing Center, ETH Zurich
+# All rights reserved.
+#
+# This file is part of the GT4Py project and the GridTools framework.
+# GT4Py is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the
+# Free Software Foundation, either version 3 of the License, or any later
+# version. See the LICENSE.txt file at the top-level directory of this
+# distribution for a copy of the license or check <https://www.gnu.org/licenses/>.
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+from __future__ import annotations
+
 from typing import Any
 
 import pytest
 
 from eve import Node
-from eve.extended_typing import List, Tuple
 from eve.pattern_matching import ObjectPattern, get_differences
 
 
@@ -17,7 +34,7 @@ class NestedSampleNode(Node):
     bar: SampleNode
 
 
-test_data: List[Tuple[str, Any, Any, List[Tuple[str, str]]]] = [
+test_data: list[tuple[str, Any, Any, list[tuple[str, str]]]] = [
     ("int_equal", 1, 1, []),
     ("int_unequal", 1, 2, [("a", "Values are not equal. `1` != `2`")]),
     ("list_equal", [1], [1], []),

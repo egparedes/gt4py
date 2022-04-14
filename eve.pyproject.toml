@@ -1,0 +1,51 @@
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "eve-utils"
+dynamic = ["version", "description"]
+authors = [{ name = "ETH Zurich - CSCS", email = "gridtools@cscs.ch" }]
+license = { file = "LICENSE.txt" }
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: POSIX",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Libraries",
+]
+readme = "README.rst"
+dependencies = [
+    "attrs>=20.3",
+    "black>=22.1",
+    "boltons>=20.0",
+    "cytoolz>=0.11",
+    "devtools>=0.5",
+    "jinja2>=2.10",
+    "mako>=1.1",
+    "packaging>=20.0",
+    "pydantic>=1.5",
+    #"toolz>=0.11",
+    "typing-extensions>=4.1",
+    "xxhash>=1.4.4",
+]
+
+[project.optional-dependencies]
+format = ["clang-format>=9.0"]
+
+[project.urls]
+Home = "https://github.com/gridtools/"
+
+[tool.flit.module]
+name = "eve"
+
+[tool.flit.sdist]
+include = ["src"]
+exclude = ["src/functional*", "src/gt4py*"]

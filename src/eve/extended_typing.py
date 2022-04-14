@@ -17,9 +17,11 @@
 """Typing definitions working across different Python versions (via `typing_extensions`)."""
 
 
-from sys import version_info as __version_info, modules as __sys_modules
-import types as __types
-import typing as __typing
+import dataclasses as _dataclasses
+import pprint as _pprint
+import sys as _sys
+import types as _types
+import typing as _typing
 
 # Definitions in typing_extensions take priority over typing
 from typing import *
@@ -114,18 +116,6 @@ def __dir__() -> List[str]:
     return self_func.__cached_dir
 
 
-def is_protocol(tp: type) -> bool:
-    """Check if a type is a Protocol definition."""
-    this_module = __sys_modules[is_protocol.__module__]
-    return isinstance(tp, this_module._ProtocolMeta) and tp.__bases__[-1] is this_module.Protocol
-
-
-def is_namedtuple(tp: type) -> bool:
-    """Check if a type is a NamedTuple class."""
-    this_module = __sys_modules[is_namedtuple.__module__]
-    return isinstance(tp, this_module.NamedTupleMeta)
-
-
 # Common type aliases
 _T_co = TypeVar("_T_co", covariant=True)
 
@@ -134,12 +124,12 @@ NoArgsCallable = Callable[[], Any]
 
 # Typing of annotations
 _TypingGenericAliasType: TypeAlias = (
-    Union[__types.GenericAlias, __typing.GenericAlias, __typing._SpecialGenericAlias]
+    Union[_types.GenericAlias, _typing._BaseGenericAlias]
     if IS_PYTHON_AT_LEAST_3_9
-    else __typing._GenericAlias
+    else _typing._GenericAlias
 )
 
-_TypingSpecialFormType = __typing._SpecialForm
+_TypingSpecialFormType = _typing._SpecialForm
 
 
 TypingAnnotation = Union[Type, ForwardRef, _TypingGenericAliasType, _TypingSpecialFormType]
@@ -151,3 +141,196 @@ class DevToolsPrettyPrintable(Protocol):
 
     def __pretty__(self, fmt: Callable[[Any], Any], **kwargs: Any) -> Generator[Any, None, None]:
         ...
+
+
+# Extra functionality
+def is_protocol(tp: type) -> bool:
+    """Check if a type is a Protocol definition."""
+    this_module = _sys.modules[is_protocol.__module__]
+    return isinstance(tp, this_module._ProtocolMeta) and tp.__bases__[-1] is this_module.Protocol
+
+
+def is_namedtuple(tp: type) -> bool:
+    """Check if a type is a NamedTuple class."""
+    this_module = _sys.modules[is_namedtuple.__module__]
+    return isinstance(tp, this_module.NamedTupleMeta)
+
+
+_GenericAliasType = _types.GenericAlias if IS_PYTHON_AT_LEAST_3_9 else _typing._GenericAlias
+
+
+class _TypePlaceholder:
+    def __class_getitem__(cls: Type["_TypePlaceholder"], args: Tuple) -> _GenericAliasType:
+        return _GenericAliasType(cls, args)
+
+
+def _compute_get_type_hints_dicts(
+    obj: Any,
+    globalns: Optional[Dict[str, Any]] = None,
+    localns: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    # Emulate get_type_hints() global and local assignment behavior
+    if isinstance(obj, type):
+        if globalns is None:
+            cls_globals = getattr(_sys.modules.get(obj.__module__, None), "__dict__", {})
+        else:
+            cls_globals = globalns
+
+        cls_locals = dict(vars(obj)) if localns is None else localns
+        if localns is None and globalns is None:
+            # This is surprising, but required.  Before Python 3.10,
+            # get_type_hints only evaluated the globalns of
+            # a class.  To maintain backwards compatibility, we reverse
+            # the globalns and localns order so that eval() looks into
+            # *base_globals* first rather than *base_locals*.
+            # This only affects ForwardRefs.
+            cls_globals, cls_locals = cls_locals, cls_globals
+
+        return cls_globals, cls_locals
+
+    if globalns is None:
+        if isinstance(obj, _types.ModuleType):
+            globalns = obj.__dict__
+        else:
+            nsobj = obj
+            # Find globalns for the unwrapped object.
+            while hasattr(nsobj, "__wrapped__"):
+                nsobj = nsobj.__wrapped__
+            globalns = getattr(nsobj, "__globals__", {})
+
+    if localns is None:
+        localns = globalns
+
+    return globalns, localns
+
+
+def get_partial_type_hints(
+    obj: Union[
+        object,
+        Callable,
+        _types.FunctionType,
+        _types.BuiltinFunctionType,
+        _types.MethodType,
+        _types.ModuleType,
+        _types.WrapperDescriptorType,
+        _types.MethodWrapperType,
+        _types.MethodDescriptorType,
+    ],
+    globalns: Optional[Dict[str, Any]] = None,
+    localns: Optional[Dict[str, Any]] = None,
+    include_extras: bool = False,
+) -> Dict[str, Union[Type, ForwardRef]]:
+    """Return a dictionary with type hints (with undefined names as forward references) for a function, method, module or class object.
+
+    For each member type hint in the object a :class:`typing.ForwarRef` instance will be
+    returned if some names in the string annotation have not been found.
+
+    Based on :func:`get_type_hints` implementation.
+    """
+    hints: Dict[str, Union[Type, ForwardRef]] = {}
+
+    if getattr(obj, "__no_type_check__", None):
+        return hints
+
+    orig_globals, orig_locals = _compute_get_type_hints_dicts(obj, globalns, localns)
+    missing_refs: Dict[str, Any] = {}
+
+    while True:
+        if isinstance(obj, type):
+            assert False
+        else:
+            localns_arg = {**orig_locals, **missing_refs}
+            globalns_arg = orig_globals
+            try:
+                hints = get_type_hints(obj, globalns=globalns_arg, localns=localns_arg)
+                break
+            except NameError as error:
+                ConcreteTypePlaceholder = type(
+                    f"__{error.name}__TypePlaceholder", (_TypePlaceholder,), dict(name=error.name)
+                )
+                missing_refs[error.name] = ConcreteTypePlaceholder
+
+    return hints
+
+
+@_dataclasses.dataclass(frozen=True)
+class TypingForm:
+    annotation: TypingAnnotation
+    form: Any
+    args: Tuple[TypingAnnotation, ...]
+
+    def __iter__(self) -> Iterable:
+        yield self.annotation
+        yield self.form
+        yield self.args
+
+    def __str__(self) -> str:
+        return _pprint.pformat(self, compact=True)
+
+
+@_dataclasses.dataclass(frozen=True)
+class TypingConstruct(TypingForm):
+    ...
+
+
+@_dataclasses.dataclass(frozen=True)
+class TypingPlaceholder(TypingForm):
+    ...
+
+
+@_dataclasses.dataclass(frozen=True)
+class TypingQualifier(TypingForm):
+    ...
+
+
+@_dataclasses.dataclass(frozen=True)
+class TypingMetaType(TypingForm):
+    ...
+
+
+@_dataclasses.dataclass(frozen=True)
+class RegularTypeForm(TypingForm):
+    ...
+
+
+_TYPING_CONSTRUCTS: Final = (
+    Any,
+    None,
+    NoReturn,
+    Annotated,
+    Concatenate,  # type: ignore
+    Literal,
+    Type,
+    TypeAlias,
+    TypeGuard,
+    Union,
+)
+_TYPING_PLACEHOLDERS: Final = (ForwardRef, NewType, ParamSpec, TypeVar)
+_TYPING_QUALIFIERS: Final = (ClassVar, Final)
+_TYPING_META_TYPES: Final = (NamedTuple, Protocol, TypedDict)
+
+TYPING_FORMS: Final = {
+    TypingConstruct: _TYPING_CONSTRUCTS,
+    TypingPlaceholder: _TYPING_PLACEHOLDERS,
+    TypingQualifier: _TYPING_QUALIFIERS,
+    TypingMetaType: _TYPING_META_TYPES,
+    RegularTypeForm: (),
+}
+
+
+def get_typing_form(tp_annotation: TypingAnnotation, *, recurse: bool = True) -> TypingForm:
+    args = get_args(tp_annotation)
+    if args and recurse:
+        args = tuple(get_typing_form(arg, recurse=recurse) for arg in args)
+
+    if type(tp_annotation) in _TYPING_PLACEHOLDERS:
+        return TypingPlaceholder(tp_annotation, type(tp_annotation), args)
+
+    if (form := get_origin(tp_annotation)) is None:
+        form = tp_annotation
+
+    for typing_form, members in TYPING_FORMS.items():
+        if form in members:
+            return typing_form(tp_annotation, form, args)
+    else:
+        return RegularTypeForm(tp_annotation, form, args)
