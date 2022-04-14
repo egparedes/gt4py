@@ -46,12 +46,14 @@ from boltons.strutils import (  # noqa: F401
 )
 from boltons.typeutils import classproperty  # noqa: F401
 
+from . import extended_typing, python_info
 from .type_definitions import NOTHING
 from .extended_typing import (
     Any,
     Callable,
     Collection,
     Dict,
+    Final,
     Generic,
     Iterable,
     Iterator,
@@ -476,13 +478,22 @@ class FrozenNamespace(types.SimpleNamespace, Generic[T]):
         return self.__dict__.values()
 
 
+if python_info.IS_PYTHON_AT_LEAST_3_10:
+    field_: Final = dataclasses.field
+else:
+    @typing.final
+    @functools.wraps(dataclasses.field)
+    def field_(*, kw_only=None, **kwargs):
+        return dataclasses.field(**kwargs)
+
+
 @dataclasses.dataclass
 class UIDGenerator:
     """Simple unique id generator using different methods."""
 
-    prefix: Optional[str] = dataclasses.field(default=None, kw_only=True)
-    width: Optional[int] = dataclasses.field(default=None, kw_only=True)
-    warn_unsafe: Optional[bool] = dataclasses.field(default=None, kw_only=True)
+    prefix: Optional[str] = field_(default=None, kw_only=True)
+    width: Optional[int] = field_(default=None, kw_only=True)
+    warn_unsafe: Optional[bool] = field_(default=None, kw_only=True)
 
     #: Constantly increasing counter for generation of sequential unique ids
     _counter: Iterator[int] = dataclasses.field(

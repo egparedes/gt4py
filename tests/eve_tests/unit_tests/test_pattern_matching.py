@@ -3,6 +3,7 @@ from typing import Any
 import pytest
 
 from eve import Node
+from eve.extended_typing import List, Tuple
 from eve.pattern_matching import ObjectPattern, get_differences
 
 
@@ -16,7 +17,7 @@ class NestedSampleNode(Node):
     bar: SampleNode
 
 
-test_data: list[tuple[str, Any, Any, list[tuple[str, str]]]] = [
+test_data: List[Tuple[str, Any, Any, List[Tuple[str, str]]]] = [
     ("int_equal", 1, 1, []),
     ("int_unequal", 1, 2, [("a", "Values are not equal. `1` != `2`")]),
     ("list_equal", [1], [1], []),
