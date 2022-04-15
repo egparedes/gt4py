@@ -68,7 +68,7 @@ import warnings
 import attr
 import attrs
 
-from eve import utils, python_info, _typingx as typingx
+from eve import python_info, utils
 from eve import extended_typing as xtyping
 from eve.extended_typing import (
     Any,
@@ -97,48 +97,50 @@ from eve.type_definitions import NOTHING
 T = TypeVar("T")
 V = TypeVar("V")
 
-
-class _AttrClassTp(Protocol):
-    __attrs_attrs__: ClassVar[Tuple[attr.Attribute, ...]]
-
-
-class _DataClassTp(Protocol):
-    __dataclass_fields__: ClassVar[Dict[str, dataclasses.Field]]
-
-    def __post_init__(self) -> None:
-        ...
+#
+# class _AttrClassTp(Protocol):
+#     __attrs_attrs__: ClassVar[Tuple[attr.Attribute, ...]]
 
 
-class _DevToolsPrettyPrintable(Protocol):
-    def __pretty__(self, fmt: Callable[[Any], Any], **kwargs: Any) -> Generator[Any, None, None]:
-        ...
+# class _DataClassTp(Protocol):
+#     __dataclass_fields__: ClassVar[Dict[str, dataclasses.Field]]
 
+#     def __post_init__(self) -> None:
+#         ...
+
+
+# class _DevToolsPrettyPrintable(Protocol):
+#     def __pretty__(self, fmt: Callable[[Any], Any], **kwargs: Any) -> Generator[Any, None, None]:
+#         ...
+
+
+# Attribute = attr.Attribute
+
+
+# class DataModelTp(_AttrClassTp, _DataClassTp, _DevToolsPrettyPrintable, Protocol):
+#     def __init__(self, *args: Any, **kwargs: Any) -> None:
+#         ...
+
+#     __datamodel_fields__: ClassVar[utils.FrozenNamespace[Attribute]]
+#     __datamodel_params__: ClassVar[utils.FrozenNamespace[Type]]
+#     __datamodel_root_validators__: ClassVar[
+#         Tuple[typingx.NonDataDescriptor[DataModelTp, BoundRootValidatorType], ...]
+#     ]
+
+
+# class GenericDataModelTp(DataModelTp, Protocol):
+#     __args__: ClassVar[Tuple[Union[Type, TypeVar]]]
+#     __parameters__: ClassVar[Tuple[TypeVar]]
+#     __class__: ClassVar[DataModelTp]  # type: ignore[assignment]
+
+#     @classmethod
+#     def __class_getitem__(
+#         cls: Type[GenericDataModelTp], args: Union[Type, Tuple[Type]]
+#     ) -> GenericDataModelAlias:
+#         ...
 
 Attribute = attr.Attribute
-
-
-class DataModelTp(_AttrClassTp, _DataClassTp, _DevToolsPrettyPrintable, Protocol):
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        ...
-
-    __datamodel_fields__: ClassVar[utils.FrozenNamespace[Attribute]]
-    __datamodel_params__: ClassVar[utils.FrozenNamespace[Type]]
-    __datamodel_root_validators__: ClassVar[
-        Tuple[typingx.NonDataDescriptor[DataModelTp, BoundRootValidatorType], ...]
-    ]
-
-
-class GenericDataModelTp(DataModelTp, Protocol):
-    __args__: ClassVar[Tuple[Union[Type, TypeVar]]]
-    __parameters__: ClassVar[Tuple[TypeVar]]
-    __class__: ClassVar[DataModelTp]  # type: ignore[assignment]
-
-    @classmethod
-    def __class_getitem__(
-        cls: Type[GenericDataModelTp], args: Union[Type, Tuple[Type]]
-    ) -> GenericDataModelAlias:
-        ...
-
+DataModelTp = Any
 
 ValidatorType = Callable[[DataModelTp, Attribute, T], None]
 BoundValidatorType = Callable[[Attribute, T], None]
@@ -157,89 +159,6 @@ class TypeWithAttrValidatorTp(Protocol):
     @abc.abstractmethod
     def __type_validator__(self) -> ValidatorType:
         raise NotImplementedError()
-
-
-# if sys.version_info >= (3, 9, 2):
-#     # types.GenericAlias can be subclassed since version 3.9.2
-
-#     class GenericDataModelAlias(types.GenericAlias):
-#         """Custom alias class creating concrete subclasses of generic DataModels."""
-
-#         def __getitem__(self, args: Union[Type, Tuple[Type]]) -> GenericDataModelAlias:
-#             origin_model: Type[GenericDataModelTp] = self.__origin__
-#             assert isinstance(origin_model, type) and is_generic(origin_model)
-#             return origin_model.__class_getitem__(args)  # equivalent to: self.__origin__[args]
-
-# else:
-
-#     class GenericDataModelAlias(typing._GenericAlias, _root=True):  # type: ignore[call-arg,name-defined]  # typing._GenericAlias not visible
-#         """Custom generic alias class compatible with aliases created by ``typing.Generic``.
-
-#         This class emulates the :class:`typing._GenericAlias` behavior, to be
-#         compatible with the mechanism of the :mod:`typing` module for ``Generic``
-#         types. Basically, a :class:`typing._GenericAlias` instance is a class
-#         proxy which stores a reference to the original class (``__origin__``),
-#         the generic type parameters (``__parameters__``) and the concrete
-#         types passed at creation (``__args__``).
-
-#         Both :class:`typing._GenericAlias` and this class implement a
-#         ``__mro__entries__()`` method (PEP 560) and, therefore, when
-#         instances of these classes are found in the list of bases of
-#         a new class, they are automatically substituted by the original
-#         Python class, and the new type is created as usual.
-
-#         Instances of this class work exactly in the same way, but also
-#         create new actual Data Model classes during the `concretization`
-#         of generic models, which are stored instead of the original
-#         generic models in the ``__origin__`` attribute.
-
-#         The new concrete class can be accessed as usual using
-#         :class:`typing.get_origin` or by using the custom :attr:`__class__`
-#         shortcut provided by this class.
-
-#         Examples: (Doctests disabled)
-#             <<< from typing import Generic, get_origin
-#             <<< @datamodel
-#             ... class Model(Generic[T]):
-#             ...     value: T
-#             ...
-#             <<< print(Model.__parameters__)
-#             (~T,)
-#             <<< hasattr(Model, '__args__')
-#             False
-
-#             <<< assert isinstance(Model[int], GenericDataModelAlias)
-#             <<< assert issubclass(get_origin(Model[int]), Model)
-#             <<< assert Model[int].__class__ is get_origin(Model[int])
-#             <<< print(Model[int].__class__.__name__)
-#             Model__int
-
-#             <<< print(Model[int].__parameters__)
-#             ()
-#             <<< hasattr(Model[int], '__args__')
-#             True
-#             <<< print(Model[int].__args__)
-#             (<class 'int'>,)
-
-#         Notes:
-#             For the full picture check also related PEPs:
-
-#                 - `PEP 526 - Syntax for Variable Annotations <https://www.python.org/dev/peps/pep-0526>`_
-#                 - `PEP 560 - Core support for typing module and generic types <https://www.python.org/dev/peps/pep-0560>`_
-#         """
-
-#         __origin__: Type[GenericDataModelTp]
-
-#         def __getitem__(self, args: Union[Type, Tuple[Type]]) -> GenericDataModelAlias:
-#             origin_model: Type[GenericDataModelTp] = self.__origin__
-#             assert isinstance(origin_model, type) and is_generic(origin_model)
-#             return origin_model.__class_getitem__(args)  # equivalent to: self.__origin__[args]
-
-#         @property  # type: ignore[misc]  # Read-only property cannot override read-write property
-#         def __class__(self) -> Type:
-#             """Return the concrete class represented by this instance."""
-#             assert isinstance(self.__origin__, type)
-#             return self.__origin__
 
 
 # Implementation
@@ -455,7 +374,7 @@ def field(
 
     if default is not NOTHING:
         defaults_kwargs = {"default": default}
-    if default_factory is not NOTHING:
+    if default_factory is not None:
         defaults_kwargs = {"factory": default_factory}
 
     return attrs.field(  # type: ignore[call-overload]  # attrs lies on purpose in some typings
@@ -931,13 +850,13 @@ def _make_datamodel(
         cls.__annotations__ = {}
     annotations = cls.__dict__["__annotations__"]
     mro_bases: Tuple[Type, ...] = cls.__mro__[1:]
-    canonicalized_annotations = typingx.get_canonical_type_hints(cls)
+    partial_annotations = xtyping.get_partial_type_hints(cls)
 
     # Create attrib definitions with automatic type validators (and converters)
     # for the annotated fields. The original annotations are used for iteration
     # since the resolved annotations may also contain superclasses' annotations
     for key in annotations:
-        type_hint = annotations[key] = canonicalized_annotations[key]
+        type_hint = annotations[key] = partial_annotations[key]
         if typing.get_origin(type_hint) is not ClassVar:
             type_validator = None  # type_validation_factory(type_hint)
             cls_attr_value = cls.__dict__.get(key, NOTHING)
@@ -973,7 +892,7 @@ def _make_datamodel(
             num_attrs += 1
             if (
                 key not in annotations
-                and typing.get_origin(canonicalized_annotations[key]) is not ClassVar
+                and typing.get_origin(partial_annotations[key]) is not ClassVar
             ):
                 raise TypeError(f"Missing type annotation in '{key}' field.")
 

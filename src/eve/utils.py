@@ -468,6 +468,9 @@ class FrozenNamespace(types.SimpleNamespace, Generic[T]):
     def __setattr__(self, _name: str, _value: T) -> None:
         raise TypeError(f"Trying to modify immutable '{self.__class__.__name__}' instance.")
 
+    def __hash__(self) -> int:
+        return hash(tuple(self.__dict__.items()))
+
     def items(self) -> Iterable[Tuple[str, T]]:
         return self.__dict__.items()
 
@@ -481,6 +484,7 @@ class FrozenNamespace(types.SimpleNamespace, Generic[T]):
 if python_info.IS_PYTHON_AT_LEAST_3_10:
     field_: Final = dataclasses.field
 else:
+
     @typing.final
     @functools.wraps(dataclasses.field)
     def field_(*, kw_only=None, **kwargs):

@@ -47,7 +47,7 @@ import pytest_factoryboy as pytfboy
 from eve import datamodels, utils
 
 
-pytest.skip("Skippping until datamodels is upgraded to 3.10", allow_module_level=True)
+#pytest.skip("Skippping until datamodels is upgraded to 3.10", allow_module_level=True)
 
 T = TypeVar("T")
 
@@ -140,8 +140,8 @@ def test_datamodel_class_members(example_model_factory):
     assert isinstance(model_class.__datamodel_fields__, utils.FrozenNamespace)
     assert hasattr(model_class, "__datamodel_params__")
     assert isinstance(model_class.__datamodel_params__, utils.FrozenNamespace)
-    assert hasattr(model_class, "__datamodel_validators__")
-    assert isinstance(model_class.__datamodel_validators__, tuple)
+    assert hasattr(model_class, "__datamodel_root_validators__")
+    assert isinstance(model_class.__datamodel_root_validators__, tuple)
 
 
 def test_devtools_compatibility(example_model_factory):
@@ -156,19 +156,19 @@ def test_devtools_compatibility(example_model_factory):
         assert f"{name}=" in formatted_string
 
 
-def test_dataclass_compatibility(example_model_factory):
-    model = example_model_factory()
-    model_class = model.__class__
+# def test_dataclass_compatibility(example_model_factory):
+#     model = example_model_factory()
+#     model_class = model.__class__
 
-    assert hasattr(model_class, "__dataclass_fields__") and isinstance(
-        model_class.__dataclass_fields__, dict
-    )
-    assert set(model_class.__datamodel_fields__.keys()) == set(
-        model_class.__dataclass_fields__.keys()
-    )
-    assert dataclasses.is_dataclass(model_class)
-    field_names = set(model_class.__datamodel_fields__.keys())
-    assert all(f.name in field_names for f in dataclasses.fields(model))
+#     assert hasattr(model_class, "__dataclass_fields__") and isinstance(
+#         model_class.__dataclass_fields__, dict
+#     )
+#     assert set(model_class.__datamodel_fields__.keys()) == set(
+#         model_class.__dataclass_fields__.keys()
+#     )
+#     assert dataclasses.is_dataclass(model_class)
+#     field_names = set(model_class.__datamodel_fields__.keys())
+#     assert all(f.name in field_names for f in dataclasses.fields(model))
 
 
 def test_init():
@@ -187,16 +187,16 @@ def test_init():
 def test_default_values():
     @datamodels.datamodel
     class Model:
-        bool_value: bool = True
-        int_value: int
+        bool_value: bool
+        int_value: int = 1
         enum_value: SampleEnum = SampleEnum.FOO
         any_value: Any = datamodels.field(default="ANY")
 
-    model = Model(int_value=1)
-    with pytest.raises(TypeError, match="'int_value'"):
+    model = Model(False)
+    with pytest.raises(TypeError, match="'bool_value'"):
         Model()
 
-    assert model.bool_value is True
+    assert model.bool_value is False
     assert model.int_value == 1
     assert model.enum_value == SampleEnum.FOO
     assert model.any_value == "ANY"

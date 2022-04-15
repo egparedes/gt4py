@@ -131,7 +131,6 @@ _TypingGenericAliasType: TypeAlias = (
 
 _TypingSpecialFormType = _typing._SpecialForm
 
-
 TypingAnnotation = Union[Type, ForwardRef, _TypingGenericAliasType, _TypingSpecialFormType]
 RawTypingAnnotation = Union[str, TypingAnnotation]
 
@@ -156,54 +155,6 @@ def is_namedtuple(tp: type) -> bool:
     return isinstance(tp, this_module.NamedTupleMeta)
 
 
-_GenericAliasType = _types.GenericAlias if IS_PYTHON_AT_LEAST_3_9 else _typing._GenericAlias
-
-
-class _TypePlaceholder:
-    def __class_getitem__(cls: Type["_TypePlaceholder"], args: Tuple) -> _GenericAliasType:
-        return _GenericAliasType(cls, args)
-
-
-def _compute_get_type_hints_dicts(
-    obj: Any,
-    globalns: Optional[Dict[str, Any]] = None,
-    localns: Optional[Dict[str, Any]] = None,
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    # Emulate get_type_hints() global and local assignment behavior
-    if isinstance(obj, type):
-        if globalns is None:
-            cls_globals = getattr(_sys.modules.get(obj.__module__, None), "__dict__", {})
-        else:
-            cls_globals = globalns
-
-        cls_locals = dict(vars(obj)) if localns is None else localns
-        if localns is None and globalns is None:
-            # This is surprising, but required.  Before Python 3.10,
-            # get_type_hints only evaluated the globalns of
-            # a class.  To maintain backwards compatibility, we reverse
-            # the globalns and localns order so that eval() looks into
-            # *base_globals* first rather than *base_locals*.
-            # This only affects ForwardRefs.
-            cls_globals, cls_locals = cls_locals, cls_globals
-
-        return cls_globals, cls_locals
-
-    if globalns is None:
-        if isinstance(obj, _types.ModuleType):
-            globalns = obj.__dict__
-        else:
-            nsobj = obj
-            # Find globalns for the unwrapped object.
-            while hasattr(nsobj, "__wrapped__"):
-                nsobj = nsobj.__wrapped__
-            globalns = getattr(nsobj, "__globals__", {})
-
-    if localns is None:
-        localns = globalns
-
-    return globalns, localns
-
-
 def get_partial_type_hints(
     obj: Union[
         object,
@@ -224,31 +175,33 @@ def get_partial_type_hints(
 
     For each member type hint in the object a :class:`typing.ForwarRef` instance will be
     returned if some names in the string annotation have not been found.
-
-    Based on :func:`get_type_hints` implementation.
     """
-    hints: Dict[str, Union[Type, ForwardRef]] = {}
-
     if getattr(obj, "__no_type_check__", None):
-        return hints
+        return {}
+    if not hasattr(obj, "__annotations__"):
+        return get_type_hints(
+            obj, globalns=globalns, localns=localns, include_extras=include_extras
+        )
 
-    orig_globals, orig_locals = _compute_get_type_hints_dicts(obj, globalns, localns)
-    missing_refs: Dict[str, Any] = {}
+    hints: Dict[str, Union[Type, ForwardRef]] = {}
+    annotations = getattr(obj, "__annotations__", {})
+    for name, hint in annotations.items():
+        obj.__annotations__ = {name: hint}
+        try:
+            resolved_hints = get_type_hints(
+                obj, globalns=globalns, localns=localns, include_extras=include_extras
+            )
+            assert resolved_hints.keys() == obj.__annotations__.keys()
+            hints.update(resolved_hints)
+        except NameError as error:
+            if isinstance(hint, str):
+                hints[name] = ForwardRef(hint)
+            elif isinstance(hint, (ForwardRef, _typing.ForwardRef)):
+                hints[name] = hint
+            else:
+                raise error
 
-    while True:
-        if isinstance(obj, type):
-            assert False
-        else:
-            localns_arg = {**orig_locals, **missing_refs}
-            globalns_arg = orig_globals
-            try:
-                hints = get_type_hints(obj, globalns=globalns_arg, localns=localns_arg)
-                break
-            except NameError as error:
-                ConcreteTypePlaceholder = type(
-                    f"__{error.name}__TypePlaceholder", (_TypePlaceholder,), dict(name=error.name)
-                )
-                missing_refs[error.name] = ConcreteTypePlaceholder
+    obj.__annotations__ = annotations
 
     return hints
 
