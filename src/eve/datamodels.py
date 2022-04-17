@@ -598,12 +598,12 @@ def update_forward_refs(
         field_attr = None
         for field_name in fields:
             field_attr = getattr(datamodel_fields_ns, field_name)
-            if "ForwardRef(" in repr(field_attr.type):
-                actual_type = typingx.resolve_type(
+            if isinstance((field_attr.type), ForwardRef):
+                actual_type = xtyping.eval_forward_ref(
                     field_attr.type,
                     sys.modules[model.__module__].__dict__,
                     local_ns,
-                    allow_partial=False,
+                    include_extras=True,
                 )
                 new_attr = field_attr.evolve(type=actual_type)
                 object.__setattr__(datamodel_fields_ns, field_name, new_attr)
@@ -616,10 +616,6 @@ def update_forward_refs(
 
     if updated_fields:
         model.__attrs_attrs__ = tuple(updated_fields.get(a.name, a) for a in model.__attrs_attrs__)
-        for f_name, f_info in model.__dataclass_fields__.items():
-            if f_name in updated_fields:
-                actual_type = updated_fields[f_name].type  # type: ignore[assignment]  # updated_fiels[...].type is never None
-                f_info.type = actual_type
 
 
 def concretize(
@@ -892,7 +888,7 @@ def _make_datamodel(
             num_attrs += 1
             if (
                 key not in annotations
-                and typing.get_origin(partial_annotations[key]) is not ClassVar
+                and typing.get_origin(partial_annotations.get(key, None)) is not ClassVar
             ):
                 raise TypeError(f"Missing type annotation in '{key}' field.")
 
