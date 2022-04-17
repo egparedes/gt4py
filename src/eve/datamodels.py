@@ -148,7 +148,7 @@ BoundValidatorType = Callable[[Attribute, T], None]
 RootValidatorType = Callable[[Type[DataModelTp], DataModelTp], None]
 BoundRootValidatorType = Callable[[DataModelTp], None]
 
-TypeValidationFactory = Callable[[xtyping.RawTypingAnnotation], ValidatorType]
+TypeValidationFactory = Callable[[xtyping.SourceTypingAnnotation], ValidatorType]
 
 
 @typing.runtime_checkable

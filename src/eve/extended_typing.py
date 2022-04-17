@@ -23,7 +23,7 @@ import sys as _sys
 import types as _types
 import typing as _typing
 
-# Definitions in typing_extensions take priority over typing
+# Definitions in 'typing_extensions' take priority over those in 'typing'
 from typing import *
 
 from typing_extensions import *
@@ -80,7 +80,7 @@ if IS_PYTHON_AT_LEAST_3_9:
 
 
 # These fallbacks are useful for public symbols not exported by default.
-# Again, definitions in typing_extensions take priority over typing
+# Again, definitions in 'typing_extensions' take priority over those in 'typing'
 def __getattr__(name: str) -> Any:
     import sys
 
@@ -132,7 +132,7 @@ _TypingGenericAliasType: TypeAlias = (
 _TypingSpecialFormType = _typing._SpecialForm
 
 TypingAnnotation = Union[Type, ForwardRef, _TypingGenericAliasType, _TypingSpecialFormType]
-RawTypingAnnotation = Union[str, TypingAnnotation]
+SourceTypingAnnotation = Union[str, TypingAnnotation]
 
 # Third party protocols
 class DevToolsPrettyPrintable(Protocol):
@@ -204,6 +204,50 @@ def get_partial_type_hints(
     obj.__annotations__ = annotations
 
     return hints
+
+
+def eval_forward_ref(
+    ref: Union[str, ForwardRef],
+    globalns: Optional[Dict[str, Any]] = None,
+    localns: Optional[Dict[str, Any]] = None,
+    *,
+    include_extras: bool = False,
+) -> Type:
+    """Resolve forward references in type annotations.
+
+    Arguments:
+        globalns: globals dict used in the evaluation of the annotations.
+        localns: locals dict used in the evaluation of the annotations.
+
+    Keyword Arguments:
+        allow_partial: if ``True``, the resolution is allowed to fail and
+            a :class:`typing.ForwardRef` will be returned.
+
+    Examples:
+        >>> import typing
+        >>> resolve_type(
+        ...     typing.Dict[typing.ForwardRef('str'), 'typing.Tuple["int", typing.ForwardRef("float")]']
+        ... )
+        typing.Dict[str, typing.Tuple[int, float]]
+
+    """
+    actual_type = ForwardRef(ref) if isinstance(ref, str) else ref
+
+    def _f():
+        ...
+
+    _f.__annotations__ = {"ref": actual_type}
+
+    if localns:
+        safe_local_ns = {**localns}
+        safe_local_ns.setdefault("typing", _sys.modules[__name__])
+        safe_local_ns.setdefault("NoneType", type(None))
+    else:
+        safe_local_ns = {"typing": _sys.modules[__name__], "NoneType": type(None)}
+
+    actual_type = get_type_hints(_f, globalns, safe_local_ns, include_extras=include_extras)["ref"]
+
+    return actual_type
 
 
 @_dataclasses.dataclass(frozen=True)
