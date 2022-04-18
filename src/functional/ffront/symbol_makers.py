@@ -22,7 +22,7 @@ from typing import Any, ForwardRef, Optional, Union
 import numpy as np
 import numpy.typing as npt
 
-from eve import typingx
+from eve import extended_typing as xtyping
 from functional import common
 from functional.ffront import common_types
 from functional.iterator import runtime
@@ -68,9 +68,7 @@ def make_symbol_type_from_typing(
         type_hint = ForwardRef(type_hint)
     if isinstance(type_hint, ForwardRef):
         try:
-            type_hint = typingx.resolve_type(
-                type_hint, global_ns=global_ns, local_ns=local_ns, allow_partial=False
-            )
+            type_hint = xtyping.eval_forward_ref(type_hint, globalns=global_ns, localns=local_ns)
         except Exception as error:
             raise TypingError(
                 f"Type annotation ({type_hint}) has undefined forward references!"
@@ -80,9 +78,7 @@ def make_symbol_type_from_typing(
     if typing.get_origin(type_hint) is typing.Annotated:
         type_hint, *extra_args = typing.get_args(type_hint)
         if not isinstance(type_hint, collections.abc.Callable):
-            type_hint = typingx.resolve_type(
-                type_hint, global_ns=global_ns, local_ns=local_ns, allow_partial=False
-            )
+            type_hint = xtyping.eval_forward_ref(type_hint, globalns=global_ns, localns=local_ns)
 
     canonical_type = (
         typing.get_origin(type_hint)
@@ -138,7 +134,7 @@ def make_symbol_type_from_typing(
             except Exception as error:
                 raise TypingError(f"Invalid callable annotations in {type_hint}") from error
 
-            kwargs_info = [arg for arg in extra_args if isinstance(arg, typingx.CallableKwargsInfo)]
+            kwargs_info = [arg for arg in extra_args if isinstance(arg, xtyping.CallableKwargsInfo)]
             if len(kwargs_info) != 1:
                 raise TypingError(f"Invalid callable annotations in {type_hint}")
             kwargs = {
@@ -166,7 +162,7 @@ def make_symbol_type_from_value(value: Any) -> common_types.SymbolType:
     if hasattr(value, "__gt_type__"):
         symbol_type = value.__gt_type__()
     else:
-        type_ = typingx.get_typing(value, annotate_callable_kwargs=True)
+        type_ = xtyping.reveal_type(value, annotate_callable_kwargs=True)
         symbol_type = make_symbol_type_from_typing(type_)
 
     if isinstance(

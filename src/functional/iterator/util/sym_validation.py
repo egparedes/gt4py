@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import typing
 from typing import Any, Dict, List, Type
 
 import pydantic
@@ -5,8 +8,10 @@ import pydantic
 from eve import Node
 from eve.traits import SymbolTableTrait
 from eve.type_definitions import SymbolRef
-from eve.typingx import RootValidatorType, RootValidatorValuesType
 from eve.visitors import NodeVisitor
+
+if typing.TYPE_CHECKING:
+    from eve.extended_typing import RootValidatorType, RootValidatorValuesType
 
 
 def validate_symbol_refs() -> RootValidatorType:
