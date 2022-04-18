@@ -24,6 +24,7 @@ import inspect as _inspect
 import sys as _sys
 import types as _types
 import typing as _typing
+
 # Definitions in 'typing_extensions' take priority over those in 'typing'
 from typing import *
 
@@ -34,7 +35,7 @@ from .python_info import IS_PYTHON_AT_LEAST_3_9
 
 if IS_PYTHON_AT_LEAST_3_9:
     # Standard library already supports PEP 585 (Type Hinting Generics In Standard Collections)
-    from builtins import (
+    from builtins import (  # isort:skip
         tuple as Tuple,
         list as List,
         dict as Dict,
@@ -42,15 +43,14 @@ if IS_PYTHON_AT_LEAST_3_9:
         frozenset as FrozenSet,
         type as Type,
     )
-
-    from collections import (
+    from collections import (  # isort:skip
         ChainMap as ChainMap,
         Counter as Counter,
         OrderedDict as OrderedDict,
         defaultdict as defaultdict,
         deque as deque,
     )
-    from collections.abc import (
+    from collections.abc import (  # isort:skip
         AsyncGenerator as AsyncGenerator,
         AsyncIterable as AsyncIterable,
         AsyncIterator as AsyncIterator,
@@ -73,11 +73,11 @@ if IS_PYTHON_AT_LEAST_3_9:
         Reversible as Reversible,
         Sequence as Sequence,
     )
-    from collections.abc import Set as AbstractSet
-    from collections.abc import ValuesView as ValuesView
-    from contextlib import AbstractAsyncContextManager as AsyncContextManager
-    from contextlib import AbstractContextManager as ContextManager
-    from re import Match as Match, Pattern as Pattern
+    from collections.abc import Set as AbstractSet  # isort:skip
+    from collections.abc import ValuesView as ValuesView  # isort:skip
+    from contextlib import AbstractAsyncContextManager as AsyncContextManager  # isort:skip
+    from contextlib import AbstractContextManager as ContextManager  # isort:skip
+    from re import Match as Match, Pattern as Pattern  # isort:skip
 
 
 # These fallbacks are useful for public symbols not exported by default.
