@@ -25,7 +25,6 @@ import pydantic
 import pydantic.generics
 
 from . import iterators, utils
-from .type_definitions import NOTHING, IntEnum, Str, StrEnum
 from .extended_typing import (
     Any,
     ClassVar,
@@ -41,6 +40,7 @@ from .extended_typing import (
     Union,
     no_type_check,
 )
+from .type_definitions import NOTHING, IntEnum, Str, StrEnum
 
 
 # -- Fields --

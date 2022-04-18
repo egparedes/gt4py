@@ -269,6 +269,7 @@ class TestUIDGenerator:
 
     def test_reset_sequence(self):
         import warnings
+
         from eve.utils import UIDGenerator, UIDs
 
         i = UIDs.sequential_id()

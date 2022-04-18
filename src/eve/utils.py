@@ -47,7 +47,6 @@ from boltons.strutils import (  # noqa: F401
 from boltons.typeutils import classproperty  # noqa: F401
 
 from . import extended_typing, python_info
-from .type_definitions import NOTHING
 from .extended_typing import (
     Any,
     Callable,
@@ -67,6 +66,7 @@ from .extended_typing import (
     TypeVar,
     Union,
 )
+from .type_definitions import NOTHING
 
 
 try:

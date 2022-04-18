@@ -10,6 +10,7 @@ from eve.traits import SymbolTableTrait
 from eve.type_definitions import SymbolRef
 from eve.visitors import NodeVisitor
 
+
 if typing.TYPE_CHECKING:
     from eve.extended_typing import RootValidatorType, RootValidatorValuesType
 

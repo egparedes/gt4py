@@ -24,7 +24,6 @@ import inspect as _inspect
 import sys as _sys
 import types as _types
 import typing as _typing
-
 # Definitions in 'typing_extensions' take priority over those in 'typing'
 from typing import *
 

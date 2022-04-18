@@ -19,6 +19,7 @@ from __future__ import annotations
 import sys
 from typing import Final
 
+
 IS_PYTHON_AT_LEAST_3_8: Final = sys.version_info >= (3, 8)
 IS_PYTHON_AT_LEAST_3_9: Final = sys.version_info >= (3, 9)
 IS_PYTHON_AT_LEAST_3_10: Final = sys.version_info >= (3, 10)

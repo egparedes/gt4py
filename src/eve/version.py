@@ -23,6 +23,7 @@ from typing import Final, Optional, Union
 
 from packaging.version import LegacyVersion, Version, parse
 
+
 # TODO(egparedes): Set up proper versioning scheme after migrating repo to new location
 # try:
 #     __version__: str = version("gt4py-functional")

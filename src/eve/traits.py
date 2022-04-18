@@ -25,8 +25,8 @@ import contextlib
 import pydantic
 
 from . import concepts, visitors
-from .type_definitions import SymbolName
 from .extended_typing import Any, Dict, Iterator, Type
+from .type_definitions import SymbolName
 
 
 class _CollectSymbols(visitors.NodeVisitor):
