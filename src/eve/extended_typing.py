@@ -191,7 +191,6 @@ def get_partial_type_hints(
             resolved_hints = get_type_hints(
                 obj, globalns=globalns, localns=localns, include_extras=include_extras
             )
-            assert resolved_hints.keys() == obj.__annotations__.keys()
             hints.update(resolved_hints)
         except NameError as error:
             if isinstance(hint, str):

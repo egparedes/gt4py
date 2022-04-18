@@ -374,8 +374,10 @@ def field(
 
     if default is not NOTHING:
         defaults_kwargs = {"default": default}
-    if default_factory is not None:
+    elif default_factory is not None:
         defaults_kwargs = {"factory": default_factory}
+    else:
+        defaults_kwargs = {}
 
     return attrs.field(  # type: ignore[call-overload]  # attrs lies on purpose in some typings
         **defaults_kwargs,
@@ -824,6 +826,13 @@ def _make_data_model_class_getitem() -> classmethod:
     return classmethod(__class_getitem__)
 
 
+def typeguard_validation_factory(annotation) -> Callable:
+    import typeguard
+
+    def _validator(cls, attrib, value):
+        assert typeguard.check_type(attrib.name, value, attrib.type)
+
+
 def _make_datamodel(
     cls: Type[T],
     *,
@@ -854,7 +863,7 @@ def _make_datamodel(
     for key in annotations:
         type_hint = annotations[key] = partial_annotations[key]
         if typing.get_origin(type_hint) is not ClassVar:
-            type_validator = None  # type_validation_factory(type_hint)
+            type_validator = type_validation_factory(type_hint) if type_validation_factory else None
             cls_attr_value = cls.__dict__.get(key, NOTHING)
             if cls_attr_value is NOTHING:
                 # Missing definition
