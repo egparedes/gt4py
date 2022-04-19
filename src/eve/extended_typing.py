@@ -373,7 +373,7 @@ def reveal_type(value: Any, *, annotate_callable_kwargs: bool = False) -> Any:
             if annotate_callable_kwargs:
                 result = Annotated[result, CallableKwargsInfo(kwonly_arg_types)]
             return result
-        except:
+        except Exception:
             return Callable
 
     else:

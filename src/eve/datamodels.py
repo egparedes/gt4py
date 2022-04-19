@@ -830,7 +830,10 @@ def typeguard_validation_factory(annotation) -> Callable:
     import typeguard
 
     def _validator(cls, attrib, value):
+        print(f"{attrib=}, {value=}")
         assert typeguard.check_type(attrib.name, value, attrib.type)
+
+    return _validator
 
 
 def _make_datamodel(

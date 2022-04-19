@@ -42,6 +42,21 @@ from .extended_typing import (
 )
 
 
+# InT = TypeVar("InT", contravariant=True)
+# OutT = TypeVar("OutT", covariant=True)
+# KwargsT = TypeVar("KwargsT", contravariant=True)
+
+
+# class Visitor(Protocol[InT, OutT, KwargsT]):
+#     @abc.abstractmethod
+#     def visit(self, data: InT, /, **kwargs: KwargsT) -> OutT:
+#         ...
+
+#     @abc.abstractmethod
+#     def generic_visit(self, data: InT, /, **kwargs: KwargsT) -> OutT:
+#         ...
+
+
 ContextCallable = Callable[["NodeVisitor", concepts.TreeNode, Dict[str, Any]], ContextManager[None]]
 
 

@@ -46,7 +46,7 @@ from boltons.strutils import (  # noqa: F401
 )
 from boltons.typeutils import classproperty  # noqa: F401
 
-from . import extended_typing, python_info
+from . import python_info
 from .extended_typing import (
     Any,
     Callable,
@@ -59,7 +59,6 @@ from .extended_typing import (
     List,
     Literal,
     Optional,
-    Protocol,
     Set,
     Tuple,
     Type,
