@@ -24,6 +24,7 @@ import dataclasses
 import enum
 import functools
 import re
+import sys
 
 import pydantic
 import xxhash
@@ -39,6 +40,7 @@ from pydantic.types import ConstrainedStr
 from .extended_typing import (
     Any,
     Callable,
+    Final,
     Generator,
     Generic,
     NoReturn,
@@ -77,7 +79,17 @@ _R_co = TypeVar("_R_co", bound=object, covariant=True)
 _EitherT = TypeVar("_EitherT", bound="Either")
 
 
-@dataclasses.dataclass(init=False, slots=True)
+if sys.version_info >= (3, 10):
+    dataclass_: Final = dataclasses.dataclass
+else:
+    _T = TypeVar("_T")
+
+    @functools.wraps(dataclasses.dataclass)
+    def dataclass_(*, slots: Optional[bool] = False, **kwargs: Any) -> Callable[[Type[_T]], Type[_T]]:
+        return dataclasses.dataclass(**kwargs)
+
+
+@dataclass_(init=False, slots=True)
 class Either(Generic[_L_co, _R_co]):
     left: Optional[_L_co]
     right: Optional[_R_co]
@@ -101,7 +113,7 @@ _ErrorT = TypeVar("_ErrorT", bound=Exception, covariant=True)
 _ResulT = TypeVar("_ResulT", bound="Result")
 
 
-@dataclasses.dataclass(init=False, slots=True)
+@dataclass_(init=False, slots=True)
 class Result(Generic[_T_co, _ErrorT]):
     value: Optional[_T_co]
     error: Optional[_ErrorT]
@@ -247,9 +259,7 @@ class SourceLocation(pydantic.BaseModel):
             or getattr(ast_node, "lineno", None) is None
             or getattr(ast_node, "col_offset", None) is None
         ):
-            raise ValueError(
-                f"Passed AST node '{ast_node}' does not contain a valid source location."
-            )
+            raise ValueError(f"Passed AST node '{ast_node}' does not contain a valid source location.")
         if source is None:
             source = f"<ast.{type(ast_node).__name__} at 0x{id(ast_node):x}>"
         return cls(
@@ -270,9 +280,7 @@ class SourceLocation(pydantic.BaseModel):
         end_column: Optional[int] = None,
     ) -> None:
         assert end_column is None or end_line is not None
-        super().__init__(
-            line=line, column=column, source=source, end_line=end_line, end_column=end_column
-        )
+        super().__init__(line=line, column=column, source=source, end_line=end_line, end_column=end_column)
 
     def __str__(self) -> str:
         src = self.source or ""
@@ -296,9 +304,7 @@ class SourceLocationGroup(pydantic.BaseModel):
     locations: Tuple[SourceLocation, ...]
     context: Optional[Union[str, Tuple[str, ...]]]
 
-    def __init__(
-        self, *locations: SourceLocation, context: Optional[Union[str, Tuple[str, ...]]] = None
-    ) -> None:
+    def __init__(self, *locations: SourceLocation, context: Optional[Union[str, Tuple[str, ...]]] = None) -> None:
         super().__init__(locations=locations, context=context)
 
     def __str__(self) -> str:
