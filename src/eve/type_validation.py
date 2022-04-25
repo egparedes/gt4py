@@ -21,17 +21,49 @@ from __future__ import annotations
 
 import dataclasses
 
+from . import type_definitions
 from . import extended_typing as xtyping
 from .extended_typing import (
     Any,
     Callable,
     Generator,
     Optional,
+    Protocol,
     SourceTypingAnnotation,
     Tuple,
     Type,
+    TypeVar,
     Union,
 )
+
+if xtyping.TYPE_CHECKING:
+    from .datamodels import Attribute as DataModelAttrib, DataModelTP
+
+_A = TypeVar("_A")
+_C = TypeVar("_C")
+_V = TypeVar("_V")
+
+
+class ClassAttribValidatorType(Protocol[_C, _A, _V]):
+    def __call__(self, instance: _C, attribute: _A, value_V) -> None:
+        ...
+
+
+_ClsAttribValT = TypeVar("_ClsAttribValT", bound=ClassAttribValidatorType)
+
+
+class GenericTypeValidationFactory(Protocol[_ClsAttribValT]):
+    def __call__(self, annotation: xtyping.SourceTypingAnnotation) -> _ClsAttribValT:
+        ...
+
+
+# GenericTypeValidationFactory = Callable[
+#     [xtyping.SourceTypingAnnotation], ClassAttributeValidatorType
+# ]
+
+
+RootValidatorValuesType = Dict[str, Any]
+RootValidatorType = Callable[[Type, RootValidatorValuesType], RootValidatorValuesType]
 
 
 @dataclasses.dataclass
@@ -41,7 +73,7 @@ class _ForwardRefValidator:
     #: Actual type validators created after resolving the forward references.
     validator: Optional[ValidatorType] = None
 
-    def __call__(self, instance: DataModelTp, attribute: Attribute, value: Any) -> None:
+    def __call__(self, instance: DataModelTP, attribute: DataModelAttrib, value: Any) -> None:
         if self.validator is None:
             model_cls = instance.__class__
             update_forward_refs(model_cls)
@@ -61,7 +93,7 @@ class _TupleValidator:
     #: Class used in the container ``isintance()`` check.
     tuple_type: Type[Tuple]
 
-    def __call__(self, instance: DataModelTp, attribute: Attribute, value: Any) -> None:
+    def __call__(self, instance: DataModelTP, attribute: DataModelAttrib, value: Any) -> None:
         if not isinstance(value, self.tuple_type):
             raise TypeError(
                 f"In '{attribute.name}' validation, got '{value}' that is a {type(value)} instead of {self.tuple_type}."
@@ -91,7 +123,7 @@ class _OrValidator:
     #: Exception class for validation errors.
     error_type: Type[Exception]
 
-    def __call__(self, instance: DataModelTp, attribute: Attribute, value: Any) -> None:
+    def __call__(self, instance: DataModelTP, attribute: DataModelAttrib, value: Any) -> None:
         passed = False
         for v in self.validators:
             try:
@@ -113,7 +145,7 @@ class _LiteralValidator:
 
     literal: Any
 
-    def __call__(self, instance: DataModelTp, attribute: Attribute, value: Any) -> None:
+    def __call__(self, instance: DataModelTP, attribute: DataModelAttrib, value: Any) -> None:
         if isinstance(self.literal, bool):
             valid = value is self.literal
         else:
@@ -127,7 +159,7 @@ class _LiteralValidator:
 def empty_attrs_validator() -> ValidatorType:
     """Create an ``attr.s`` empty validator which always succeeds."""
 
-    def _empty_validator(instance: DataModelTp, attribute: Attribute, value: Any) -> None:
+    def _empty_validator(instance: DataModelTP, attribute: DataModelAttrib, value: Any) -> None:
         pass
 
     return _empty_validator
@@ -145,7 +177,7 @@ def forward_ref_type_attrs_validator() -> ValidatorType:
 def instance_of_int_attrs_validator() -> ValidatorType:
     """Create an ``attr.s`` validator for ``int`` values which fails with ``bool`` values."""
 
-    def _int_validator(instance: DataModelTp, attribute: Attribute, value: Any) -> None:
+    def _int_validator(instance: DataModelTP, attribute: DataModelAttrib, value: Any) -> None:
         if not isinstance(value, int) or isinstance(value, bool):
             raise TypeError(
                 f"'{attribute.name}' must be {int} (got '{value}' that is a {type(value)})."
@@ -256,16 +288,19 @@ def strict_type_attrs_validator(
 
 
 # TypeValidationFactory = Callable[[xtyping.SourceTypingAnnotation], ValidatorType]
-ValidatorType = Callable[[DataModelTp, Attribute, T], None]
-ValidatorType = Callable[[Any], bool]
+_ErrorT = TypeVar("_ErrorT", bound=Exception)
+TypeValidationResult = type_definitions.Result[bool]
 
+_ValidatorType = Callable[[Any, DataModelAttrib[_T], _T], Any]
 
-@dataclasses.dataclass(frozen=True)
-class Result:
-    sucess: bool
-    error: Optional[Exception] = None
+from attr import Attribute as AttrsAttribute, _ValidatorType as AttrsValidatorType
 
-    def __bool__():
+AttributeValidatorType = Callable[[Type, AttributeInfo, T], None]
+ValidatorType = Callable[
+    [Any],
+]
+
+# def x_smaller_than_y(instance, attribute, value):
 
 
 def type_validator_factory(type_annotation: SourceTypingAnnotation) -> ValidatorType:

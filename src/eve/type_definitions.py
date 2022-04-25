@@ -20,11 +20,11 @@
 from __future__ import annotations
 
 import ast
+import dataclasses
 import enum
 import functools
 import re
 
-import boltons.typeutils
 import pydantic
 import xxhash
 from boltons.typeutils import classproperty  # noqa: F401
@@ -36,12 +36,31 @@ from pydantic import StrictInt as Int  # noqa: F401
 from pydantic import StrictStr as Str
 from pydantic.types import ConstrainedStr
 
-from .extended_typing import Any, Callable, Generator, Optional, Tuple, Type, Union
+from .extended_typing import (
+    Any,
+    Callable,
+    Generator,
+    Generic,
+    NoReturn,
+    Optional,
+    Self,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
+
+
+class NothingType(type):
+    def __bool__(cls) -> bool:
+        return False
 
 
 #: Marker value used to avoid confusion with `None`
 #: (specially in contexts where `None` could be a valid value)
-NOTHING = boltons.typeutils.make_sentinel(name="NOTHING", var_name="NOTHING")
+class NOTHING(metaclass=NothingType):
+    def __new__(cls: type) -> NoReturn:  # type: ignore[misc]  # should return an instance
+        raise TypeError(f"{cls.__name__} is used as a sentinel class and cannot be instantiated.")
 
 
 #: Typing definitions for `__get_validators__()` methods
@@ -51,6 +70,54 @@ PydanticCallableGenerator = Generator[Callable[..., Any], None, None]
 
 #: :class:`bytes subclass for strict field definition
 Bytes = bytes
+
+
+_L_co = TypeVar("_L_co", bound=object, covariant=True)
+_R_co = TypeVar("_R_co", bound=object, covariant=True)
+_EitherT = TypeVar("_EitherT", bound="Either")
+
+
+@dataclasses.dataclass(init=False, slots=True)
+class Either(Generic[_L_co, _R_co]):
+    left: Optional[_L_co]
+    right: Optional[_R_co]
+
+    @classmethod
+    def from_left(cls: Type[_EitherT], left: _L_co) -> _EitherT:  # type: ignore[misc]  # covariant variable as a parameter
+        return cls(left=left)
+
+    @classmethod
+    def from_right(cls: Type[_EitherT], right: _R_co) -> _EitherT:  # type: ignore[misc]  # covariant variable as a parameter
+        return cls(right=right)
+
+    def __init__(self, *, left: Optional[_L_co] = None, right: Optional[_R_co] = None) -> None:
+        assert (left is None) ^ (right is None)
+        self.left = left
+        self.right = right
+
+
+_T_co = TypeVar("_T_co", covariant=True)
+_ErrorT = TypeVar("_ErrorT", bound=Exception, covariant=True)
+_ResulT = TypeVar("_ResulT", bound="Result")
+
+
+@dataclasses.dataclass(init=False, slots=True)
+class Result(Generic[_T_co, _ErrorT]):
+    value: Optional[_T_co]
+    error: Optional[_ErrorT]
+
+    @classmethod
+    def from_value(cls: Type[_ResulT], value: _T_co) -> _ResulT:  # type: ignore[misc]  # covariant variable as a parameter
+        return cls(value)
+
+    @classmethod
+    def from_failure(cls: Type[_ResulT], error: _ErrorT) -> _ResulT:  # type: ignore[misc]  # covariant variable as a parameter
+        return cls(None, error=error)
+
+    def __init__(self, value: Optional[_T_co], *, error: Optional[_ErrorT] = None):
+        assert (value is None) ^ (error is None)
+        self.value = value
+        self.error = error
 
 
 class Enum(enum.Enum):

@@ -147,10 +147,24 @@ _GenericAliasType: Final[Type] = (
     _types.GenericAlias if _sys.version_info >= (3, 9) else _typing._GenericAlias  # type: ignore[attr-defined]  # _GenericAlias is private
 )
 
+# Standard Python protocols
+_C = TypeVar("_C")
+_V = TypeVar("_V")
 
-# TODO(egparedes): remove these types only needed from pydantic models
-RootValidatorValuesType = Dict[str, Any]
-RootValidatorType = Callable[[Type, RootValidatorValuesType], RootValidatorValuesType]
+
+class NonDataDescriptor(Protocol[_C, _V]):
+    @overload
+    def __get__(self, _instance: None, _owner_type: Type[_C]) -> NonDataDescriptor[_C, _V]:
+        ...
+
+    @overload
+    def __get__(self, _instance: _C, _owner_type: Optional[Type[_C]] = None) -> _V:
+        ...
+
+
+class DataDescriptor(NonDataDescriptor[_C, _V], Protocol):
+    def __set__(self, _instance: _C, _value: _V) -> None:
+        ...
 
 
 # Third party protocols
@@ -162,10 +176,12 @@ class DevToolsPrettyPrintable(Protocol):
 
 
 # Extra functionality
-def is_protocol(tp: type) -> bool:
+def is_protocol(type_: Type) -> bool:
     """Check if a type is a Protocol definition."""
     this_module = _sys.modules[is_protocol.__module__]
-    return isinstance(tp, this_module._ProtocolMeta) and tp.__bases__[-1] is this_module.Protocol
+    return (
+        isinstance(type_, this_module._ProtocolMeta) and type_.__bases__[-1] is this_module.Protocol
+    )
 
 
 def get_partial_type_hints(

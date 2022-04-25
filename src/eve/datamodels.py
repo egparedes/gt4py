@@ -68,8 +68,7 @@ import warnings
 import attr
 import attrs
 
-from eve import extended_typing as xtyping
-from eve import utils
+from eve import extended_typing as xtyping, type_validation as eve_tv, utils
 from eve.extended_typing import (
     Any,
     Callable,
@@ -94,71 +93,47 @@ from eve.type_definitions import NOTHING
 
 
 # Typing
-T = TypeVar("T")
-V = TypeVar("V")
-
-#
-# class _AttrClassTp(Protocol):
-#     __attrs_attrs__: ClassVar[Tuple[attr.Attribute, ...]]
-
-
-# class _DataClassTp(Protocol):
-#     __dataclass_fields__: ClassVar[Dict[str, dataclasses.Field]]
-
-#     def __post_init__(self) -> None:
-#         ...
-
-
-# class _DevToolsPrettyPrintable(Protocol):
-#     def __pretty__(self, fmt: Callable[[Any], Any], **kwargs: Any) -> Generator[Any, None, None]:
-#         ...
-
-
-# Attribute = attr.Attribute
-
-
-# class DataModelTp(_AttrClassTp, _DataClassTp, _DevToolsPrettyPrintable, Protocol):
-#     def __init__(self, *args: Any, **kwargs: Any) -> None:
-#         ...
-
-#     __datamodel_fields__: ClassVar[utils.FrozenNamespace[Attribute]]
-#     __datamodel_params__: ClassVar[utils.FrozenNamespace[Type]]
-#     __datamodel_root_validators__: ClassVar[
-#         Tuple[typingx.NonDataDescriptor[DataModelTp, BoundRootValidatorType], ...]
-#     ]
-
-
-# class GenericDataModelTp(DataModelTp, Protocol):
-#     __args__: ClassVar[Tuple[Union[Type, TypeVar]]]
-#     __parameters__: ClassVar[Tuple[TypeVar]]
-#     __class__: ClassVar[DataModelTp]  # type: ignore[assignment]
-
-#     @classmethod
-#     def __class_getitem__(
-#         cls: Type[GenericDataModelTp], args: Union[Type, Tuple[Type]]
-#     ) -> GenericDataModelAlias:
-#         ...
+_T = TypeVar("_T")
+_V = TypeVar("_V")
 
 Attribute = attr.Attribute
-DataModelTp = Any
 
-ValidatorType = Callable[[DataModelTp, Attribute, T], None]
-BoundValidatorType = Callable[[Attribute, T], None]
-
-RootValidatorType = Callable[[Type[DataModelTp], DataModelTp], None]
-BoundRootValidatorType = Callable[[DataModelTp], None]
-
-TypeValidationFactory = Callable[[xtyping.SourceTypingAnnotation], ValidatorType]
+_AttrsValidatorType = Callable[[Any, attr.Attribute[_T], _T], Any]
 
 
-@typing.runtime_checkable
-class TypeWithAttrValidatorTp(Protocol):
-    """Protocol for classes defining its own custom validator (when used as fields)."""
+class _AttrsClassTP(Protocol):
+    __attrs_attrs__: ClassVar[Tuple[attr.Attribute, ...]]
+
+
+class DataModelTP(_AttrsClassTP, xtyping.DevToolsPrettyPrintable, Protocol):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        ...
+
+    __datamodel_fields__: ClassVar[utils.FrozenNamespace[Attribute]]
+    __datamodel_params__: ClassVar[utils.FrozenNamespace[Type]]
+    __datamodel_root_validators__: ClassVar[
+        Tuple[xtyping.NonDataDescriptor[DataModelTP, BoundRootValidatorType], ...]
+    ]
+
+
+class GenericDataModelTP(DataModelTP, Protocol):
+    __args__: ClassVar[Tuple[Union[Type, TypeVar], ...]]
+    __parameters__: ClassVar[Tuple[TypeVar, ...]]
 
     @classmethod
-    @abc.abstractmethod
-    def __type_validator__(self) -> ValidatorType:
-        raise NotImplementedError()
+    def __class_getitem__(
+        cls: Type[GenericDataModelTP], args: Union[Type, Tuple[Type, ...]]
+    ) -> Union[DataModelTP, GenericDataModelTP]:
+        ...
+
+
+ValidatorType = eve_tv.ClassAttribValidatorType[DataModelTP, Attribute[_T], _T]
+BoundValidatorType = Callable[[Attribute[_T], _T], None]
+
+RootValidatorType = Callable[[Type[DataModelTP], DataModelTP], None]
+BoundRootValidatorType = Callable[[DataModelTP], None]
+
+TypeValidationFactory = eve_tv.GenericTypeValidationFactory[ValidatorType]
 
 
 # Implementation
@@ -433,7 +408,7 @@ def is_datamodel(obj: Any) -> bool:
     return hasattr(cls, _MODEL_FIELDS)
 
 
-def is_generic(model: Union[DataModelTp, Type[DataModelTp]]) -> bool:
+def is_generic(model: Union[DataModelTP, Type[DataModelTP]]) -> bool:
     """Return True if `model` is a generic Data Model class or an instance of a generic Data Model."""
     if not is_datamodel(model):
         raise TypeError(f"Invalid datamodel instance or class: '{model}'.")
@@ -443,20 +418,20 @@ def is_generic(model: Union[DataModelTp, Type[DataModelTp]]) -> bool:
 
 @typing.overload
 def get_fields(
-    model: Union[DataModelTp, Type[DataModelTp]], *, as_dataclass: Literal[False] = False
+    model: Union[DataModelTP, Type[DataModelTP]], *, as_dataclass: Literal[False] = False
 ) -> utils.FrozenNamespace:
     ...
 
 
 @typing.overload
 def get_fields(
-    model: Union[DataModelTp, Type[DataModelTp]], *, as_dataclass: Literal[True]
+    model: Union[DataModelTP, Type[DataModelTP]], *, as_dataclass: Literal[True]
 ) -> Tuple[dataclasses.Field, ...]:
     ...
 
 
 def get_fields(
-    model: Union[DataModelTp, Type[DataModelTp]], *, as_dataclass: bool = False
+    model: Union[DataModelTP, Type[DataModelTP]], *, as_dataclass: bool = False
 ) -> Union[utils.FrozenNamespace, Tuple[dataclasses.Field, ...]]:
     """Return the field meta-information of a Data Model.
 
@@ -502,7 +477,7 @@ fields = get_fields
 
 
 def asdict(
-    instance: DataModelTp,
+    instance: DataModelTP,
     *,
     dict_factory: Type[Mapping[Any, Any]] = dict,
     retain_collection_types: bool = False,
@@ -536,7 +511,7 @@ def asdict(
 
 
 def astuple(
-    instance: DataModelTp,
+    instance: DataModelTP,
     *,
     tuple_factory: Type[Sequence[Any]] = tuple,
     retain_collection_types: bool = False,
@@ -571,7 +546,7 @@ def astuple(
 
 
 def update_forward_refs(
-    model: Union[DataModelTp, Type[DataModelTp]],
+    model: Union[DataModelTP, Type[DataModelTP]],
     local_ns: Optional[Dict[str, Any]] = None,
     *,
     fields: Optional[List[str]] = None,
@@ -621,14 +596,14 @@ def update_forward_refs(
 
 
 def concretize(
-    datamodel_cls: Type[GenericDataModelTp],
+    datamodel_cls: Type[GenericDataModelTP],
     /,
     *type_args: Type,
     class_name: Optional[str] = None,
     module: Optional[str] = None,
     support_pickling: bool = True,  # noqa
     overwrite_definition: bool = True,
-) -> Type[DataModelTp]:
+) -> Type[DataModelTP]:
     """Generate a new concrete subclass of a generic Data Model.
 
     Arguments:
@@ -760,11 +735,11 @@ def _make_counting_attr_from_attribute(
     return attr.ib(**{key: getattr(field_attrib, key) for key in members}, **kwargs)  # type: ignore[call-overload]  # too hard for mypy
 
 
-def _make_post_init(has_post_init: bool) -> Callable[[DataModelTp], None]:
+def _make_post_init(has_post_init: bool) -> Callable[[DataModelTP], None]:
     # Duplicated code to facilitate the source inspection of the generated `__init__()` method
     if has_post_init:
 
-        def __attrs_post_init__(self: DataModelTp) -> None:
+        def __attrs_post_init__(self: DataModelTP) -> None:
             if attr._config._run_validators is True:  # type: ignore[attr-defined]  # attr._config is not visible for mypy
                 for validator in self.__datamodel_root_validators__:
                     validator.__get__(self)(self)
@@ -773,7 +748,7 @@ def _make_post_init(has_post_init: bool) -> Callable[[DataModelTp], None]:
 
     else:
 
-        def __attrs_post_init__(self: DataModelTp) -> None:
+        def __attrs_post_init__(self: DataModelTP) -> None:
             if attr._config._run_validators is True:  # type: ignore[attr-defined]  # attr._config is not visible for mypy
                 for validator in type(self).__datamodel_root_validators__:
                     validator.__get__(self)(self)
@@ -782,10 +757,10 @@ def _make_post_init(has_post_init: bool) -> Callable[[DataModelTp], None]:
 
 
 def _make_devtools_pretty() -> Callable[
-    [DataModelTp, Callable[[Any], Any]], Generator[Any, None, None]
+    [DataModelTP, Callable[[Any], Any]], Generator[Any, None, None]
 ]:
     def __pretty__(
-        self: DataModelTp, fmt: Callable[[Any], Any], **kwargs: Any
+        self: DataModelTP, fmt: Callable[[Any], Any], **kwargs: Any
     ) -> Generator[Any, None, None]:
         """Provide a human readable representation for `devtools <https://python-devtools.helpmanual.io/>`_.
 
@@ -813,7 +788,7 @@ else:
 
 def _make_data_model_class_getitem() -> classmethod:
     def __class_getitem__(
-        cls: Type[GenericDataModelTp], args: Union[Type, Tuple[Type]]
+        cls: Type[GenericDataModelTP], args: Union[Type, Tuple[Type]]
     ) -> GenericTypeAlias:
         """Return an instance compatible with aliases created by :class:`typing.Generic` classes.
 
@@ -980,11 +955,11 @@ def _make_datamodel(
 
 @utils.optional_lru_cache(maxsize=None, typed=True)
 def _make_concrete_with_cache(
-    datamodel_cls: Type[GenericDataModelTp],
+    datamodel_cls: Type[GenericDataModelTP],
     *type_args: Type,
     class_name: Optional[str] = None,
     module: Optional[str] = None,
-) -> Type[DataModelTp]:
+) -> Type[DataModelTP]:
     if not is_generic(datamodel_cls):
         raise TypeError(f"'{datamodel_cls.__name__}' is not a generic model class.")
     for t in type_args:

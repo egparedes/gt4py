@@ -125,7 +125,7 @@ class GenericModelFactory(factory.Factory):
 
 
 @pytest.fixture(params=example_model_factories)
-def example_model_factory(request) -> datamodels.DataModelTp:
+def example_model_factory(request) -> datamodels.DataModelTP:
     return request.param
 
 
@@ -323,7 +323,7 @@ class MyType:
     @classmethod
     def __type_validator__(cls) -> datamodels.ValidatorType:
         def _custom_validator(
-            instance: datamodels.DataModelTp, attribute: datamodels.Attribute, value: Any
+            instance: datamodels.DataModelTP, attribute: datamodels.Attribute, value: Any
         ) -> None:
             if not (hasattr(value, "value") and hasattr(value, "add")):
                 raise TypeError("Invalid value type for '{attribute.name}' field.")
@@ -618,7 +618,7 @@ class ChildModelWithRootValidators(ModelWithRootValidators):
 
 
 @pytest.mark.parametrize("model_class", [ModelWithRootValidators, ChildModelWithRootValidators])
-def test_root_validators(model_class: Type[datamodels.DataModelTp]):
+def test_root_validators(model_class: Type[datamodels.DataModelTP]):
     model_class(int_value=0, float_value=1.1, str_value="")
     with pytest.raises(ValueError, match="float_value"):
         model_class(int_value=1, float_value=1.0, str_value="")
@@ -849,7 +849,7 @@ def test_concrete_field_type_validation(
     type_hint: str, valid_values: Sequence[Any], wrong_values: Sequence[Any]
 ):
     concrete_type: Type = eval(type_hint)
-    Model: Type[datamodels.DataModelTp] = typing.get_origin(GenericModel[concrete_type])  # type: ignore[valid-type,assignment]
+    Model: Type[datamodels.DataModelTP] = typing.get_origin(GenericModel[concrete_type])  # type: ignore[valid-type,assignment]
 
     for value in valid_values:
         Model(value=value)
