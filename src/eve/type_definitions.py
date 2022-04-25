@@ -45,7 +45,6 @@ from .extended_typing import (
     Generic,
     NoReturn,
     Optional,
-    Self,
     Tuple,
     Type,
     TypeVar,
@@ -76,7 +75,9 @@ Bytes = bytes
 
 _L_co = TypeVar("_L_co", bound=object, covariant=True)
 _R_co = TypeVar("_R_co", bound=object, covariant=True)
-_EitherT = TypeVar("_EitherT", bound="Either")
+_EitherT = TypeVar(
+    "_EitherT", bound="Either"
+)  # TODO(egparedes): migrate to PEP-673 "Self" when supported
 
 
 if sys.version_info >= (3, 10):
@@ -85,7 +86,9 @@ else:
     _T = TypeVar("_T")
 
     @functools.wraps(dataclasses.dataclass)
-    def dataclass_(*, slots: Optional[bool] = False, **kwargs: Any) -> Callable[[Type[_T]], Type[_T]]:
+    def dataclass_(
+        *, slots: Optional[bool] = False, **kwargs: Any
+    ) -> Callable[[Type[_T]], Type[_T]]:
         return dataclasses.dataclass(**kwargs)
 
 
@@ -102,7 +105,9 @@ class Either(Generic[_L_co, _R_co]):
     def from_right(cls: Type[_EitherT], right: _R_co) -> _EitherT:  # type: ignore[misc]  # covariant variable as a parameter
         return cls(right=right)
 
-    def __init__(self, *, left: Optional[_L_co] = None, right: Optional[_R_co] = None) -> None:
+    def __init__(
+        self: _EitherT, *, left: Optional[_L_co] = None, right: Optional[_R_co] = None
+    ) -> None:
         assert (left is None) ^ (right is None)
         self.left = left
         self.right = right
@@ -110,7 +115,9 @@ class Either(Generic[_L_co, _R_co]):
 
 _T_co = TypeVar("_T_co", covariant=True)
 _ErrorT = TypeVar("_ErrorT", bound=Exception, covariant=True)
-_ResulT = TypeVar("_ResulT", bound="Result")
+_ResulT = TypeVar(
+    "_ResulT", bound="Result"
+)  # TODO(egparedes): migrate to PEP-673 "Self" when supported
 
 
 @dataclass_(init=False, slots=True)
@@ -126,7 +133,7 @@ class Result(Generic[_T_co, _ErrorT]):
     def from_failure(cls: Type[_ResulT], error: _ErrorT) -> _ResulT:  # type: ignore[misc]  # covariant variable as a parameter
         return cls(None, error=error)
 
-    def __init__(self, value: Optional[_T_co], *, error: Optional[_ErrorT] = None):
+    def __init__(self: _ResulT, value: Optional[_T_co], *, error: Optional[_ErrorT] = None):
         assert (value is None) ^ (error is None)
         self.value = value
         self.error = error
@@ -259,7 +266,9 @@ class SourceLocation(pydantic.BaseModel):
             or getattr(ast_node, "lineno", None) is None
             or getattr(ast_node, "col_offset", None) is None
         ):
-            raise ValueError(f"Passed AST node '{ast_node}' does not contain a valid source location.")
+            raise ValueError(
+                f"Passed AST node '{ast_node}' does not contain a valid source location."
+            )
         if source is None:
             source = f"<ast.{type(ast_node).__name__} at 0x{id(ast_node):x}>"
         return cls(
@@ -280,7 +289,9 @@ class SourceLocation(pydantic.BaseModel):
         end_column: Optional[int] = None,
     ) -> None:
         assert end_column is None or end_line is not None
-        super().__init__(line=line, column=column, source=source, end_line=end_line, end_column=end_column)
+        super().__init__(
+            line=line, column=column, source=source, end_line=end_line, end_column=end_column
+        )
 
     def __str__(self) -> str:
         src = self.source or ""
@@ -304,7 +315,9 @@ class SourceLocationGroup(pydantic.BaseModel):
     locations: Tuple[SourceLocation, ...]
     context: Optional[Union[str, Tuple[str, ...]]]
 
-    def __init__(self, *locations: SourceLocation, context: Optional[Union[str, Tuple[str, ...]]] = None) -> None:
+    def __init__(
+        self, *locations: SourceLocation, context: Optional[Union[str, Tuple[str, ...]]] = None
+    ) -> None:
         super().__init__(locations=locations, context=context)
 
     def __str__(self) -> str:

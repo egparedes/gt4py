@@ -154,11 +154,18 @@ _V = TypeVar("_V")
 
 class NonDataDescriptor(Protocol[_C, _V]):
     @overload
-    def __get__(self, _instance: None, _owner_type: Type[_C]) -> NonDataDescriptor[_C, _V]:
+    def __get__(self, _instance: Literal[None], _owner_type: Type[_C]) -> NonDataDescriptor[_C, _V]:
         ...
 
     @overload
-    def __get__(self, _instance: _C, _owner_type: Optional[Type[_C]] = None) -> _V:
+    def __get__(  # noqa: F811  # redefinion of unused member
+        self, _instance: _C, _owner_type: Optional[Type[_C]]
+    ) -> _V:
+        ...
+
+    def __get__(  # noqa: F811  # redefinion of unused member
+        self, _instance: Optional[_C], _owner_type: Optional[Type[_C]]
+    ) -> _V | NonDataDescriptor[_C, _V]:
         ...
 
 

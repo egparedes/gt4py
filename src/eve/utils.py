@@ -481,21 +481,18 @@ class FrozenNamespace(types.SimpleNamespace, Generic[T]):
 
 
 if sys.version_info >= (3, 10):
-    field_: Final = dataclasses.field
+    optional_field: Final = functools.partial(dataclasses.field, default=None, kw_only=True)
 else:
-
-    @functools.wraps(dataclasses.field)
-    def field_(*, kw_only: Optional[bool] = None, **kwargs: Any) -> dataclasses.Field:
-        return dataclasses.field(**kwargs)
+    optional_field: Final = functools.partial(dataclasses.field, default=None)
 
 
 @dataclasses.dataclass
 class UIDGenerator:
     """Simple unique id generator using different methods."""
 
-    prefix: Optional[str] = field_(default=None, kw_only=True)
-    width: Optional[int] = field_(default=None, kw_only=True)
-    warn_unsafe: Optional[bool] = field_(default=None, kw_only=True)
+    prefix: Optional[str] = optional_field()
+    width: Optional[int] = optional_field()
+    warn_unsafe: Optional[bool] = optional_field()
 
     #: Constantly increasing counter for generation of sequential unique ids
     _counter: Iterator[int] = dataclasses.field(

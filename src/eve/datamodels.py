@@ -57,7 +57,6 @@ Examples: (Doctests disabled)
 
 from __future__ import annotations
 
-import abc
 import dataclasses
 import functools
 import sys
@@ -68,7 +67,9 @@ import warnings
 import attr
 import attrs
 
-from eve import extended_typing as xtyping, type_validation as eve_tv, utils
+from eve import extended_typing as xtyping
+from eve import type_validation as eve_tv
+from eve import utils
 from eve.extended_typing import (
     Any,
     Callable,
@@ -80,7 +81,6 @@ from eve.extended_typing import (
     List,
     Literal,
     Mapping,
-    NamedTuple,
     Optional,
     Protocol,
     Sequence,
@@ -138,9 +138,9 @@ else:
 RootValidatorType = Callable[[Type[DataModelTP], DataModelTP], None]
 BoundRootValidatorType = Callable[[DataModelTP], None]
 
-TypeValidationFactory = eve_tv.GenericTypeValidationFactory[ValidatorType]
+TypeValidatorFactory = eve_tv.GenericTypeValidatorFactory[ValidatorType]
 
-DefaultTypeValidationFactory: Final = eve_tv.attrs_type_validator_factory if __debug__ else None
+DefaultTypeValidatorFactory: Final = eve_tv.attrs_type_validator_factory if __debug__ else None
 
 
 # Implementation
@@ -173,7 +173,7 @@ def datamodel(
     match_args: bool = True,
     kw_only: bool = False,
     slots: bool = False,
-    type_validation_factory: Optional[TypeValidationFactory] = DefaultTypeValidationFactory,
+    type_validation_factory: Optional[TypeValidatorFactory] = DefaultTypeValidatorFactory,
 ) -> Callable[[Type[T]], Type[T]]:
     ...
 
@@ -191,7 +191,7 @@ def datamodel(
     match_args: bool = True,
     kw_only: bool = False,
     slots: bool = False,
-    type_validation_factory: Optional[TypeValidationFactory] = DefaultTypeValidationFactory,
+    type_validation_factory: Optional[TypeValidatorFactory] = DefaultTypeValidatorFactory,
 ) -> Type[T]:
     ...
 
@@ -208,7 +208,7 @@ def datamodel(
     match_args: bool = True,
     kw_only: bool = False,
     slots: bool = False,
-    type_validation_factory: Optional[TypeValidationFactory] = DefaultTypeValidationFactory,
+    type_validation_factory: Optional[TypeValidatorFactory] = DefaultTypeValidatorFactory,
 ) -> Union[Type[T], Callable[[Type[T]], Type[T]]]:
     """Add generated special methods to classes according to the specified attributes (class decorator).
 
@@ -238,8 +238,8 @@ def datamodel(
 
     Note:
         Currently implemented using :func:`attr.s` from `attrs <https://www.attrs.org/>`_
-    """
 
+    """
     kwargs = {
         "repr": repr,
         "eq": eq,
@@ -283,7 +283,7 @@ class DataModel:
         match_args: bool = True,
         kw_only: bool = False,
         slots: bool = False,
-        type_validation_factory: Optional[TypeValidationFactory] = DefaultTypeValidationFactory,
+        type_validation_factory: Optional[TypeValidatorFactory] = DefaultTypeValidatorFactory,
         **kwargs: Any,
     ) -> None:
         super(DataModel, cls).__init_subclass__(
@@ -583,7 +583,7 @@ def update_forward_refs(
         field_attr = None
         for field_name in fields:
             field_attr = getattr(datamodel_fields_ns, field_name)
-            if isinstance((field_attr.type), ForwardRef):
+            if isinstance(field_attr.type, ForwardRef):
                 actual_type = xtyping.eval_forward_ref(
                     field_attr.type,
                     sys.modules[model.__module__].__dict__,
@@ -830,7 +830,7 @@ def _make_datamodel(
     match_args: bool,
     kw_only: bool,
     slots: bool,
-    type_validation_factory: Optional[TypeValidationFactory],
+    type_validation_factory: Optional[TypeValidatorFactory],
     stacklevel_offset: int = 0,
 ) -> Type[T]:
     """Actual implementation of the Data Model creation.
