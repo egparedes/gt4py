@@ -19,13 +19,17 @@
 
 from __future__ import annotations
 
+import collections.abc
 import dataclasses
+
+import attr
 
 from . import type_definitions
 from . import extended_typing as xtyping
 from .extended_typing import (
     Any,
     Callable,
+    ForwardRef,
     Generator,
     Optional,
     Protocol,
@@ -36,8 +40,8 @@ from .extended_typing import (
     Union,
 )
 
-if xtyping.TYPE_CHECKING:
-    from .datamodels import Attribute as DataModelAttrib, DataModelTP
+
+_T = TypeVar("_T")
 
 _A = TypeVar("_A")
 _C = TypeVar("_C")
@@ -53,7 +57,7 @@ _ClsAttribValT = TypeVar("_ClsAttribValT", bound=ClassAttribValidatorType)
 
 
 class GenericTypeValidationFactory(Protocol[_ClsAttribValT]):
-    def __call__(self, annotation: xtyping.SourceTypingAnnotation) -> _ClsAttribValT:
+    def __call__(self, annotation: SourceTypingAnnotation) -> _ClsAttribValT:
         ...
 
 
@@ -62,8 +66,132 @@ class GenericTypeValidationFactory(Protocol[_ClsAttribValT]):
 # ]
 
 
-RootValidatorValuesType = Dict[str, Any]
-RootValidatorType = Callable[[Type, RootValidatorValuesType], RootValidatorValuesType]
+# RootValidatorValuesType = Dict[str, Any]
+# RootValidatorType = Callable[[Type, RootValidatorValuesType], RootValidatorValuesType]
+
+# TypeValidationFactory = Callable[[xtyping.SourceTypingAnnotation], ValidatorType]
+# _ErrorT = TypeVar("_ErrorT", bound=Exception)
+# TypeValidationResult = type_definitions.Result[bool]
+
+
+if xtyping.TYPE_CHECKING:
+    # from .datamodels import Attribute as DataModelAttrib, DataModelTP
+    AttrsValidatorType = ClassAttribValidatorType[Any, attr.Attribute[_T], _T]
+else:
+    AttrsValidatorType = ClassAttribValidatorType[Any, attr.Attribute, _T]
+
+
+def attrs_type_validator_factory(annotation: SourceTypingAnnotation) -> AttrsValidatorType:
+    type_args = xtyping.get_args(annotation)
+
+    # Non-generic types
+    if isinstance(annotation, type) and annotation is not type(
+        None
+    ):  # noqa: E721  # use isinstance
+        assert not type_args
+        if annotation is int:
+            return instance_of_int_attrs_validator()
+        else:
+            return attr.validators.instance_of(annotation)
+    if isinstance(annotation, xtyping.TypeVar):
+        if annotation.__bound__:
+            return attr.validators.instance_of(annotation.__bound__)
+        else:
+            return empty_attrs_validator()
+    if isinstance(annotation, ForwardRef):        
+        # return forward_ref_type_attrs_validator()
+        return empty_attrs_validator()
+    if annotation is Any:
+        return empty_attrs_validator()
+
+    # Generic and parametrized type hints
+    origin_type = xtyping.get_origin(annotation)
+
+    if origin_type is xtyping.Literal:
+        return literal_type_attrs_validator(*type_args)
+    if origin_type is xtyping.Union:
+        return union_type_attrs_validator(*type_args)
+    if isinstance(origin_type, type):
+        # Deal with generic collections
+        if issubclass(origin_type, tuple):
+            return tuple_type_attrs_validator(*type_args, tuple_type=origin_type)
+        if issubclass(origin_type, (collections.abc.Sequence, collections.abc.Set)):
+            assert len(type_args) == 1
+            member_type_hint = type_args[0]
+            return attr.validators.deep_iterable(
+                member_validator=attrs_type_validator_factory(member_type_hint),
+                iterable_validator=attr.validators.instance_of(origin_type),
+            )
+        if issubclass(origin_type, collections.abc.Mapping):
+            assert len(type_args) == 2
+            key_type_hint, value_type_hint = type_args
+            return attr.validators.deep_mapping(
+                key_validator=attrs_type_validator_factory(key_type_hint),
+                value_validator=attrs_type_validator_factory(value_type_hint),
+                mapping_validator=attr.validators.instance_of(origin_type),
+            )
+
+    raise TypeError(f"Type description '{annotation}' is not supported.")
+
+
+## ---------------------
+
+
+# def strict_type_attrs_validator(
+#     type_hint: Any, *, forward_eval_module: Optional[str] = None
+# ) -> ValidatorType:
+#     """Create an ``attr.s`` strict type validator for a specific typing hint."""
+#     type_args = typing.get_args(type_hint)
+
+#     # Custom type validator
+#     if isinstance(type_hint, TypeWithAttrValidatorTp):
+#         return type_hint.__type_validator__()
+
+#     # Non-generic types
+#     if isinstance(type_hint, type) and type_hint is not type(None):  # noqa: E721  # use isinstance
+#         assert not type_args
+#         if type_hint is int:
+#             return instance_of_int_attrs_validator()
+#         else:
+#             return attr.validators.instance_of(type_hint)
+#     if isinstance(type_hint, typing.TypeVar):
+#         if type_hint.__bound__:
+#             return attr.validators.instance_of(type_hint.__bound__)
+#         else:
+#             return empty_attrs_validator()
+#     if isinstance(type_hint, ForwardRef):
+#         return forward_ref_type_attrs_validator()
+#     if type_hint is Any:
+#         return empty_attrs_validator()
+
+#     # Generic and parametrized type hints
+#     origin_type = typing.get_origin(type_hint)
+
+#     if origin_type is typing.Literal:
+#         return literal_type_attrs_validator(*type_args)
+#     if origin_type is typing.Union:
+#         return union_type_attrs_validator(*type_args)
+#     if isinstance(origin_type, type):
+#         # Deal with generic collections
+#         if issubclass(origin_type, tuple):
+#             return tuple_type_attrs_validator(*type_args, tuple_type=origin_type)
+#         if issubclass(origin_type, (collections.abc.Sequence, collections.abc.Set)):
+#             assert len(type_args) == 1
+#             member_type_hint = type_args[0]
+#             return attr.validators.deep_iterable(
+#                 member_validator=strict_type_attrs_validator(member_type_hint),
+#                 iterable_validator=attr.validators.instance_of(origin_type),
+#             )
+#         if issubclass(origin_type, collections.abc.Mapping):
+#             assert len(type_args) == 2
+#             key_type_hint, value_type_hint = type_args
+#             return attr.validators.deep_mapping(
+#                 key_validator=strict_type_attrs_validator(key_type_hint),
+#                 value_validator=strict_type_attrs_validator(value_type_hint),
+#                 mapping_validator=attr.validators.instance_of(origin_type),
+#             )
+
+#     raise TypeError(f"Type description '{type_hint}' is not supported.")
 
 
 @dataclasses.dataclass
@@ -77,7 +205,7 @@ class _ForwardRefValidator:
         if self.validator is None:
             model_cls = instance.__class__
             update_forward_refs(model_cls)
-            self.validator = strict_type_attrs_validator(
+            self.validator = attrs_type_validator_factory(
                 getattr(getattr(model_cls, _MODEL_FIELDS), attribute.name).type
             )
 
@@ -207,13 +335,13 @@ def tuple_type_attrs_validator(*type_args: Type, tuple_type: Type = tuple) -> Va
             raise TypeError(f"Invalid 'tuple' subclass '{tuple_type}'.")
         member_type_hint = type_args[0]
         return attr.validators.deep_iterable(
-            member_validator=strict_type_attrs_validator(member_type_hint),
+            member_validator=attrs_type_validator_factory(member_type_hint),
             iterable_validator=attr.validators.instance_of(tuple_type),
         )
     else:
         # Tuple as a heterogeneous container: Tuple[int, float]
         return _TupleValidator(
-            tuple(strict_type_attrs_validator(t) for t in type_args),
+            tuple(attrs_type_validator_factory(t) for t in type_args),
             tuple_type,
         )
 
@@ -221,87 +349,10 @@ def tuple_type_attrs_validator(*type_args: Type, tuple_type: Type = tuple) -> Va
 def union_type_attrs_validator(*type_args: Type) -> ValidatorType:
     """Create an ``attr.s`` strict type validator for Union typings."""
     if len(type_args) == 2 and (type_args[1] is type(None)):  # noqa: E721  # use isinstance()
-        non_optional_validator = strict_type_attrs_validator(type_args[0])
+        non_optional_validator = attrs_type_validator_factory(type_args[0])
         return attr.validators.optional(non_optional_validator)
     else:
         return or_attrs_validator(
-            *(strict_type_attrs_validator(t) for t in type_args),
+            *(attrs_type_validator_factory(t) for t in type_args),
             error_type=TypeError,
         )
-
-
-def strict_type_attrs_validator(
-    type_hint: Any, *, forward_eval_module: Optional[str] = None
-) -> ValidatorType:
-    """Create an ``attr.s`` strict type validator for a specific typing hint."""
-    type_args = typing.get_args(type_hint)
-
-    # Custom type validator
-    if isinstance(type_hint, TypeWithAttrValidatorTp):
-        return type_hint.__type_validator__()
-
-    # Non-generic types
-    if isinstance(type_hint, type) and type_hint is not type(None):  # noqa: E721  # use isinstance
-        assert not type_args
-        if type_hint is int:
-            return instance_of_int_attrs_validator()
-        else:
-            return attr.validators.instance_of(type_hint)
-    if isinstance(type_hint, typing.TypeVar):
-        if type_hint.__bound__:
-            return attr.validators.instance_of(type_hint.__bound__)
-        else:
-            return empty_attrs_validator()
-    if isinstance(type_hint, ForwardRef):
-        return forward_ref_type_attrs_validator()
-    if type_hint is Any:
-        return empty_attrs_validator()
-
-    # Generic and parametrized type hints
-    origin_type = typing.get_origin(type_hint)
-
-    if origin_type is typing.Literal:
-        return literal_type_attrs_validator(*type_args)
-    if origin_type is typing.Union:
-        return union_type_attrs_validator(*type_args)
-    if isinstance(origin_type, type):
-        # Deal with generic collections
-        if issubclass(origin_type, tuple):
-            return tuple_type_attrs_validator(*type_args, tuple_type=origin_type)
-        if issubclass(origin_type, (collections.abc.Sequence, collections.abc.Set)):
-            assert len(type_args) == 1
-            member_type_hint = type_args[0]
-            return attr.validators.deep_iterable(
-                member_validator=strict_type_attrs_validator(member_type_hint),
-                iterable_validator=attr.validators.instance_of(origin_type),
-            )
-        if issubclass(origin_type, collections.abc.Mapping):
-            assert len(type_args) == 2
-            key_type_hint, value_type_hint = type_args
-            return attr.validators.deep_mapping(
-                key_validator=strict_type_attrs_validator(key_type_hint),
-                value_validator=strict_type_attrs_validator(value_type_hint),
-                mapping_validator=attr.validators.instance_of(origin_type),
-            )
-
-    raise TypeError(f"Type description '{type_hint}' is not supported.")
-
-
-# TypeValidationFactory = Callable[[xtyping.SourceTypingAnnotation], ValidatorType]
-_ErrorT = TypeVar("_ErrorT", bound=Exception)
-TypeValidationResult = type_definitions.Result[bool]
-
-_ValidatorType = Callable[[Any, DataModelAttrib[_T], _T], Any]
-
-from attr import Attribute as AttrsAttribute, _ValidatorType as AttrsValidatorType
-
-AttributeValidatorType = Callable[[Type, AttributeInfo, T], None]
-ValidatorType = Callable[
-    [Any],
-]
-
-# def x_smaller_than_y(instance, attribute, value):
-
-
-def type_validator_factory(type_annotation: SourceTypingAnnotation) -> ValidatorType:
-    ...

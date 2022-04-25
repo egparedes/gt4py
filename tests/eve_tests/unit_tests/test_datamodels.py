@@ -47,8 +47,6 @@ import pytest_factoryboy as pytfboy
 from eve import datamodels, utils
 
 
-# pytest.skip("Skippping until datamodels is upgraded to 3.10", allow_module_level=True)
-
 T = TypeVar("T")
 
 
@@ -156,21 +154,6 @@ def test_devtools_compatibility(example_model_factory):
         assert f"{name}=" in formatted_string
 
 
-# def test_dataclass_compatibility(example_model_factory):
-#     model = example_model_factory()
-#     model_class = model.__class__
-
-#     assert hasattr(model_class, "__dataclass_fields__") and isinstance(
-#         model_class.__dataclass_fields__, dict
-#     )
-#     assert set(model_class.__datamodel_fields__.keys()) == set(
-#         model_class.__dataclass_fields__.keys()
-#     )
-#     assert dataclasses.is_dataclass(model_class)
-#     field_names = set(model_class.__datamodel_fields__.keys())
-#     assert all(f.name in field_names for f in dataclasses.fields(model))
-
-
 def test_init():
     @datamodels.datamodel
     class Model:
@@ -201,12 +184,12 @@ def test_default_values():
     assert model.enum_value == SampleEnum.FOO
     assert model.any_value == "ANY"
 
-    # @datamodels.datamodel
-    # class WrongModel:
-    #     bool_value: bool = 1
+    @datamodels.datamodel
+    class WrongModel:
+        bool_value: bool = 1
 
-    # with pytest.raises(TypeError, match="'bool_value'"):
-    #     WrongModel()
+    with pytest.raises(TypeError, match="'bool_value'"):
+        WrongModel()
 
 
 def test_default_factories():
@@ -224,8 +207,8 @@ def test_default_factories():
     class WrongModel:
         list_value: List[int] = datamodels.field(default_factory=tuple)
 
-    # with pytest.raises(TypeError, match="'list_value'"):
-    #     WrongModel()
+    with pytest.raises(TypeError, match="'list_value'"):
+        WrongModel()
 
 
 # Test field specification
@@ -278,9 +261,9 @@ class Model:
     for value in valid_values:
         Model(value=value)
 
-    # for value in wrong_values:
-    #     with pytest.raises((TypeError, ValueError), match="'value'"):
-    #         Model(value=value)
+    for value in wrong_values:
+        with pytest.raises((TypeError, ValueError), match="'value'"):
+            Model(value=value)
 
 
 def test_custom_class_type_hint():
@@ -307,10 +290,10 @@ def test_custom_class_type_hint():
     class AnotherClass:
         pass
 
-    # with pytest.raises(TypeError, match="value"):
-    #     Model1(value=AnotherClass())
-    # with pytest.raises(TypeError, match="value"):
-    #     Model2(value=AnotherClass())
+    with pytest.raises(TypeError, match="value"):
+        Model1(value=AnotherClass())
+    with pytest.raises(TypeError, match="value"):
+        Model2(value=AnotherClass())
 
 
 class MyType:
@@ -329,17 +312,6 @@ class MyType:
                 raise TypeError("Invalid value type for '{attribute.name}' field.")
 
         return _custom_validator
-
-
-def test_custom_type_hint_validator():
-    @datamodels.datamodel
-    class Model:
-        value: MyType
-
-    Model(value=types.SimpleNamespace(value=32, add=22))
-
-    # with pytest.raises(TypeError, match="value"):
-    #     Model(value=types.SimpleNamespace(value=32))
 
 
 @datamodels.datamodel
@@ -443,8 +415,8 @@ def test_field_redefinition():
 
     assert ChildModel2().value == 2.2
 
-    # with pytest.raises(TypeError, match="value"):
-    #     assert ChildModel2(value=2)
+    with pytest.raises(TypeError, match="value"):
+        assert ChildModel2(value=2)
 
 
 def test_class_vars():
@@ -733,23 +705,6 @@ def test_hash():
     )
 
 
-# def test_non_instantiable():
-#     @datamodels.datamodel(instantiable=False)
-#     class NonInstantiableModel:
-#         value: Any
-
-#     assert NonInstantiableModel.__datamodel_params__.instantiable is False
-#     with pytest.raises(TypeError, match="Trying to instantiate"):
-#         NonInstantiableModel()
-
-#     class NonInstantiableModel2(datamodels.DataModel, instantiable=False):
-#         value: Any
-
-#     assert NonInstantiableModel2.__datamodel_params__.instantiable is False
-#     with pytest.raises(TypeError, match="Trying to instantiate"):
-#         NonInstantiableModel2()
-
-
 # Test module functions
 def test_info_functions():
     @datamodels.datamodel
@@ -765,7 +720,6 @@ def test_info_functions():
     assert isinstance(fields_info, utils.FrozenNamespace)
     assert fields_info_keys == {"int_value", "float_value", "str_value"}
     assert datamodels.get_fields(Model) == fields_info
-    # assert datamodels.fields(Model, as_dataclass=True) == dataclasses.fields(Model)
 
     model = Model(int_value=1, float_value=2.0, str_value="string")
 
@@ -837,10 +791,10 @@ def test_basic_generic_field_type_validation():
     PartialGenericModel(value=[1.0, "value"])
     PartialGenericModel(value=[(1.0, "value")])
     PartialGenericModel(value=[None])
-    # with pytest.raises(TypeError, match="'value'"):
-    #     PartialGenericModel(value=1)
-    # with pytest.raises(TypeError, match="'value'"):
-    #     PartialGenericModel(value=(1, 2))
+    with pytest.raises(TypeError, match="'value'"):
+        PartialGenericModel(value=1)
+    with pytest.raises(TypeError, match="'value'"):
+        PartialGenericModel(value=(1, 2))
 
 
 # Reuse sample_type_data from test_field_type_hint
@@ -854,6 +808,6 @@ def test_concrete_field_type_validation(
     for value in valid_values:
         Model(value=value)
 
-    # for value in wrong_values:
-    #     with pytest.raises((TypeError, ValueError), match="'value'"):
-    #         Model(value=value)
+    for value in wrong_values:
+        with pytest.raises((TypeError, ValueError), match="'value'"):
+            Model(value=value)

@@ -98,8 +98,6 @@ _V = TypeVar("_V")
 
 Attribute = attr.Attribute
 
-_AttrsValidatorType = Callable[[Any, attr.Attribute[_T], _T], Any]
-
 
 class _AttrsClassTP(Protocol):
     __attrs_attrs__: ClassVar[Tuple[attr.Attribute, ...]]
@@ -127,13 +125,22 @@ class GenericDataModelTP(DataModelTP, Protocol):
         ...
 
 
-ValidatorType = eve_tv.ClassAttribValidatorType[DataModelTP, Attribute[_T], _T]
-BoundValidatorType = Callable[[Attribute[_T], _T], None]
+if xtyping.TYPE_CHECKING:
+    _AttrsValidatorType = Callable[[Any, attr.Attribute[_T], _T], Any]
+    ValidatorType = eve_tv.ClassAttribValidatorType[DataModelTP, Attribute[_T], _T]
+    BoundValidatorType = Callable[[Attribute[_T], _T], None]
+else:
+    _AttrsValidatorType = Callable[[Any, attr.Attribute, _T], Any]
+    ValidatorType = eve_tv.ClassAttribValidatorType[DataModelTP, Attribute, _T]
+    BoundValidatorType = Callable[[Attribute, _T], None]
+
 
 RootValidatorType = Callable[[Type[DataModelTP], DataModelTP], None]
 BoundRootValidatorType = Callable[[DataModelTP], None]
 
 TypeValidationFactory = eve_tv.GenericTypeValidationFactory[ValidatorType]
+
+DefaultTypeValidationFactory: Final = eve_tv.attrs_type_validator_factory if __debug__ else None
 
 
 # Implementation
@@ -143,6 +150,7 @@ _ROOT_VALIDATOR_TAG: Final = "__DATAMODEL_ROOT_VALIDATOR_TAG"
 _MODEL_FIELDS: Final = "__datamodel_fields__"
 _MODEL_PARAMS: Final = "__datamodel_params__"
 _ROOT_VALIDATORS: Final = "__datamodel_root_validators__"
+
 
 _KNOWN_MUTABLE_TYPES: Final = (list, dict, set)
 _CACHE_HASH_THRESHOLD: Final = 6
@@ -165,7 +173,7 @@ def datamodel(
     match_args: bool = True,
     kw_only: bool = False,
     slots: bool = False,
-    type_validation_factory: Optional[TypeValidationFactory] = None,
+    type_validation_factory: Optional[TypeValidationFactory] = DefaultTypeValidationFactory,
 ) -> Callable[[Type[T]], Type[T]]:
     ...
 
@@ -183,7 +191,7 @@ def datamodel(
     match_args: bool = True,
     kw_only: bool = False,
     slots: bool = False,
-    type_validation_factory: Optional[TypeValidationFactory] = None,
+    type_validation_factory: Optional[TypeValidationFactory] = DefaultTypeValidationFactory,
 ) -> Type[T]:
     ...
 
@@ -200,7 +208,7 @@ def datamodel(
     match_args: bool = True,
     kw_only: bool = False,
     slots: bool = False,
-    type_validation_factory: Optional[TypeValidationFactory] = None,
+    type_validation_factory: Optional[TypeValidationFactory] = DefaultTypeValidationFactory,
 ) -> Union[Type[T], Callable[[Type[T]], Type[T]]]:
     """Add generated special methods to classes according to the specified attributes (class decorator).
 
@@ -275,7 +283,7 @@ class DataModel:
         match_args: bool = True,
         kw_only: bool = False,
         slots: bool = False,
-        type_validation_factory: Optional[TypeValidationFactory] = None,
+        type_validation_factory: Optional[TypeValidationFactory] = DefaultTypeValidationFactory,
         **kwargs: Any,
     ) -> None:
         super(DataModel, cls).__init_subclass__(
@@ -822,7 +830,7 @@ def _make_datamodel(
     match_args: bool,
     kw_only: bool,
     slots: bool,
-    type_validation_factory: Optional[TypeValidationFactory] = None,
+    type_validation_factory: Optional[TypeValidationFactory],
     stacklevel_offset: int = 0,
 ) -> Type[T]:
     """Actual implementation of the Data Model creation.
