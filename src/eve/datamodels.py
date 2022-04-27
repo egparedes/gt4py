@@ -84,6 +84,8 @@ from eve.extended_typing import (
     Optional,
     Protocol,
     Sequence,
+    TypingAnnotation,
+    SourceTypingAnnotation,
     Tuple,
     Type,
     TypeVar,
@@ -110,7 +112,7 @@ class DataModelTP(_AttrsClassTP, xtyping.DevToolsPrettyPrintable, Protocol):
     __datamodel_fields__: ClassVar[utils.FrozenNamespace[Attribute]]
     __datamodel_params__: ClassVar[utils.FrozenNamespace[Type]]
     __datamodel_root_validators__: ClassVar[
-        Tuple[xtyping.NonDataDescriptor[DataModelTP, BoundRootValidatorType], ...]
+        Tuple[xtyping.NonDataDescriptor[DataModelTP, BoundRootValidator], ...]
     ]
 
 
@@ -125,20 +127,33 @@ class GenericDataModelTP(DataModelTP, Protocol):
         ...
 
 
+_A = TypeVar("_A")
+_C = TypeVar("_C")
+_V = TypeVar("_V")
+
+
+class ClassAttributeValidator(Protocol[_C, _A, _V]):
+    def __call__(self, instance: _C, attribute_info: _A, value: _V) -> None:
+        ...
+
+
+_T = TypeVar("_T")
+
+
 if xtyping.TYPE_CHECKING:
-    _AttrsValidatorType = Callable[[Any, attr.Attribute[_T], _T], Any]
-    ValidatorType = eve_tv.ClassAttributeValidatorType[DataModelTP, Attribute[_T], _T]
-    BoundValidatorType = Callable[[Attribute[_T], _T], None]
+    _AttrsValidator = Callable[[Any, attr.Attribute[_T], _T], Any]
+    FieldValidator = Callable[[DataModelTP, Attribute[_T], _T], None]
+    BoundFieldValidator = Callable[[Attribute[_T], _T], None]
 else:
-    _AttrsValidatorType = Callable[[Any, attr.Attribute, _T], Any]
-    ValidatorType = eve_tv.ClassAttributeValidatorType[DataModelTP, Attribute, _T]
-    BoundValidatorType = Callable[[Attribute, _T], None]
+    _AttrsValidator = Callable[[Any, attr.Attribute, _T], Any]
+    FieldValidator = Callable[[DataModelTP, Attribute, _T], None]
+    BoundFieldValidator = Callable[[Attribute, _T], None]
 
 
-RootValidatorType = Callable[[Type[DataModelTP], DataModelTP], None]
-BoundRootValidatorType = Callable[[DataModelTP], None]
+RootValidator = Callable[[Type[DataModelTP], DataModelTP], None]
+BoundRootValidator = Callable[[DataModelTP], None]
 
-TypeValidatorFactory = eve_tv.GenericTypeValidatorFactory[ValidatorType]
+FieldTypeValidatorFactory = Callable[[str, SourceTypingAnnotation], Optional[FieldValidator]]
 
 
 # Implementation
@@ -154,6 +169,8 @@ _KNOWN_MUTABLE_TYPES: Final = (list, dict, set)
 _CACHE_HASH_THRESHOLD: Final = 6
 
 
+# -- Data Models --
+
 if sys.version_info >= (3, 10):
     _dataclass: Final = functools.partial(dataclasses.dataclass, slots=True)
 else:
@@ -164,45 +181,41 @@ else:
 class _ForwardRefValidator:
     """Implementation of ``attr.s`` type validator for ``ForwardRef`` typings."""
 
-    factory: TypeValidatorFactory
+    factory: FieldTypeValidatorFactory
 
     #: Actual type validators created after resolving the forward references.
-    validator: Optional[ValidatorType] = None
+    validator: Optional[eve_tv.TypeValidator] = None
 
-    def __call__(self, instance: DataModelTP, attribute: DataModelAttrib, value: Any) -> None:
+    def __call__(self, instance: DataModelTP, attribute: attr.Attribute, value: Any) -> None:
         if self.validator is None:
             model_cls = instance.__class__
             update_forward_refs(model_cls)
             self.validator = self.factory(
-                getattr(getattr(model_cls, _MODEL_FIELDS), attribute.name).type
+                getattr(getattr(model_cls, _MODEL_FIELDS), attribute.name).type, name=attribute.name
             )
 
-        self.validator(instance, attribute, value)
+        self.validator(value)
 
 
-def _add_forward_ref(factory: TypeValidatorFactory) -> TypeValidatorFactory:
+def from_generic_tv_factory(factory: eve_tv.TypeValidatorFactory) -> FieldTypeValidatorFactory:
     @functools.wraps(factory)
-    def enhanced_factory(annotation: SourceTypingAnnotation) -> Optional[AttrsValidatorType]:
+    def enhanced_factory(name: str, annotation: TypingAnnotation) -> Optional[FieldValidator]:
         """Create an ``attr.s`` strict type validator for ``ForwardRef`` typings.
 
         The generated validator will resolve the field type to an actual type
         the first time is called.
         """
-
-        return (
-            _ForwardRefValidator(factory)
-            if isinstance(annotation, ForwardRef)
-            else factory(annotation)
-        )
+        if isinstance(annotation, ForwardRef):
+            return _ForwardRefValidator(factory)
+        else:
+            simple_validator = factory(annotation, name=name)
+            return lambda __i, __a, value: simple_validator(value)
 
     return enhanced_factory
 
 
-# -- Data Models --
-T = TypeVar("T")
-
-DefaultTypeValidatorFactory: Final = (
-    _add_forward_ref(eve_tv.attrs_type_validator_factory) if __debug__ else None
+DefaultTypeValidatorFactory: Final[Optional[FieldTypeValidatorFactory]] = (
+    from_generic_tv_factory(eve_tv.simple_type_validator_factory) if __debug__ else None
 )
 
 
@@ -219,7 +232,7 @@ def datamodel(
     match_args: bool = True,
     kw_only: bool = False,
     slots: bool = False,
-    type_validation_factory: Optional[TypeValidatorFactory] = DefaultTypeValidatorFactory,
+    type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultTypeValidatorFactory,
 ) -> Callable[[Type[T]], Type[T]]:
     ...
 
@@ -237,7 +250,7 @@ def datamodel(
     match_args: bool = True,
     kw_only: bool = False,
     slots: bool = False,
-    type_validation_factory: Optional[TypeValidatorFactory] = DefaultTypeValidatorFactory,
+    type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultTypeValidatorFactory,
 ) -> Type[T]:
     ...
 
@@ -254,7 +267,7 @@ def datamodel(
     match_args: bool = True,
     kw_only: bool = False,
     slots: bool = False,
-    type_validation_factory: Optional[TypeValidatorFactory] = DefaultTypeValidatorFactory,
+    type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultTypeValidatorFactory,
 ) -> Union[Type[T], Callable[[Type[T]], Type[T]]]:
     """Add generated special methods to classes according to the specified attributes (class decorator).
 
@@ -329,7 +342,7 @@ class DataModel:
         match_args: bool = True,
         kw_only: bool = False,
         slots: bool = False,
-        type_validation_factory: Optional[TypeValidatorFactory] = DefaultTypeValidatorFactory,
+        type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultTypeValidatorFactory,
         **kwargs: Any,
     ) -> None:
         super(DataModel, cls).__init_subclass__(
@@ -716,7 +729,7 @@ def concretize(
 # TODO:     print("SET", attribute, value)
 
 
-def _collect_field_validators(cls: Type) -> Dict[str, ValidatorType]:
+def _collect_field_validators(cls: Type) -> Dict[str, FieldValidator]:
     result = {}
     for member in cls.__dict__.values():
         if hasattr(member, _FIELD_VALIDATOR_TAG):
@@ -727,7 +740,7 @@ def _collect_field_validators(cls: Type) -> Dict[str, ValidatorType]:
     return result
 
 
-def _collect_root_validators(cls: Type) -> List[RootValidatorType]:
+def _collect_root_validators(cls: Type) -> List[RootValidator]:
     result = []
     for base in reversed(cls.__mro__[1:]):
         for validator in getattr(base, _ROOT_VALIDATORS, []):
@@ -876,7 +889,7 @@ def _make_datamodel(
     match_args: bool,
     kw_only: bool,
     slots: bool,
-    type_validation_factory: Optional[TypeValidatorFactory],
+    type_validation_factory: Optional[FieldTypeValidatorFactory],
     stacklevel_offset: int = 0,
 ) -> Type[T]:
     """Actual implementation of the Data Model creation.
@@ -895,7 +908,9 @@ def _make_datamodel(
     for key in annotations:
         type_hint = annotations[key] = partial_annotations[key]
         if typing.get_origin(type_hint) is not ClassVar:
-            type_validator = type_validation_factory(type_hint) if type_validation_factory else None
+            type_validator = (
+                type_validation_factory(key, type_hint) if type_validation_factory else None
+            )
             cls_attr_value = cls.__dict__.get(key, NOTHING)
             if cls_attr_value is NOTHING:
                 # Missing definition

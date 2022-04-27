@@ -303,7 +303,7 @@ class MyType:
         return self.value + something
 
     @classmethod
-    def __type_validator__(cls) -> datamodels.ValidatorType:
+    def __type_validator__(cls) -> datamodels.FieldValidator:
         def _custom_validator(
             instance: datamodels.DataModelTP, attribute: datamodels.Attribute, value: Any
         ) -> None:

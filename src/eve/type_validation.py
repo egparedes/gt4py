@@ -50,51 +50,13 @@ from .extended_typing import (
 )
 
 
-_A = TypeVar("_A")
-_C = TypeVar("_C")
-_V = TypeVar("_V")
-
-
-_ValidatorT = TypeVar("_ValidatorT")
-
-
-class GenericTypeValidatorFactory(Protocol[_ValidatorT]):
-    def __call__(self, annotation: SourceTypingAnnotation) -> Optional[_ValidatorT]:
-        ...
-
-
-class ClassAttributeValidatorType(Protocol[_C, _A, _V]):
-    def __call__(self, instance: _C, attribute_info: _A, value: _V) -> None:
-        ...
-
-
-_T = TypeVar("_T")
-
-if xtyping.TYPE_CHECKING:
-    AttrsValidatorType = ClassAttributeValidatorType[Any, attr.Attribute[_T], _T]
-else:
-    AttrsValidatorType = ClassAttributeValidatorType[Any, attr.Attribute, _T]
-
-
-AttrsTypeValidatorFactory = GenericTypeValidatorFactory[AttrsValidatorType]
-
-# _ClsAttribValT = TypeVar("_ClsAttribValT", bound=ClassAttributeValidatorType)
-# TypeValidationResult = type_definitions.Result[bool]
-
-
-if sys.version_info >= (3, 10):
-    _frozen_dataclass: Final = functools.partial(dataclasses.dataclass, frozen=True, slots=True)
-else:
-    _frozen_dataclass: Final = functools.partial(dataclasses.dataclass, frozen=True)
-
-
 @runtime_checkable
 class TypeValidator(Protocol):
     @abc.abstractmethod
     def __call__(
         self,
         value: Any,
-        type_annotation: SourceTypingAnnotation,
+        type_annotation: TypingAnnotation,
         *,
         name: Optional[str] = None,
         globalns: Optional[Dict[str, Any]] = None,
@@ -128,7 +90,7 @@ class SafeTypeValidator(Protocol):
     def __call__(
         self,
         value: Any,
-        type_annotation: SourceTypingAnnotation,
+        type_annotation: TypingAnnotation,
         *,
         name: Optional[str] = None,
         globalns: Optional[Dict[str, Any]] = None,
@@ -179,7 +141,7 @@ class TypeValidatorFactory(Protocol):
     @abc.abstractmethod
     def __call__(
         self,
-        type_annotation: SourceTypingAnnotation,
+        type_annotation: TypingAnnotation,
         *,
         name: Optional[str] = None,
         globalns: Optional[Dict[str, Any]] = None,
@@ -190,28 +152,11 @@ class TypeValidatorFactory(Protocol):
 
 
 # Implementation
-def simple_type_validator(
-    value: Any,
-    type_annotation: SourceTypingAnnotation,
-    *,
-    name: Optional[str] = None,
-    globalns: Optional[Dict[str, Any]] = None,
-    localns: Optional[Dict[str, Any]] = None,
-    **kwargs: Any,
-):
-    SimpleTypeValidatorFactory(
-        type_annotation, name=name, globalns=globalns, localns=localns, **kwargs
-    )(value, **kwargs)
-
-
-safe_simple_type_validator: Final[SafeTypeValidator] = as_safe_type_validator(simple_type_validator)
-
-
-class SimpleTypeValidatorFactory(TypeValidatorFactory):
-    @utils.optional_lru_cache
-    def __call__(
-        self,
-        type_annotation: SourceTypingAnnotation,
+class _SimpleTypeValidatorFactory:
+    @classmethod
+    def make_validator(
+        cls,
+        type_annotation: TypingAnnotation,
         *,
         name: Optional[str] = None,
         globalns: Optional[Dict[str, Any]] = None,
@@ -226,27 +171,34 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
             strict_int: do not accept ``bool`` values as ``int`` (default: ``True``).
 
         """
+        if name is None:
+            name = "<value>"
+
+        make_recursive = functools.partial(
+            cls.make_validator, name=name, globalns=globalns, localns=localns, **kwargs
+        )
+
         # Non-generic types
         if isinstance(type_annotation, type) and type_annotation is not type(
             None
         ):  # noqa: E721  # use isinstance
             assert not xtyping.get_args(type_annotation)
             if type_annotation is int and kwargs.get("strict_int", True):
-                return self.make_is_instance_of_int(name)
+                return cls.make_is_instance_of_int(name)
             else:
-                return self.make_is_instance_of(name, type_annotation)
+                return cls.make_is_instance_of(name, type_annotation)
 
         if isinstance(type_annotation, xtyping.TypeVar):
             if type_annotation.__bound__:
-                return self.make_is_instance_of(name, type_annotation.__bound__)
+                return cls.make_is_instance_of(name, type_annotation.__bound__)
             else:
-                return self.make_is_any()
+                return cls.make_is_any(name)
 
         if isinstance(type_annotation, ForwardRef):
             return xtyping.eval_forward_ref(type_annotation, globalns=globalns, localns=localns)
 
         if type_annotation is Any:
-            return self.make_is_any()
+            return cls.make_is_any(name)
 
         # Generic and parametrized type hints
         origin_type = xtyping.get_origin(type_annotation)
@@ -254,10 +206,10 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
 
         if origin_type is xtyping.Literal:
             if len(type_args) == 1:
-                return self.make_is_literal(name, type_args[0])
+                return cls.make_is_literal(name, type_args[0])
             else:
-                return self.combine_validators_as_or(
-                    name, *(self.make_is_literal(name, a) for a in type_args), error_type=ValueError
+                return cls.combine_validators_as_or(
+                    name, *(cls.make_is_literal(name, a) for a in type_args), error_type=ValueError
                 )
 
         if origin_type is xtyping.Union:
@@ -267,10 +219,14 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
                 if t in (type(None), None):
                     has_none = True
                 else:
-                    validators.append(self(t))
+                    validators.append(make_recursive(t))
 
-            validator = self.combine_validators_as_or(name, *validators)
-            return self.combine_optional(name, validator) if has_none else validator
+            validator = (
+                cls.combine_validators_as_or(name, *validators)
+                if len(validators) > 1
+                else validators[0]
+            )
+            return cls.combine_optional(name, validator) if has_none else validator
 
         if isinstance(origin_type, type):
             # Deal with generic collections
@@ -279,32 +235,35 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
                 if len(type_args) == 2 and (type_args[1] is Ellipsis):
                     # Tuple as an immutable sequence type (e.g. Tuple[int, ...])
                     member_type_hint = type_args[0]
-                    return self.make_is_iterable_of(
+                    return cls.make_is_iterable_of(
                         name,
-                        self(member_type_hint),
-                        iterable_validator=self.make_is_instance_of(origin_type),
+                        make_recursive(member_type_hint),
+                        iterable_validator=cls.make_is_instance_of(name, origin_type),
                     )
 
                 else:
                     # Tuple as a heterogeneous container (e.g. Tuple[int, float])
-                    return self.make_is_tuple_of(
-                        name, tuple(self(t) for t in type_args), origin_type
+                    return cls.make_is_tuple_of(
+                        name, tuple(make_recursive(t) for t in type_args), origin_type
                     )
 
             if issubclass(origin_type, (collections.abc.Sequence, collections.abc.Set)):
                 assert len(type_args) == 1
                 member_type_hint = type_args[0]
-                return self.make_is_iterable_of(
+                return cls.make_is_iterable_of(
                     name,
-                    self(member_type_hint),
-                    iterable_validator=self.make_is_instance_of(origin_type),
+                    make_recursive(member_type_hint),
+                    iterable_validator=cls.make_is_instance_of(name, origin_type),
                 )
 
             if issubclass(origin_type, collections.abc.Mapping):
                 assert len(type_args) == 2
                 key_type_hint, value_type_hint = type_args
-                return self.make_is_mapping_of(
-                    name, self(key_type_hint), self(value_type_hint), origin_type
+                return cls.make_is_mapping_of(
+                    name,
+                    make_recursive(key_type_hint),
+                    make_recursive(value_type_hint),
+                    make_recursive(origin_type),
                 )
 
         return None
@@ -420,9 +379,9 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
             if mapping_validator is not None:
                 mapping_validator(value, **kwargs)
 
-            for k, v in value.items():
+            for k in value:
                 key_validator(k, **kwargs)
-                value_validator(v, **kwargs)
+                value_validator(value[k], **kwargs)
 
         return _is_mapping_of
 
@@ -438,7 +397,7 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
 
     @staticmethod
     def combine_validators_as_or(
-        name: str, *validators, error_type: Type[Exception]
+        name: str, *validators, error_type: Type[Exception] = TypeError
     ) -> FixedTypeValidator:
         def _combined_validator(value: Any, **kwargs: Any) -> Any:
             for v in validators:
@@ -455,7 +414,24 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
         return _combined_validator
 
 
-# attrs_type_validator_factory: AttrsTypeValidatorFactory = AttrsValidators.make_validator
+simple_type_validator_factory = _SimpleTypeValidatorFactory.make_validator
+
+
+def simple_type_validator(
+    value: Any,
+    type_annotation: TypingAnnotation,
+    *,
+    name: Optional[str] = None,
+    globalns: Optional[Dict[str, Any]] = None,
+    localns: Optional[Dict[str, Any]] = None,
+    **kwargs: Any,
+):
+    simple_type_validator_factory(
+        type_annotation, name=name, globalns=globalns, localns=localns, **kwargs
+    )(value, **kwargs)
+
+
+safe_simple_type_validator: Final[SafeTypeValidator] = as_safe_type_validator(simple_type_validator)
 
 
 # def typeguard_type_validator_factory(
