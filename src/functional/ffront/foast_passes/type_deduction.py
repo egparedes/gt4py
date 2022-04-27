@@ -11,13 +11,13 @@
 # distribution for a copy of the license or check <https://www.gnu.org/licenses/>.
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
-from typing import Optional
+from typing import Any, Optional
 
 import functional.ffront.field_operator_ast as foast
 from eve import NodeTranslator, SymbolTableTrait
 from functional.common import GTSyntaxError
 from functional.ffront import common_types as ct
-from functional.ffront.type_info import TypeInfo, is_complete_symbol_type
+from functional.ffront.type_info import GenericDimensions, TypeInfo, is_complete_symbol_type
 
 
 def are_broadcast_compatible(left: TypeInfo, right: TypeInfo) -> bool:
@@ -38,18 +38,20 @@ def are_broadcast_compatible(left: TypeInfo, right: TypeInfo) -> bool:
     True
 
     """
-    if left.is_field_type and right.is_field_type:
-        return left.type.dims == right.type.dims
-    elif left.is_field_type and right.is_scalar:
-        return left.type.dtype == right.type
-    elif left.is_scalar and left.is_field_type:
-        return left.type == right.type.dtype
-    elif left.is_scalar and right.is_scalar:
-        return left.type == right.type
-    return False
+    both_dims_given = bool(left.dims and right.dims)
+    both_dims_given &= not isinstance(left.dims, GenericDimensions)
+    both_dims_given &= not isinstance(right.dims, GenericDimensions)
+    if both_dims_given and any(
+        ldim != rdim
+        for ldim, rdim in zip(
+            left.dims, right.dims  # type: ignore[arg-type]  # we know they are lists here
+        )
+    ):
+        return False
+    return left.dtype == right.dtype
 
 
-def broadcast_typeinfos(left: TypeInfo, right: TypeInfo) -> TypeInfo:
+def broadcast_typeinfos(left: TypeInfo, right: TypeInfo) -> Optional[TypeInfo]:
     """
     Decide the result type of a binary operation between arguments of ``left`` and ``right`` type.
 
@@ -67,7 +69,44 @@ def broadcast_typeinfos(left: TypeInfo, right: TypeInfo) -> TypeInfo:
         return None
     if left.is_scalar and right.is_field_type:
         return right
+    if left.dims and right.dims and len(right.dims) > len(left.dims):
+        return right
     return left
+
+
+def boolified_typeinfo(typeinfo: TypeInfo):
+    """
+    Create a new symbol type from a TypeInfo, replacing the data type with ``bool``.
+
+    Examples:
+    ---------
+    >>> from functional.common import Dimension
+    >>> scalar_t = TypeInfo(ct.ScalarType(kind=ct.ScalarKind.FLOAT64))
+    >>> print(boolified_typeinfo(scalar_t).type)
+    bool
+
+    >>> field_t = TypeInfo(ct.FieldType(dims=[Dimension(value="I")], dtype=ct.ScalarType(kind=ct.ScalarKind)))
+    >>> print(boolified_typeinfo(field_t).type)
+    Field[[I], dtype=bool]
+
+    >>> deferred_t = TypeInfo(ct.DeferredSymbolType(constraint=ct.FieldType))
+    >>> print(boolified_typeinfo(deferred_t).type)
+    Field[..., dtype=bool]
+    """
+    type_class = typeinfo.constraint
+    if not type_class:
+        return None
+    kwargs: dict[str, Any] = {}
+    kwargs["dtype"] = ct.ScalarType(
+        kind=ct.ScalarKind.BOOL, shape=typeinfo.dtype.shape if typeinfo.dtype else None
+    )
+    if typeinfo.is_field_type:
+        kwargs["dims"] = typeinfo.dims if typeinfo.dims is not None else ...
+    elif typeinfo.is_scalar:
+        return TypeInfo(kwargs["dtype"])
+    else:
+        return None
+    return TypeInfo(type_class(**kwargs))
 
 
 class FieldOperatorTypeDeduction(NodeTranslator):
@@ -95,7 +134,7 @@ class FieldOperatorTypeDeduction(NodeTranslator):
     ...     kind=ct.ScalarKind.FLOAT64), dims=Ellipsis)
     """
 
-    contexts = (SymbolTableTrait.symtable_merger,)
+    contexts = (SymbolTableTrait.symtable_merger,)  # type: ignore  # TODO(ricoh): check if the SymbolTableTrait.symtable_merger annotation is correct.
 
     @classmethod
     def apply(cls, node: foast.FieldOperator) -> foast.FieldOperator:
@@ -143,7 +182,7 @@ class FieldOperatorTypeDeduction(NodeTranslator):
                         f"of type {refine_type}, instead of the expected type {node.type}"
                     ),
                 )
-            new_node = foast.Symbol[type(refine_type)](
+            new_node: foast.Symbol = foast.Symbol(
                 id=node.id, type=refine_type, location=node.location
             )
             symtable[new_node.id] = new_node
@@ -182,6 +221,33 @@ class FieldOperatorTypeDeduction(NodeTranslator):
             op=node.op, left=new_left, right=new_right, location=node.location, type=new_type
         )
 
+    def visit_Compare(self, node: foast.Compare, **kwargs) -> foast.Compare:
+        new_left = self.visit(node.left, **kwargs)
+        new_right = self.visit(node.right, **kwargs)
+        new_type = self._deduce_compare_type(node, new_left.type, new_right.type)
+        return foast.Compare(
+            op=node.op, left=new_left, right=new_right, location=node.location, type=new_type
+        )
+
+    def _deduce_compare_type(
+        self, node: foast.Compare, left_type: ct.SymbolType, right_type: ct.SymbolType, **kwargs
+    ) -> Optional[ct.SymbolType]:
+        left_info = TypeInfo(left_type)
+        right_info = TypeInfo(right_type)
+        if any([not i.is_arithmetic_compatible for i in [left_info, right_info]]):
+            raise FieldOperatorTypeDeductionError.from_foast_node(
+                node,
+                msg=f"Incompatible type(s) for operator '{node.op}': {left_info.type}, {right_info.type}!",
+            )
+        if result := broadcast_typeinfos(
+            boolified_typeinfo(left_info), boolified_typeinfo(right_info)
+        ):
+            return result.type
+        raise FieldOperatorTypeDeductionError.from_foast_node(
+            node,
+            msg=f"Incompatible type(s) for operator '{node.op}': {left_info.type}, {right_info.type}!",
+        )
+
     def _deduce_binop_type(
         self,
         op: foast.BinaryOperator,
@@ -190,7 +256,7 @@ class FieldOperatorTypeDeduction(NodeTranslator):
         left_type: ct.SymbolType,
         right_type: ct.SymbolType,
         **kwargs,
-    ) -> ct.SymbolType:
+    ) -> Optional[ct.SymbolType]:
         if op in [
             foast.BinaryOperator.ADD,
             foast.BinaryOperator.SUB,
@@ -213,7 +279,7 @@ class FieldOperatorTypeDeduction(NodeTranslator):
         left_type: ct.SymbolType,
         right_type: ct.SymbolType,
         **kwargs,
-    ) -> ct.SymbolType:
+    ) -> Optional[ct.SymbolType]:
         left, right = TypeInfo(left_type), TypeInfo(right_type)
 
         # if one type is `None` (not deduced, generic), we propagate `None`
@@ -224,13 +290,13 @@ class FieldOperatorTypeDeduction(NodeTranslator):
             left.is_arithmetic_compatible
             and right.is_arithmetic_compatible
             and are_broadcast_compatible(left, right)
+            and (broadcast_typeinfo := broadcast_typeinfos(left, right))
         ):
-            return broadcast_typeinfos(left, right).type
-        else:
-            raise FieldOperatorTypeDeductionError.from_foast_node(
-                parent,
-                msg=f"Incompatible type(s) for operator '{op}': {left.type}, {right.type}!",
-            )
+            return broadcast_typeinfo.type
+        raise FieldOperatorTypeDeductionError.from_foast_node(
+            parent,
+            msg=f"Incompatible type(s) for operator '{op}': {left.type}, {right.type}!",
+        )
 
     def _deduce_logical_binop_type(
         self,
@@ -240,14 +306,15 @@ class FieldOperatorTypeDeduction(NodeTranslator):
         left_type: ct.SymbolType,
         right_type: ct.SymbolType,
         **kwargs,
-    ) -> ct.SymbolType:
+    ) -> Optional[ct.SymbolType]:
         left, right = TypeInfo(left_type), TypeInfo(right_type)
         if (
             left.is_logics_compatible
             and right.is_logics_compatible
             and are_broadcast_compatible(left, right)
+            and (broadcast_typeinfo := broadcast_typeinfos(left, right))
         ):
-            return broadcast_typeinfos(left, right).type
+            return broadcast_typeinfo.type
         else:
             raise FieldOperatorTypeDeductionError.from_foast_node(
                 parent,
@@ -273,6 +340,7 @@ class FieldOperatorTypeDeduction(NodeTranslator):
             return operand_ti.is_arithmetic_compatible
         elif op is foast.UnaryOperator.NOT:
             return operand_ti.is_logics_compatible
+        return False
 
     def visit_TupleExpr(self, node: foast.TupleExpr, **kwargs) -> foast.TupleExpr:
         new_elts = self.visit(node.elts, **kwargs)
@@ -304,14 +372,21 @@ class FieldOperatorTypeDeduction(NodeTranslator):
             return foast.Call(
                 func=new_func,
                 args=self.visit(node.args, **kwargs),
-                type=new_func.type.returns,
                 location=node.location,
+                type=new_func.type.returns,
             )
 
         raise FieldOperatorTypeDeductionError.from_foast_node(
             node,
             msg=f"Objects of type '{new_func.type}' are not callable.",
         )
+
+    def visit_Constant(self, node: foast.Constant, **kwargs) -> foast.Constant:
+        if not node.type:
+            raise FieldOperatorTypeDeductionError.from_foast_node(
+                node, msg=f"Found a literal with unrecognized type {node.type}."
+            )
+        return node
 
 
 class FieldOperatorTypeDeductionError(GTSyntaxError, SyntaxWarning):

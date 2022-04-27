@@ -9,7 +9,7 @@ from functional.iterator.util.sym_validation import validate_symbol_refs
 
 @noninstantiable
 class Node(eve.Node):
-    def __str__(self):
+    def __str__(self) -> str:
         from functional.iterator.pretty_printer import pformat
 
         return pformat(self)
@@ -24,20 +24,9 @@ class Expr(Node):
     ...
 
 
-class BoolLiteral(Expr):
-    value: bool
-
-
-class IntLiteral(Expr):
-    value: int
-
-
-class FloatLiteral(Expr):
-    value: float  # TODO other float types
-
-
-class StringLiteral(Expr):
+class Literal(Expr):
     value: str
+    type: str  # noqa: A003
 
 
 class NoneLiteral(Expr):
@@ -46,9 +35,6 @@ class NoneLiteral(Expr):
 
 class OffsetLiteral(Expr):
     value: Union[int, str]
-
-    def __hash__(self):
-        return self.value.__hash__()
 
 
 class AxisLiteral(Expr):
@@ -74,12 +60,6 @@ class FunctionDefinition(Node, SymbolTableTrait):
     params: List[Sym]
     expr: Expr
 
-    def __eq__(self, other):
-        return isinstance(other, FunctionDefinition) and self.id == other.id
-
-    def __hash__(self):
-        return hash(self.id)
-
 
 class StencilClosure(Node):
     domain: Expr
@@ -96,6 +76,7 @@ BUILTINS = {
     "tuple_get",
     "reduce",
     "deref",
+    "can_deref",
     "shift",
     "scan",
     "plus",
