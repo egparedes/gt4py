@@ -329,18 +329,18 @@ def test_deferred_class_type_hint():
     m3 = GlobalRecursiveModel(value=m2)
     GlobalRecursiveModel(value=m2, others={"A": m3, "B": "something"})
 
-    # with pytest.raises(TypeError, match="value"):
-    #     GlobalRecursiveModel(value="wrong_value")
-    # with pytest.raises(TypeError, match="others"):
-    #     GlobalRecursiveModel(others={"A": -1})
-    # with pytest.raises(ValueError, match="others"):
-    #     GlobalRecursiveModel(others={"a": "wrong"})
+    with pytest.raises(TypeError, match="value"):
+        GlobalRecursiveModel(value="wrong_value")
+    with pytest.raises(TypeError, match="others"):
+        GlobalRecursiveModel(others={"A": -1})
+    with pytest.raises(ValueError, match="others"):
+        GlobalRecursiveModel(others={"a": "wrong"})
 
-    # assert GlobalRecursiveModel.__datamodel_fields__.value.type.__args__[0] == GlobalRecursiveModel
-    # assert (
-    #     GlobalRecursiveModel.__datamodel_fields__.others.type.__args__[0].__args__[1].__args__[1]
-    #     == GlobalRecursiveModel
-    # )
+    assert GlobalRecursiveModel.__datamodel_fields__.value.type.__args__[0] == GlobalRecursiveModel
+    assert (
+        GlobalRecursiveModel.__datamodel_fields__.others.type.__args__[0].__args__[1].__args__[1]
+        == GlobalRecursiveModel
+    )
 
     # Models defined in a non-global context
     @datamodels.datamodel
@@ -358,8 +358,8 @@ def test_deferred_class_type_hint():
     m2 = RecursiveModel(int_value=1, list_value=[m1])
     RecursiveModel(int_value=1, list_value=[m1, m2])
 
-    # with pytest.raises(TypeError, match="list_value"):
-    #     RecursiveModel(int_value=1, list_value=["wrong_value"])
+    with pytest.raises(TypeError, match="list_value"):
+        RecursiveModel(int_value=1, list_value=["wrong_value"])
 
     @datamodels.datamodel
     class CollectorModel:
@@ -392,8 +392,8 @@ def test_deferred_class_type_hint():
     assert CollectorModel.__datamodel_fields__.value2.type == NotYetDefinedModel2
 
     CollectorModel(value1=NotYetDefinedModel1(int_value=1), value2=NotYetDefinedModel2(int_value=2))
-    # with pytest.raises(TypeError, match="value2"):
-    #     CollectorModel(value1=NotYetDefinedModel1(int_value=1), value2=2)
+    with pytest.raises(TypeError, match="value2"):
+        CollectorModel(value1=NotYetDefinedModel1(int_value=1), value2=2)
 
 
 def test_field_redefinition():

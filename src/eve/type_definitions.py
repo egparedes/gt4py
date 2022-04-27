@@ -81,18 +81,18 @@ _EitherT = TypeVar(
 
 
 if sys.version_info >= (3, 10):
-    dataclass_: Final = dataclasses.dataclass
+    _dataclass: Final = dataclasses.dataclass
 else:
     _T = TypeVar("_T")
 
     @functools.wraps(dataclasses.dataclass)
-    def dataclass_(
+    def _dataclass(
         *, slots: Optional[bool] = False, **kwargs: Any
     ) -> Callable[[Type[_T]], Type[_T]]:
         return dataclasses.dataclass(**kwargs)
 
 
-@dataclass_(init=False, slots=True)
+@_dataclass(init=False, slots=True)
 class Either(Generic[_L_co, _R_co]):
     left: Optional[_L_co]
     right: Optional[_R_co]
@@ -117,13 +117,23 @@ _T_co = TypeVar("_T_co", covariant=True)
 _ErrorT = TypeVar("_ErrorT", bound=Exception, covariant=True)
 _ResulT = TypeVar(
     "_ResulT", bound="Result"
-)  # TODO(egparedes): migrate to PEP-673 "Self" when supported
+)  # TODO(egparedes): migrate to PEP-673 "Self" when supported by mypy
 
 
-@dataclass_(init=False, slots=True)
+@_dataclass(init=False, slots=True)
 class Result(Generic[_T_co, _ErrorT]):
     value: Optional[_T_co]
     error: Optional[_ErrorT]
+
+    @classmethod
+    def from_try(cls: Type[_ResulT], func, *args, __errors=(), **kwargs) -> _ResulT:  # type: ignore[misc]  # covariant variable as a parameter
+        try:
+            return cls(func(*args, **kwargs))
+        except Exception as error:
+            if not __errors or error.__class__ in __errors:
+                return cls(None, error=error)
+            else:
+                raise error
 
     @classmethod
     def from_value(cls: Type[_ResulT], value: _T_co) -> _ResulT:  # type: ignore[misc]  # covariant variable as a parameter

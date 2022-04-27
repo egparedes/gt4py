@@ -127,11 +127,11 @@ class GenericDataModelTP(DataModelTP, Protocol):
 
 if xtyping.TYPE_CHECKING:
     _AttrsValidatorType = Callable[[Any, attr.Attribute[_T], _T], Any]
-    ValidatorType = eve_tv.ClassAttribValidatorType[DataModelTP, Attribute[_T], _T]
+    ValidatorType = eve_tv.ClassAttributeValidatorType[DataModelTP, Attribute[_T], _T]
     BoundValidatorType = Callable[[Attribute[_T], _T], None]
 else:
     _AttrsValidatorType = Callable[[Any, attr.Attribute, _T], Any]
-    ValidatorType = eve_tv.ClassAttribValidatorType[DataModelTP, Attribute, _T]
+    ValidatorType = eve_tv.ClassAttributeValidatorType[DataModelTP, Attribute, _T]
     BoundValidatorType = Callable[[Attribute, _T], None]
 
 
@@ -139,8 +139,6 @@ RootValidatorType = Callable[[Type[DataModelTP], DataModelTP], None]
 BoundRootValidatorType = Callable[[DataModelTP], None]
 
 TypeValidatorFactory = eve_tv.GenericTypeValidatorFactory[ValidatorType]
-
-DefaultTypeValidatorFactory: Final = eve_tv.attrs_type_validator_factory if __debug__ else None
 
 
 # Implementation
@@ -156,8 +154,56 @@ _KNOWN_MUTABLE_TYPES: Final = (list, dict, set)
 _CACHE_HASH_THRESHOLD: Final = 6
 
 
+if sys.version_info >= (3, 10):
+    _dataclass: Final = functools.partial(dataclasses.dataclass, slots=True)
+else:
+    _dataclass: Final = dataclasses.dataclass
+
+
+@_dataclass
+class _ForwardRefValidator:
+    """Implementation of ``attr.s`` type validator for ``ForwardRef`` typings."""
+
+    factory: TypeValidatorFactory
+
+    #: Actual type validators created after resolving the forward references.
+    validator: Optional[ValidatorType] = None
+
+    def __call__(self, instance: DataModelTP, attribute: DataModelAttrib, value: Any) -> None:
+        if self.validator is None:
+            model_cls = instance.__class__
+            update_forward_refs(model_cls)
+            self.validator = self.factory(
+                getattr(getattr(model_cls, _MODEL_FIELDS), attribute.name).type
+            )
+
+        self.validator(instance, attribute, value)
+
+
+def _add_forward_ref(factory: TypeValidatorFactory) -> TypeValidatorFactory:
+    @functools.wraps(factory)
+    def enhanced_factory(annotation: SourceTypingAnnotation) -> Optional[AttrsValidatorType]:
+        """Create an ``attr.s`` strict type validator for ``ForwardRef`` typings.
+
+        The generated validator will resolve the field type to an actual type
+        the first time is called.
+        """
+
+        return (
+            _ForwardRefValidator(factory)
+            if isinstance(annotation, ForwardRef)
+            else factory(annotation)
+        )
+
+    return enhanced_factory
+
+
 # -- Data Models --
 T = TypeVar("T")
+
+DefaultTypeValidatorFactory: Final = (
+    _add_forward_ref(eve_tv.attrs_type_validator_factory) if __debug__ else None
+)
 
 
 @typing.overload
@@ -555,7 +601,7 @@ def astuple(
 
 def update_forward_refs(
     model: Union[DataModelTP, Type[DataModelTP]],
-    local_ns: Optional[Dict[str, Any]] = None,
+    localns: Optional[Dict[str, Any]] = None,
     *,
     fields: Optional[List[str]] = None,
 ) -> None:
@@ -587,7 +633,7 @@ def update_forward_refs(
                 actual_type = xtyping.eval_forward_ref(
                     field_attr.type,
                     sys.modules[model.__module__].__dict__,
-                    local_ns,
+                    localns,
                     include_extras=True,
                 )
                 new_attr = field_attr.evolve(type=actual_type)

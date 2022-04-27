@@ -21,6 +21,7 @@ from __future__ import annotations
 import dataclasses as _dataclasses
 import functools as _functools
 import inspect as _inspect
+import pprint as _pprint
 import sys as _sys
 import types as _types
 import typing as _typing
@@ -125,18 +126,19 @@ NoArgsCallable = Callable[[], Any]
 
 
 # Typing annotations
+
 if _sys.version_info >= (3, 9):
     SolvedTypingAnnotation = Union[
         Type,
-        _types.GenericAlias,
-        _typing._BaseGenericAlias,  # type: ignore[name-defined]  # _BaseGenericAlias is private
         _typing._SpecialForm,
+        _types.GenericAlias,
+        _typing._BaseGenericAlias,  # type: ignore[name-defined]  # _BaseGenericAlias is not exported in stub
     ]
 else:
     SolvedTypingAnnotation = Union[  # type: ignore[misc]  # mypy consider this assignment a redefinition
         Type,
-        _typing._GenericAlias,  # type: ignore[attr-defined]  # _GenericAlias is private
         _typing._SpecialForm,
+        _typing._GenericAlias,  # type: ignore[attr-defined]  # _GenericAlias is not exported in stub
     ]
 
 TypingAnnotation = Union[ForwardRef, SolvedTypingAnnotation]
@@ -144,7 +146,7 @@ SourceTypingAnnotation = Union[str, TypingAnnotation]
 
 _TypingSpecialFormType = _typing._SpecialForm
 _GenericAliasType: Final[Type] = (
-    _types.GenericAlias if _sys.version_info >= (3, 9) else _typing._GenericAlias  # type: ignore[attr-defined]  # _GenericAlias is private
+    _types.GenericAlias if _sys.version_info >= (3, 9) else _typing._GenericAlias  # type: ignore[attr-defined]  # _GenericAlias is not exported in stub
 )
 
 # Standard Python protocols
@@ -252,8 +254,8 @@ def eval_forward_ref(
     """Resolve forward references in type annotations.
 
     Arguments:
-        globalns: globals dict used in the evaluation of the annotations.
-        localns: locals dict used in the evaluation of the annotations.
+        globalns: globals ``dict`` used in the evaluation of the annotations.
+        localns: locals ``dict`` used in the evaluation of the annotations.
 
     Keyword Arguments:
         include_extras: if ``True``, ``Annotated`` hints will preserve the annotation.
