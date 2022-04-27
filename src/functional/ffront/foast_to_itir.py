@@ -17,7 +17,8 @@ from dataclasses import dataclass, field
 from typing import Optional, cast
 
 from eve import NodeTranslator
-from functional.ffront import field_operator_ast as foast, itir_makers as im
+from functional.ffront import field_operator_ast as foast
+from functional.ffront import itir_makers as im
 from functional.ffront.fbuiltins import FUN_BUILTIN_NAMES
 from functional.ffront.type_info import TypeInfo
 from functional.iterator import ir as itir

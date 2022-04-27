@@ -18,7 +18,9 @@ import ast
 import collections
 import copy
 
-from functional.ffront import common_types, fbuiltins, field_operator_ast as foast, symbol_makers
+from functional.ffront import common_types, fbuiltins
+from functional.ffront import field_operator_ast as foast
+from functional.ffront import symbol_makers
 from functional.ffront.ast_passes import (
     SingleAssignTargetPass,
     SingleStaticAssignPass,

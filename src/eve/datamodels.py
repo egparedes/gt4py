@@ -67,7 +67,9 @@ import warnings
 import attr  # type: ignore[import]  # stubs not installed for attr (only attrs)
 import attrs
 
-from eve import extended_typing as xtyping, type_validation as eve_tv, utils
+from eve import extended_typing as xtyping
+from eve import type_validation as eve_tv
+from eve import utils
 from eve.extended_typing import (
     Any,
     Callable,

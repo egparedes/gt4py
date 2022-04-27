@@ -4,7 +4,8 @@ from typing import Any, Dict, List, Type
 
 import pydantic
 
-from eve import Node, extended_typing as xtyping
+from eve import Node
+from eve import extended_typing as xtyping
 from eve.traits import SymbolTableTrait
 from eve.type_definitions import SymbolRef
 from eve.visitors import NodeVisitor
