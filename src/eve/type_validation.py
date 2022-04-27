@@ -49,8 +49,8 @@ class TypeValidator(Protocol):
         self,
         value: Any,
         type_annotation: TypingAnnotation,
-        *,
         name: Optional[str] = None,
+        *,
         globalns: Optional[Dict[str, Any]] = None,
         localns: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
@@ -83,8 +83,8 @@ class SafeTypeValidator(Protocol):
         self,
         value: Any,
         type_annotation: TypingAnnotation,
-        *,
         name: Optional[str] = None,
+        *,
         globalns: Optional[Dict[str, Any]] = None,
         localns: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
@@ -134,8 +134,8 @@ class TypeValidatorFactory(Protocol):
     def __call__(
         self,
         type_annotation: TypingAnnotation,
-        *,
         name: Optional[str] = None,
+        *,
         globalns: Optional[Dict[str, Any]] = None,
         localns: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
@@ -149,8 +149,8 @@ class _SimpleTypeValidatorFactory:
     def make_validator(  # noqa: C901  # too complex but well organized
         cls,
         type_annotation: TypingAnnotation,
-        *,
         name: Optional[str] = None,
+        *,
         globalns: Optional[Dict[str, Any]] = None,
         localns: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
@@ -186,13 +186,13 @@ class _SimpleTypeValidatorFactory:
             if type_annotation.__bound__:
                 return cls.make_is_instance_of(name, type_annotation.__bound__)
             else:
-                return cls.make_is_any(name)
+                return cls._make_is_any(name)
 
         if isinstance(type_annotation, ForwardRef):
             return xtyping.eval_forward_ref(type_annotation, globalns=globalns, localns=localns)
 
         if type_annotation is Any:
-            return cls.make_is_any(name)
+            return cls._make_is_any(name)
 
         # Generic and parametrized type hints
         origin_type = xtyping.get_origin(type_annotation)
@@ -263,7 +263,7 @@ class _SimpleTypeValidatorFactory:
         return None
 
     @staticmethod
-    def make_is_any(name: str) -> FixedTypeValidator:
+    def _make_is_any(name: str) -> FixedTypeValidator:
         """Create an ``FixedTypeValidator`` validator for any type."""
 
         def _is_any(value: Any, **kwargs: Any) -> None:
@@ -413,8 +413,8 @@ simple_type_validator_factory = _SimpleTypeValidatorFactory.make_validator
 def simple_type_validator(
     value: Any,
     type_annotation: TypingAnnotation,
-    *,
     name: Optional[str] = None,
+    *,
     globalns: Optional[Dict[str, Any]] = None,
     localns: Optional[Dict[str, Any]] = None,
     **kwargs: Any,

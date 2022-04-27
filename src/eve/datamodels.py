@@ -152,7 +152,7 @@ BoundRootValidator = Callable[[DataModelTP], None]
 
 
 class FieldTypeValidatorFactory(Protocol):
-    def __call__(self, name: str, type_annotation: TypingAnnotation) -> Optional[FieldValidator]:
+    def __call__(self, type_annotation: TypingAnnotation, name: str) -> Optional[FieldValidator]:
         ...
 
 
@@ -168,26 +168,26 @@ _CACHE_HASH_THRESHOLD: Final = 6
 
 
 if sys.version_info >= (3, 10):
-    _dataclass: Final = functools.partial(dataclasses.dataclass, slots=True)
+    _kwargs: Final = {"slots": True}
 else:
-    _dataclass: Final = dataclasses.dataclass
+    _kwargs: Final = {}
 
 
-@_dataclass
+@dataclasses.dataclass(**_kwargs)
 class _ForwardRefValidator:
     """Implementation of ``attr.s`` type validator for ``ForwardRef`` typings."""
 
-    factory: FieldTypeValidatorFactory
-
+    factory: eve_tv.TypeValidatorFactory
     #: Actual type validator created after resolving the forward references.
-    validator: Union[eve_tv.TypeValidator, NothingType] = NOTHING
+    validator: Union[eve_tv.FixedTypeValidator, None, NothingType] = NOTHING
 
     def __call__(self, instance: DataModelTP, attribute: attr.Attribute, value: Any) -> None:
         if self.validator is NOTHING:
             model_cls = instance.__class__
             update_forward_refs(model_cls)
             self.validator = self.factory(
-                attribute.name, getattr(getattr(model_cls, _MODEL_FIELDS), attribute.name).type
+                getattr(getattr(model_cls, _MODEL_FIELDS), attribute.name).type,
+                attribute.name,
             )
 
         if self.validator:
@@ -198,21 +198,23 @@ def from_type_validator_factory(factory: eve_tv.TypeValidatorFactory) -> FieldTy
     """implements"""
 
     def _field_type_validator_factory(
-        name: str, annotation: TypingAnnotation
+        type_annotation: TypingAnnotation,
+        name: str,
     ) -> Optional[FieldValidator]:
         """Create an ``attr.s`` strict type validator for ``ForwardRef`` typings.
 
         The generated validator will resolve the field type to an actual type
         the first time is called.
         """
-        if isinstance(annotation, ForwardRef):
-            return _ForwardRefValidator(lambda name, annotation: factory(annotation, name=name))
+        if isinstance(type_annotation, ForwardRef):
+            return _ForwardRefValidator(factory)
         else:
-            simple_validator = factory(annotation, name=name)
-            if simple_validator is not None:
-                return lambda __i, __a, value: simple_validator(value)
-            else:
-                return None
+            simple_validator: Final = factory(type_annotation, name)
+            return (
+                lambda __i, __a, value: simple_validator(value)
+                if simple_validator is not None
+                else None
+            )
 
     return _field_type_validator_factory
 
@@ -915,7 +917,7 @@ def _make_datamodel(
         type_hint = annotations[key] = partial_annotations[key]
         if typing.get_origin(type_hint) is not ClassVar:
             type_validator = (
-                type_validation_factory(key, type_hint) if type_validation_factory else None
+                type_validation_factory(type_hint, key) if type_validation_factory else None
             )
             cls_attr_value = cls.__dict__.get(key, NOTHING)
             if cls_attr_value is NOTHING:
