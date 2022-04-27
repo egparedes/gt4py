@@ -23,8 +23,7 @@ import abc
 import collections.abc
 import functools
 
-from . import extended_typing as xtyping
-from . import type_definitions
+from . import extended_typing as xtyping, type_definitions
 from .extended_typing import (
     Any,
     ClassVar,

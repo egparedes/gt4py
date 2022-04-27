@@ -181,23 +181,6 @@ class DataDescriptor(NonDataDescriptor[_C, _V], Protocol):
         ...
 
 
-class PositiveFloat:
-    @overload
-    def __get__(self, obj: None, objtype: None) -> PositiveFloat:
-        ...
-
-    @overload
-    def __get__(self, obj: object, objtype: type[object]) -> float:
-        ...
-
-    def __get__(
-        self, obj: object | None, objtype: type[object] | None = None
-    ) -> PositiveFloat | float:
-        if obj is None:
-            return self
-        return cast(float, obj.__dict__[self.name])
-
-
 # Third party protocols
 class DevToolsPrettyPrintable(Protocol):
     """Used by python-devtools (https://python-devtools.helpmanual.io/)."""
