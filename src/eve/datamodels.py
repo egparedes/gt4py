@@ -168,12 +168,12 @@ _CACHE_HASH_THRESHOLD: Final = 6
 
 
 if sys.version_info >= (3, 10):
-    _kwargs: Final = {"slots": True}
+    _dataclass_opts: Final = {"slots": True}
 else:
-    _kwargs: Final = {}
+    _dataclass_opts: Final = {}
 
 
-@dataclasses.dataclass(**_kwargs)
+@dataclasses.dataclass(**_dataclass_opts)
 class _ForwardRefValidator:
     """Implementation of ``attr.s`` type validator for ``ForwardRef`` typings."""
 

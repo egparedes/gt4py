@@ -84,18 +84,12 @@ _EitherT = TypeVar(
 
 
 if sys.version_info >= (3, 10):
-    _dataclass: Final = dataclasses.dataclass
+    _dataclass_opts: Final = {"slots": True}
 else:
-    _T = TypeVar("_T")
-
-    @functools.wraps(dataclasses.dataclass)
-    def _dataclass(
-        *, slots: Optional[bool] = False, **kwargs: Any
-    ) -> Callable[[Type[_T]], Type[_T]]:
-        return dataclasses.dataclass(**kwargs)
+    _dataclass_opts: Final = {}
 
 
-@_dataclass(init=False, slots=True)
+@dataclasses.dataclass(init=False, **_dataclass_opts)
 class Either(Generic[_L_co, _R_co]):
     left: Optional[_L_co]
     right: Optional[_R_co]
@@ -123,7 +117,7 @@ _ResulT = TypeVar(
 )  # TODO(egparedes): migrate to PEP-673 "Self" when supported by mypy
 
 
-@_dataclass(init=False, slots=True)
+@dataclasses.dataclass(init=False, **_dataclass_opts)
 class Result(Generic[_T_co, _ErrorT]):
     value: Optional[_T_co]
     error: Optional[_ErrorT]
