@@ -82,9 +82,9 @@ from eve.extended_typing import (
     Optional,
     Protocol,
     Sequence,
-    SourceTypingAnnotation,
     Tuple,
     Type,
+    TypeAlias,
     TypeVar,
     TypingAnnotation,
     Union,
@@ -93,7 +93,7 @@ from eve.type_definitions import NOTHING, NothingType
 
 
 # Typing
-Attribute = attr.Attribute
+Attribute: TypeAlias = attr.Attribute
 
 
 class _AttrsClassTP(Protocol):
@@ -132,16 +132,9 @@ class GenericDataModelTP(DataModelTP, Protocol):
 #         ...
 
 _T = TypeVar("_T")
-
-if xtyping.TYPE_CHECKING:
-    _AttrsValidator = Callable[[Any, attr.Attribute[_T], _T], Any]
-    FieldValidator = Callable[[DataModelTP, Attribute[_T], _T], None]
-    BoundFieldValidator = Callable[[Attribute[_T], _T], None]
-else:
-    _AttrsValidator = Callable[[Any, attr.Attribute, _T], Any]
-    FieldValidator = Callable[[DataModelTP, Attribute, _T], None]
-    BoundFieldValidator = Callable[[Attribute, _T], None]
-
+_AttrsValidator = Callable[[Any, attr.Attribute, _T], Any]
+FieldValidator = Callable[[DataModelTP, Attribute, _T], None]
+BoundFieldValidator = Callable[[Attribute, _T], None]
 
 RootValidator = Callable[[Type[DataModelTP], DataModelTP], None]
 BoundRootValidator = Callable[[DataModelTP], None]
