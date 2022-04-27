@@ -125,6 +125,9 @@ class Result(Generic[_T_co, _ErrorT]):
     value: Optional[_T_co]
     error: Optional[_ErrorT]
 
+    def __bool__(self):
+        return self.error is None
+
     @classmethod
     def from_try(cls: Type[_ResulT], func, *args, __errors=(), **kwargs) -> _ResulT:  # type: ignore[misc]  # covariant variable as a parameter
         try:

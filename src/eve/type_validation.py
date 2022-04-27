@@ -23,6 +23,7 @@ import abc
 import collections.abc
 import dataclasses
 import functools
+from gc import collect
 import sys
 
 import attr
@@ -38,6 +39,7 @@ from .extended_typing import (
     Generator,
     Optional,
     Protocol,
+    Sequence,
     SourceTypingAnnotation,
     Tuple,
     Type,
@@ -113,9 +115,50 @@ class TypeValidator(Protocol):
 
         Raises:
             TypeError: if there is a type mismatch.
+            ValueError: if there is a type mismatch.
 
         """
         ...
+
+
+TypeValidatorResult = type_definitions.Result[bool, Union[TypeError, ValueError]]
+
+
+class SafeTypeValidator(Protocol):
+    def __call__(
+        self,
+        value: Any,
+        type_annotation: SourceTypingAnnotation,
+        *,
+        name: Optional[str] = None,
+        globalns: Optional[Dict[str, Any]] = None,
+        localns: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> TypeValidatorResult:
+        """Protocol defining the interface for type validation functions ensuring that ``value`` matches ``expected_type``.
+
+        Arguments:
+            value: value to be checked against the typing annotation.
+            type_annotation: a valid typing annotation.
+
+        Keyword Arguments:
+            name: the name of the value to check (used for error messages).
+            globalns: globals dict used in the evaluation of the annotations.
+            localns: locals dict used in the evaluation of the annotations.
+            **kwargs: arbitrary implementation-defined arguments (e.g. for memoization).
+
+        """
+        ...
+
+
+def as_safe_type_validator(type_validator: TypeValidator) -> SafeTypeValidator:
+    @functools.wraps(type_validator)
+    def safe_type_validator(*args, **kwargs) -> TypeValidatorResult:
+        return TypeValidatorResult.from_try(
+            type_validator, *args, **kwargs, __errors=(TypeError, ValueError)
+        )
+
+    return safe_type_validator
 
 
 class FixedTypeValidator(Protocol):
@@ -146,6 +189,24 @@ class TypeValidatorFactory(Protocol):
         ...
 
 
+# Implementation
+def simple_type_validator(
+    value: Any,
+    type_annotation: SourceTypingAnnotation,
+    *,
+    name: Optional[str] = None,
+    globalns: Optional[Dict[str, Any]] = None,
+    localns: Optional[Dict[str, Any]] = None,
+    **kwargs: Any,
+):
+    SimpleTypeValidatorFactory(
+        type_annotation, name=name, globalns=globalns, localns=localns, **kwargs
+    )(value, **kwargs)
+
+
+safe_simple_type_validator: Final[SafeTypeValidator] = as_safe_type_validator(simple_type_validator)
+
+
 class SimpleTypeValidatorFactory(TypeValidatorFactory):
     @utils.optional_lru_cache
     def __call__(
@@ -173,45 +234,101 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
             if type_annotation is int and kwargs.get("strict_int", True):
                 return self.make_is_instance_of_int(name)
             else:
-                return self.make_is_instance_of(type_annotation, name)
+                return self.make_is_instance_of(name, type_annotation)
+
         if isinstance(type_annotation, xtyping.TypeVar):
             if type_annotation.__bound__:
-                return self.make_is_instance_of(type_annotation.__bound__)
+                return self.make_is_instance_of(name, type_annotation.__bound__)
             else:
-                return self.make_any()
+                return self.make_is_any()
+
+        if isinstance(type_annotation, ForwardRef):
+            return xtyping.eval_forward_ref(type_annotation, globalns=globalns, localns=localns)
+
         if type_annotation is Any:
-            return self.make_any()
+            return self.make_is_any()
 
         # Generic and parametrized type hints
         origin_type = xtyping.get_origin(type_annotation)
         type_args = xtyping.get_args(type_annotation)
 
         if origin_type is xtyping.Literal:
-            return SimpleTypeValidatorFactory.literal_type(*type_args)
+            if len(type_args) == 1:
+                return self.make_is_literal(name, type_args[0])
+            else:
+                return self.combine_validators_as_or(
+                    name, *(self.make_is_literal(name, a) for a in type_args), error_type=ValueError
+                )
+
         if origin_type is xtyping.Union:
-            return SimpleTypeValidatorFactory.union_type(*type_args)
+            has_none = False
+            validators = []
+            for t in type_args:
+                if t in (type(None), None):
+                    has_none = True
+                else:
+                    validators.append(self(t))
+
+            validator = self.combine_validators_as_or(name, *validators)
+            return self.combine_optional(name, validator) if has_none else validator
 
         if isinstance(origin_type, type):
             # Deal with generic collections
             if issubclass(origin_type, tuple):
-                return SimpleTypeValidatorFactory.tuple_type(*type_args, tuple_type=origin_type)
+
+                if len(type_args) == 2 and (type_args[1] is Ellipsis):
+                    # Tuple as an immutable sequence type (e.g. Tuple[int, ...])
+                    member_type_hint = type_args[0]
+                    return self.make_is_iterable_of(
+                        name,
+                        self(member_type_hint),
+                        iterable_validator=self.make_is_instance_of(origin_type),
+                    )
+
+                else:
+                    # Tuple as a heterogeneous container (e.g. Tuple[int, float])
+                    return self.make_is_tuple_of(
+                        name, tuple(self(t) for t in type_args), origin_type
+                    )
+
             if issubclass(origin_type, (collections.abc.Sequence, collections.abc.Set)):
                 assert len(type_args) == 1
                 member_type_hint = type_args[0]
-                return SimpleTypeValidatorFactory.deep_iterable(
-                    member_validator=attrs_type_validator_factory(member_type_hint),
-                    iterable_validator=SimpleTypeValidatorFactory.instance_of(origin_type),
+                return self.make_is_iterable_of(
+                    name,
+                    self(member_type_hint),
+                    iterable_validator=self.make_is_instance_of(origin_type),
                 )
+
             if issubclass(origin_type, collections.abc.Mapping):
                 assert len(type_args) == 2
                 key_type_hint, value_type_hint = type_args
-                return SimpleTypeValidatorFactory.deep_mapping(
-                    key_validator=attrs_type_validator_factory(key_type_hint),
-                    value_validator=attrs_type_validator_factory(value_type_hint),
-                    mapping_validator=SimpleTypeValidatorFactory.instance_of(origin_type),
+                return self.make_is_mapping_of(
+                    name, self(key_type_hint), self(value_type_hint), origin_type
                 )
 
-        raise TypeError(f"Type description '{type_annotation}' is not supported.")
+        return None
+
+    @staticmethod
+    def make_is_any(name: str) -> FixedTypeValidator:
+        """Create an ``FixedTypeValidator`` validator for any type."""
+
+        def _is_any(value: Any, **kwargs: Any) -> None:
+            pass
+
+        return _is_any
+
+    @staticmethod
+    def make_is_instance_of(name: str, type_: type) -> FixedTypeValidator:
+        """Create an ``FixedTypeValidator`` validator for a specific type."""
+
+        def _is_instance_of(value: Any, **kwargs: Any) -> None:
+            if not isinstance(value, type_):
+                raise TypeError(
+                    f"'{name}' must be {type_} (got '{value}' that is a {type(value)})."
+                )
+
+        return _is_instance_of
 
     @staticmethod
     def make_is_instance_of_int(name: str) -> FixedTypeValidator:
@@ -224,342 +341,118 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
         return _is_instance_of_int
 
     @staticmethod
-    def make_is_instance_of(type_: type, name: str) -> FixedTypeValidator:
-        """Create an ``FixedTypeValidator`` validator for a specific type."""
+    def make_is_literal(name: str, literal_value) -> FixedTypeValidator:
+        """Create an ``FixedTypeValidator`` validator for a literal value."""
 
-        def _is_instance_of(value: Any, **kwargs: Any) -> None:
-            if not isinstance(value, type_):
-                raise TypeError(
-                    f"'{name}' must be {type_} (got '{value}' that is a {type(value)})."
-                )
+        if isinstance(literal_value, bool):
 
-        return _is_instance_of
+            def _is_literal(value: Any, **kwargs: Any) -> None:
+                if value is not literal_value:
+                    raise ValueError(
+                        f"Provided value '{value}' for '{name}' does not match {literal_value}."
+                    )
+
+        else:
+
+            def _is_literal(value: Any, **kwargs: Any) -> None:
+                if value != literal_value:
+                    raise ValueError(
+                        f"Provided value '{value}' for '{name}' does not match {literal_value}."
+                    )
+
+        return _is_literal
 
     @staticmethod
-    def make_any(name: str) -> FixedTypeValidator:
-        """Create an ``FixedTypeValidator`` validator for any type."""
+    def make_is_tuple_of(
+        name: str, item_validators: Sequence[FixedTypeValidator], tuple_type: type
+    ) -> FixedTypeValidator:
+        """Create an ``FixedTypeValidator`` validator for tuple types."""
 
-        def _is_any(value: Any, **kwargs: Any) -> None:
-            pass
-
-        return _is_any
-
-    @_frozen_dataclass(frozen=True)
-    class _TupleValidator:
-        """Implementation of ``attr.s`` type validator for ``Tuple`` typings."""
-
-        #: Collection of validators.
-        validators: Tuple[AttrsValidatorType, ...]
-        #: Class used in the container ``isintance()`` check.
-        tuple_type: Type[Tuple]
-
-        def __call__(self, instance: Any, attribute: attr.Attribute, value: Any) -> None:
-            if not isinstance(value, self.tuple_type):
+        def _is_tuple_of(value: Any, **kwargs: Any) -> None:
+            if not isinstance(value, tuple_type):
                 raise TypeError(
-                    f"In '{attribute.name}' validation, got '{value}' that is a {type(value)} instead of {self.tuple_type}."
+                    f"In '{name}' validation, got '{value}' that is a {type(value)} instead of {tuple_type}."
                 )
-            if len(value) != len(self.validators):
+            if len(value) != len(item_validators):
                 raise TypeError(
-                    f"In '{attribute.name}' validation, got '{value}' tuple which contains {len(value)} elements instead of {len(self.validators)}."
+                    f"In '{name}' validation, got '{value}' tuple which contains {len(value)} elements instead of {len(item_validators)}."
                 )
 
             _i = None
             item_value = ""
             try:
-                for _i, (item_value, item_validator) in enumerate(zip(value, self.validators)):
-                    item_validator(instance, attribute, item_value)
+                for _i, (item_value, item_validator) in enumerate(zip(value, item_validators)):
+                    item_validator(item_value)
             except Exception as e:
                 raise TypeError(
-                    f"In '{attribute.name}' validation, tuple '{value}' contains invalid value '{item_value}' at position {_i}."
+                    f"In '{name}' validation, tuple '{value}' contains invalid value '{item_value}' at position {_i}."
                 ) from e
 
-    @_frozen_dataclass(frozen=True)
-    class _OrValidator:
-        """Implementation of ``attr.s`` validator composing multiple validators together using OR."""
+        return _is_tuple_of
 
-        #: Collection of validators.
-        validators: Tuple[AttrsValidatorType, ...]
-        #: Exception class for validation errors.
-        error_type: Type[Exception]
+    @staticmethod
+    def make_is_iterable_of(
+        name: str,
+        member_validator: FixedTypeValidator,
+        iterable_validator: Optional[FixedTypeValidator] = None,
+    ) -> FixedTypeValidator:
+        """Create an ``FixedTypeValidator`` validator for deep checks of typed iterables."""
 
-        def __call__(self, instance: Any, attribute: attr.Attribute, value: Any) -> None:
-            passed = False
-            for v in self.validators:
+        def _is_iterable_of(value: Any, **kwargs: Any) -> None:
+            if iterable_validator is not None:
+                iterable_validator(value, **kwargs)
+
+            for member in value:
+                member_validator(member, **kwargs)
+
+        return _is_iterable_of
+
+    @staticmethod
+    def make_is_mapping_of(
+        name: str,
+        key_validator: FixedTypeValidator,
+        value_validator: FixedTypeValidator,
+        mapping_validator: Optional[FixedTypeValidator] = None,
+    ) -> FixedTypeValidator:
+        """Create an ``FixedTypeValidator`` validator for deep checks of typed iterables."""
+
+        def _is_mapping_of(value: Any, **kwargs: Any) -> None:
+            if mapping_validator is not None:
+                mapping_validator(value, **kwargs)
+
+            for k, v in value.items():
+                key_validator(k, **kwargs)
+                value_validator(v, **kwargs)
+
+        return _is_mapping_of
+
+    @staticmethod
+    def combine_optional(name: str, actual_validator: FixedTypeValidator) -> FixedTypeValidator:
+        """Create an ``FixedTypeValidator`` validator for an optional constraint."""
+
+        def _is_optional(value: Any, **kwargs: Any) -> None:
+            if value is not None:
+                actual_validator(value, **kwargs)
+
+        return _is_optional
+
+    @staticmethod
+    def combine_validators_as_or(
+        name: str, *validators, error_type: Type[Exception]
+    ) -> FixedTypeValidator:
+        def _combined_validator(value: Any, **kwargs: Any) -> Any:
+            for v in validators:
                 try:
-                    v(instance, attribute, value)
-                    passed = True
+                    v(value, **kwargs)
                     break
-                except Exception:
+                except Exception as error:
                     pass
-
-            if not passed:
-                raise self.error_type(
-                    f"In '{attribute.name}' validation, provided value '{value}' fails for all the possible validators."
-                )
-
-    @_frozen_dataclass(frozen=True)
-    class _LiteralValidator:
-        """Implementation of ``attr.s`` type validator for ``Literal`` typings."""
-
-        literal: Any
-
-        def __call__(self, instance: Any, attribute: attr.Attribute, value: Any) -> None:
-            if isinstance(self.literal, bool):
-                valid = value is self.literal
             else:
-                valid = value == self.literal
-            if not valid:
-                raise ValueError(
-                    f"Provided value '{value}' field does not match {self.literal} during '{attribute.name}' validation."
+                raise error_type(
+                    f"In '{name}' validation, provided value '{value}' fails for all the possible validators."
                 )
 
-    def or_combinator(
-        *validators: AttrsValidatorType, error_type: Type[Exception]
-    ) -> AttrsValidatorType:
-        """Create an ``attr.s`` validator combinator where only one of the validators needs to pass."""
-        if len(validators) == 1:
-            return validators[0]
-        else:
-            return SimpleTypeValidatorFactory._OrValidator(validators, error_type=error_type)
-
-    instance_of = staticmethod(attr.validators.instance_of)
-    deep_iterable = staticmethod(attr.validators.deep_iterable)
-    deep_mapping = staticmethod(attr.validators.deep_mapping)
-    optional = staticmethod(attr.validators.optional)
-
-    @staticmethod
-    def literal_type(*type_args: Type) -> AttrsValidatorType:
-        """Create an ``attr.s`` strict type validator for ``Literal`` typings."""
-        return SimpleTypeValidatorFactory.or_combinator(
-            *(SimpleTypeValidatorFactory._LiteralValidator(t) for t in type_args),
-            error_type=ValueError,
-        )
-
-    @staticmethod
-    def tuple_type(*type_args: Type, tuple_type: Type = tuple) -> AttrsValidatorType:
-        """Create an ``attr.s`` strict type validator for ``Tuple`` typings."""
-        if len(type_args) == 2 and (type_args[1] is Ellipsis):
-            # Tuple as an immutable sequence type: Tuple[int, ...]
-            if not issubclass(tuple_type, tuple):
-                raise TypeError(f"Invalid 'tuple' subclass '{tuple_type}'.")
-            member_type_hint = type_args[0]
-            return SimpleTypeValidatorFactory.deep_iterable(
-                member_validator=attrs_type_validator_factory(member_type_hint),
-                iterable_validator=SimpleTypeValidatorFactory.instance_of(tuple_type),
-            )
-        else:
-            # Tuple as a heterogeneous container: Tuple[int, float]
-            return SimpleTypeValidatorFactory._TupleValidator(
-                tuple(attrs_type_validator_factory(t) for t in type_args),
-                tuple_type,
-            )
-
-    @staticmethod
-    def union_type(*type_args: Type) -> AttrsValidatorType:
-        """Create an ``attr.s`` strict type validator for Union typings."""
-        if len(type_args) == 2 and (type_args[1] is type(None)):  # noqa: E721  # use isinstance()
-            non_optional_validator = attrs_type_validator_factory(type_args[0])
-            return SimpleTypeValidatorFactory.optional(non_optional_validator)
-        else:
-            return SimpleTypeValidatorFactory.or_combinator(
-                *(attrs_type_validator_factory(t) for t in type_args),
-                error_type=TypeError,
-            )
-
-
-class AttrsValidators:
-    @utils.optional_lru_cache
-    @staticmethod
-    def make_validator(annotation: SourceTypingAnnotation) -> Optional[AttrsValidatorType]:
-        # Non-generic types
-        if isinstance(annotation, type) and annotation is not type(
-            None
-        ):  # noqa: E721  # use isinstance
-            assert not xtyping.get_args(annotation)
-            if annotation is int:
-                return AttrsValidators.instance_of_int()
-            else:
-                return AttrsValidators.instance_of(annotation)
-        if isinstance(annotation, xtyping.TypeVar):
-            if annotation.__bound__:
-                return AttrsValidators.instance_of(annotation.__bound__)
-            else:
-                return AttrsValidators.any_type()
-        if annotation is Any:
-            return AttrsValidators.any_type()
-
-        # Generic and parametrized type hints
-        origin_type = xtyping.get_origin(annotation)
-        type_args = xtyping.get_args(annotation)
-
-        if origin_type is xtyping.Literal:
-            return AttrsValidators.literal_type(*type_args)
-        if origin_type is xtyping.Union:
-            return AttrsValidators.union_type(*type_args)
-
-        if isinstance(origin_type, type):
-            # Deal with generic collections
-            if issubclass(origin_type, tuple):
-                return AttrsValidators.tuple_type(*type_args, tuple_type=origin_type)
-            if issubclass(origin_type, (collections.abc.Sequence, collections.abc.Set)):
-                assert len(type_args) == 1
-                member_type_hint = type_args[0]
-                return AttrsValidators.deep_iterable(
-                    member_validator=attrs_type_validator_factory(member_type_hint),
-                    iterable_validator=AttrsValidators.instance_of(origin_type),
-                )
-            if issubclass(origin_type, collections.abc.Mapping):
-                assert len(type_args) == 2
-                key_type_hint, value_type_hint = type_args
-                return AttrsValidators.deep_mapping(
-                    key_validator=attrs_type_validator_factory(key_type_hint),
-                    value_validator=attrs_type_validator_factory(value_type_hint),
-                    mapping_validator=AttrsValidators.instance_of(origin_type),
-                )
-
-        raise TypeError(f"Type description '{annotation}' is not supported.")
-
-    @_frozen_dataclass(frozen=True)
-    class _TupleValidator:
-        """Implementation of ``attr.s`` type validator for ``Tuple`` typings."""
-
-        #: Collection of validators.
-        validators: Tuple[AttrsValidatorType, ...]
-        #: Class used in the container ``isintance()`` check.
-        tuple_type: Type[Tuple]
-
-        def __call__(self, instance: Any, attribute: attr.Attribute, value: Any) -> None:
-            if not isinstance(value, self.tuple_type):
-                raise TypeError(
-                    f"In '{attribute.name}' validation, got '{value}' that is a {type(value)} instead of {self.tuple_type}."
-                )
-            if len(value) != len(self.validators):
-                raise TypeError(
-                    f"In '{attribute.name}' validation, got '{value}' tuple which contains {len(value)} elements instead of {len(self.validators)}."
-                )
-
-            _i = None
-            item_value = ""
-            try:
-                for _i, (item_value, item_validator) in enumerate(zip(value, self.validators)):
-                    item_validator(instance, attribute, item_value)
-            except Exception as e:
-                raise TypeError(
-                    f"In '{attribute.name}' validation, tuple '{value}' contains invalid value '{item_value}' at position {_i}."
-                ) from e
-
-    @_frozen_dataclass(frozen=True)
-    class _OrValidator:
-        """Implementation of ``attr.s`` validator composing multiple validators together using OR."""
-
-        #: Collection of validators.
-        validators: Tuple[AttrsValidatorType, ...]
-        #: Exception class for validation errors.
-        error_type: Type[Exception]
-
-        def __call__(self, instance: Any, attribute: attr.Attribute, value: Any) -> None:
-            passed = False
-            for v in self.validators:
-                try:
-                    v(instance, attribute, value)
-                    passed = True
-                    break
-                except Exception:
-                    pass
-
-            if not passed:
-                raise self.error_type(
-                    f"In '{attribute.name}' validation, provided value '{value}' fails for all the possible validators."
-                )
-
-    @_frozen_dataclass(frozen=True)
-    class _LiteralValidator:
-        """Implementation of ``attr.s`` type validator for ``Literal`` typings."""
-
-        literal: Any
-
-        def __call__(self, instance: Any, attribute: attr.Attribute, value: Any) -> None:
-            if isinstance(self.literal, bool):
-                valid = value is self.literal
-            else:
-                valid = value == self.literal
-            if not valid:
-                raise ValueError(
-                    f"Provided value '{value}' field does not match {self.literal} during '{attribute.name}' validation."
-                )
-
-    def or_combinator(
-        *validators: AttrsValidatorType, error_type: Type[Exception]
-    ) -> AttrsValidatorType:
-        """Create an ``attr.s`` validator combinator where only one of the validators needs to pass."""
-        if len(validators) == 1:
-            return validators[0]
-        else:
-            return AttrsValidators._OrValidator(validators, error_type=error_type)
-
-    instance_of = staticmethod(attr.validators.instance_of)
-    deep_iterable = staticmethod(attr.validators.deep_iterable)
-    deep_mapping = staticmethod(attr.validators.deep_mapping)
-    optional = staticmethod(attr.validators.optional)
-
-    @staticmethod
-    def instance_of_int() -> AttrsValidatorType:
-        """Create an ``attr.s`` validator for ``int`` values which fails with ``bool`` values."""
-
-        def _int_validator(instance: Any, attribute: attr.Attribute, value: Any) -> None:
-            if not isinstance(value, int) or isinstance(value, bool):
-                raise TypeError(
-                    f"'{attribute.name}' must be {int} (got '{value}' that is a {type(value)})."
-                )
-
-        return _int_validator
-
-    @staticmethod
-    def any_type() -> AttrsValidatorType:
-        """Create an ``attr.s`` empty validator which always succeeds."""
-
-        def _empty_validator(instance: Any, attribute: attr.Attribute, value: Any) -> None:
-            pass
-
-        return _empty_validator
-
-    @staticmethod
-    def literal_type(*type_args: Type) -> AttrsValidatorType:
-        """Create an ``attr.s`` strict type validator for ``Literal`` typings."""
-        return AttrsValidators.or_combinator(
-            *(AttrsValidators._LiteralValidator(t) for t in type_args), error_type=ValueError
-        )
-
-    @staticmethod
-    def tuple_type(*type_args: Type, tuple_type: Type = tuple) -> AttrsValidatorType:
-        """Create an ``attr.s`` strict type validator for ``Tuple`` typings."""
-        if len(type_args) == 2 and (type_args[1] is Ellipsis):
-            # Tuple as an immutable sequence type: Tuple[int, ...]
-            if not issubclass(tuple_type, tuple):
-                raise TypeError(f"Invalid 'tuple' subclass '{tuple_type}'.")
-            member_type_hint = type_args[0]
-            return AttrsValidators.deep_iterable(
-                member_validator=attrs_type_validator_factory(member_type_hint),
-                iterable_validator=AttrsValidators.instance_of(tuple_type),
-            )
-        else:
-            # Tuple as a heterogeneous container: Tuple[int, float]
-            return AttrsValidators._TupleValidator(
-                tuple(attrs_type_validator_factory(t) for t in type_args),
-                tuple_type,
-            )
-
-    @staticmethod
-    def union_type(*type_args: Type) -> AttrsValidatorType:
-        """Create an ``attr.s`` strict type validator for Union typings."""
-        if len(type_args) == 2 and (type_args[1] is type(None)):  # noqa: E721  # use isinstance()
-            non_optional_validator = attrs_type_validator_factory(type_args[0])
-            return AttrsValidators.optional(non_optional_validator)
-        else:
-            return AttrsValidators.or_combinator(
-                *(attrs_type_validator_factory(t) for t in type_args),
-                error_type=TypeError,
-            )
+        return _combined_validator
 
 
 # attrs_type_validator_factory: AttrsTypeValidatorFactory = AttrsValidators.make_validator
