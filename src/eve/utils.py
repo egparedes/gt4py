@@ -45,14 +45,13 @@ from boltons.strutils import (  # noqa: F401
     slugify,
     unwrap_text,
 )
-from boltons.typeutils import classproperty  # noqa: F401
+from boltons.typeutils import classproperty
 
 from .extended_typing import (
     Any,
     Callable,
     Collection,
     Dict,
-    Final,
     Generic,
     Iterable,
     Iterator,
@@ -65,7 +64,7 @@ from .extended_typing import (
     TypeVar,
     Union,
 )
-from .type_definitions import NOTHING
+from .type_definitions import NOTHING, NOTHING_TYPE
 
 
 try:
@@ -480,19 +479,18 @@ class FrozenNamespace(types.SimpleNamespace, Generic[T]):
         return self.__dict__.values()
 
 
-if sys.version_info >= (3, 10):
-    optional_field: Final = functools.partial(dataclasses.field, default=None, kw_only=True)
-else:
-    optional_field: Final = functools.partial(dataclasses.field, default=None)
-
-
 @dataclasses.dataclass
 class UIDGenerator:
     """Simple unique id generator using different methods."""
 
-    prefix: Optional[str] = optional_field()
-    width: Optional[int] = optional_field()
-    warn_unsafe: Optional[bool] = optional_field()
+    if sys.version_info >= (3, 10):
+        prefix: Optional[str] = dataclasses.field(default=None, kw_only=True)
+        width: Optional[int] = dataclasses.field(default=None, kw_only=True)
+        warn_unsafe: Optional[bool] = dataclasses.field(default=None, kw_only=True)
+    else:
+        prefix: Optional[str] = dataclasses.field(default=None)
+        width: Optional[int] = dataclasses.field(default=None)
+        warn_unsafe: Optional[bool] = dataclasses.field(default=None)
 
     #: Constantly increasing counter for generation of sequential unique ids
     _counter: Iterator[int] = dataclasses.field(
@@ -1066,7 +1064,10 @@ class XIterable(Iterable[T]):
         ...
 
     def islice(
-        self, __start_or_stop: int, __stop_or_nothing: Union[int, NOTHING] = NOTHING, step: int = 1
+        self,
+        __start_or_stop: int,
+        __stop_or_nothing: Union[int, NOTHING_TYPE] = NOTHING,
+        step: int = 1,
     ) -> XIterable[T]:
         """Select elements from an iterable.
 
@@ -1092,6 +1093,7 @@ class XIterable(Iterable[T]):
             start = 0
             stop = __start_or_stop
         else:
+            assert isinstance(__stop_or_nothing, int)
             start = __start_or_stop
             stop = __stop_or_nothing
         return XIterable(itertools.islice(self.iterator, start, stop, step))
@@ -1278,8 +1280,8 @@ class XIterable(Iterable[T]):
         bin_op_func: Callable[[S, T], S],
         key: str,
         *,
-        init: Union[S, NOTHING],
         as_dict: Literal[False],
+        init: Union[S, NOTHING_TYPE],
     ) -> XIterable[Tuple[str, S]]:
         ...
 
@@ -1290,8 +1292,8 @@ class XIterable(Iterable[T]):
         key: str,
         __attr_keys1: str,
         *attr_keys: str,
-        init: Union[S, NOTHING],
         as_dict: Literal[False],
+        init: Union[S, NOTHING_TYPE],
     ) -> XIterable[Tuple[Tuple[str, ...], S]]:
         ...
 
@@ -1301,8 +1303,8 @@ class XIterable(Iterable[T]):
         bin_op_func: Callable[[S, T], S],
         key: str,
         *,
-        init: Union[S, NOTHING],
         as_dict: Literal[True],
+        init: Union[S, NOTHING_TYPE],
     ) -> Dict[str, S]:
         ...
 
@@ -1313,8 +1315,8 @@ class XIterable(Iterable[T]):
         key: str,
         __attr_keys1: str,
         *attr_keys: str,
-        init: Union[S, NOTHING],
         as_dict: Literal[True],
+        init: Union[S, NOTHING_TYPE],
     ) -> Dict[Tuple[str, ...], S]:
         ...
 
@@ -1324,8 +1326,8 @@ class XIterable(Iterable[T]):
         bin_op_func: Callable[[S, T], S],
         key: List[K],
         *,
-        init: Union[S, NOTHING],
         as_dict: Literal[False],
+        init: Union[S, NOTHING_TYPE],
     ) -> XIterable[Tuple[K, S]]:
         ...
 
@@ -1335,8 +1337,8 @@ class XIterable(Iterable[T]):
         bin_op_func: Callable[[S, T], S],
         key: List[K],
         *,
-        init: Union[S, NOTHING],
         as_dict: Literal[True],
+        init: Union[S, NOTHING_TYPE],
     ) -> Dict[K, S]:
         ...
 
@@ -1346,8 +1348,8 @@ class XIterable(Iterable[T]):
         bin_op_func: Callable[[S, T], S],
         key: Callable[[T], K],
         *,
-        init: Union[S, NOTHING],
         as_dict: Literal[False],
+        init: Union[S, NOTHING_TYPE],
     ) -> XIterable[Tuple[K, S]]:
         ...
 
@@ -1357,18 +1359,18 @@ class XIterable(Iterable[T]):
         bin_op_func: Callable[[S, T], S],
         key: Callable[[T], K],
         *,
-        init: Union[S, NOTHING],
         as_dict: Literal[True],
+        init: Union[S, NOTHING_TYPE],
     ) -> Dict[K, S]:
         ...
 
-    def reduceby(
+    def reduceby(  # type: ignore[misc] # signatures 2 and 4 are not satified due to inconsistencies with type variables
         self,
         bin_op_func: Callable[[S, T], S],
         key: Union[str, List[K], Callable[[T], K]],
         *attr_keys: str,
-        init: Union[S, NOTHING] = NOTHING,
         as_dict: bool = False,
+        init: Union[S, NOTHING_TYPE] = NOTHING,
     ) -> Union[
         XIterable[Tuple[str, S]],
         Dict[str, S],

@@ -21,27 +21,19 @@ from __future__ import annotations
 
 import abc
 import collections.abc
-import dataclasses
 import functools
-from gc import collect
-import sys
 
-import attr
-
-from . import extended_typing as xtyping, type_definitions, utils
+from . import extended_typing as xtyping
+from . import type_definitions
 from .extended_typing import (
     Any,
-    Callable,
     ClassVar,
     Dict,
     Final,
     ForwardRef,
-    Generator,
     Optional,
     Protocol,
     Sequence,
-    SourceTypingAnnotation,
-    Tuple,
     Type,
     TypeVar,
     TypingAnnotation,
@@ -154,7 +146,7 @@ class TypeValidatorFactory(Protocol):
 # Implementation
 class _SimpleTypeValidatorFactory:
     @classmethod
-    def make_validator(
+    def make_validator(  # noqa: C901  # too complex but well organized
         cls,
         type_annotation: TypingAnnotation,
         *,
@@ -163,7 +155,7 @@ class _SimpleTypeValidatorFactory:
         localns: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> Optional[FixedTypeValidator]:
-        """Simple :class:`TypeValidatorFactory` implementation.
+        """Make a simple :class:`TypeValidator` for the given annotation.
 
         Check :class:`FixedTypeValidator` and :class:`TypeValidatorFactory` for details.
 
@@ -179,16 +171,18 @@ class _SimpleTypeValidatorFactory:
         )
 
         # Non-generic types
-        if isinstance(type_annotation, type) and type_annotation is not type(
+        if isinstance(
+            type_annotation, type
+        ) and type_annotation is not type(  # noqa: E721  # use isinstance
             None
-        ):  # noqa: E721  # use isinstance
+        ):
             assert not xtyping.get_args(type_annotation)
             if type_annotation is int and kwargs.get("strict_int", True):
                 return cls.make_is_instance_of_int(name)
             else:
                 return cls.make_is_instance_of(name, type_annotation)
 
-        if isinstance(type_annotation, xtyping.TypeVar):
+        if isinstance(type_annotation, TypeVar):
             if type_annotation.__bound__:
                 return cls.make_is_instance_of(name, type_annotation.__bound__)
             else:
@@ -302,7 +296,6 @@ class _SimpleTypeValidatorFactory:
     @staticmethod
     def make_is_literal(name: str, literal_value) -> FixedTypeValidator:
         """Create an ``FixedTypeValidator`` validator for a literal value."""
-
         if isinstance(literal_value, bool):
 
             def _is_literal(value: Any, **kwargs: Any) -> None:
@@ -404,7 +397,7 @@ class _SimpleTypeValidatorFactory:
                 try:
                     v(value, **kwargs)
                     break
-                except Exception as error:
+                except Exception:
                     pass
             else:
                 raise error_type(

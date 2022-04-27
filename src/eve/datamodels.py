@@ -64,7 +64,7 @@ import types
 import typing
 import warnings
 
-import attr
+import attr  # type: ignore[import]  # stubs not installed for attr (only attrs)
 import attrs
 
 from eve import extended_typing as xtyping
@@ -84,20 +84,17 @@ from eve.extended_typing import (
     Optional,
     Protocol,
     Sequence,
-    TypingAnnotation,
     SourceTypingAnnotation,
     Tuple,
     Type,
     TypeVar,
+    TypingAnnotation,
     Union,
 )
 from eve.type_definitions import NOTHING
 
 
 # Typing
-_T = TypeVar("_T")
-_V = TypeVar("_V")
-
 Attribute = attr.Attribute
 
 
@@ -127,18 +124,16 @@ class GenericDataModelTP(DataModelTP, Protocol):
         ...
 
 
-_A = TypeVar("_A")
-_C = TypeVar("_C")
-_V = TypeVar("_V")
+# _A = TypeVar("_A")
+# _C = TypeVar("_C")
+# _V = TypeVar("_V")
 
 
-class ClassAttributeValidator(Protocol[_C, _A, _V]):
-    def __call__(self, instance: _C, attribute_info: _A, value: _V) -> None:
-        ...
-
+# class ClassAttributeValidator(Protocol[_C, _A, _V]):
+#     def __call__(self, instance: _C, attribute_info: _A, value: _V) -> None:
+#         ...
 
 _T = TypeVar("_T")
-
 
 if xtyping.TYPE_CHECKING:
     _AttrsValidator = Callable[[Any, attr.Attribute[_T], _T], Any]
@@ -233,13 +228,13 @@ def datamodel(
     kw_only: bool = False,
     slots: bool = False,
     type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultTypeValidatorFactory,
-) -> Callable[[Type[T]], Type[T]]:
+) -> Callable[[Type[_T]], Type[_T]]:
     ...
 
 
 @typing.overload
 def datamodel(
-    cls: Type[T],
+    cls: Type[_T],
     /,
     *,
     repr: bool = True,  # noqa: A002  # shadowing 'repr' python builtin
@@ -251,12 +246,12 @@ def datamodel(
     kw_only: bool = False,
     slots: bool = False,
     type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultTypeValidatorFactory,
-) -> Type[T]:
+) -> Type[_T]:
     ...
 
 
 def datamodel(
-    cls: Type[T] = None,
+    cls: Type[_T] = None,
     /,
     *,
     repr: bool = True,  # noqa: A002  # shadowing 'repr' python builtin
@@ -268,7 +263,7 @@ def datamodel(
     kw_only: bool = False,
     slots: bool = False,
     type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultTypeValidatorFactory,
-) -> Union[Type[T], Callable[[Type[T]], Type[T]]]:
+) -> Union[Type[_T], Callable[[Type[_T]], Type[_T]]]:
     """Add generated special methods to classes according to the specified attributes (class decorator).
 
     Examines PEP 526 ``__annotations__`` to determine field types and creates
@@ -879,7 +874,7 @@ def typeguard_validation_factory(annotation) -> Callable:
 
 
 def _make_datamodel(
-    cls: Type[T],
+    cls: Type[_T],
     *,
     repr: bool,  # noqa: A002   # shadowing 'repr' python builtin
     eq: bool,
@@ -891,7 +886,7 @@ def _make_datamodel(
     slots: bool,
     type_validation_factory: Optional[FieldTypeValidatorFactory],
     stacklevel_offset: int = 0,
-) -> Type[T]:
+) -> Type[_T]:
     """Actual implementation of the Data Model creation.
 
     See :func:`datamodel` for the description of the parameters.
@@ -975,11 +970,13 @@ def _make_datamodel(
     setattr(cls, _ROOT_VALIDATORS, tuple(root_validators))
 
     # Apply attrs magic
+    assert "__attrs_pre_init__" not in cls.__dict__
     if "__pre_init__" in cls.__dict__:
-        cls.__attrs_pre_init__ = cls.__pre_init__
+        cls.__attrs_pre_init__ = cls.__pre_init__  # type: ignore[attr-defined]  # adding new attribute
 
-    cls.__attrs_post_init__ = _make_post_init(has_post_init="__post_init__" in cls.__dict__)
-    cls.__class_getitem__ = _make_data_model_class_getitem()
+    assert "__attrs_post_init__" not in cls.__dict__
+    cls.__attrs_post_init__ = _make_post_init(has_post_init="__post_init__" in cls.__dict__)  # type: ignore[attr-defined]  # adding new attribute
+    cls.__class_getitem__ = _make_data_model_class_getitem()  # type: ignore[attr-defined]  # adding new attribute
 
     new_cls = attrs.define(  # type: ignore[attr-defined]  # attr.define is not visible for mypy
         auto_attribs=True,
@@ -995,10 +992,11 @@ def _make_datamodel(
     )(cls)
     assert new_cls is cls or slots
     if "__attrs_init__" in new_cls.__dict__:
-        new_cls.__auto_init__ = new_cls.__attrs_init__
+        assert "__auto_init__" not in cls.__dict__
+        new_cls.__auto_init__ = new_cls.__attrs_init__  # type: ignore[attr-defined]  # adding new attribute
 
     # Final postprocessing
-    cls.__pretty__ = _make_devtools_pretty()
+    cls.__pretty__ = _make_devtools_pretty()  # type: ignore[attr-defined]  # adding new attribute
     setattr(
         cls,
         _MODEL_PARAMS,

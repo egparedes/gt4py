@@ -156,17 +156,19 @@ _V = TypeVar("_V")
 
 class NonDataDescriptor(Protocol[_C, _V]):
     @overload
-    def __get__(self, _instance: Literal[None], _owner_type: Type[_C]) -> NonDataDescriptor[_C, _V]:
+    def __get__(
+        self, _instance: Literal[None], _owner_type: Optional[Type[_C]] = None
+    ) -> NonDataDescriptor[_C, _V]:
         ...
 
     @overload
     def __get__(  # noqa: F811  # redefinion of unused member
-        self, _instance: _C, _owner_type: Optional[Type[_C]]
+        self, _instance: _C, _owner_type: Optional[Type[_C]] = None
     ) -> _V:
         ...
 
     def __get__(  # noqa: F811  # redefinion of unused member
-        self, _instance: Optional[_C], _owner_type: Optional[Type[_C]]
+        self, _instance: Optional[_C], _owner_type: Optional[Type[_C]] = None
     ) -> _V | NonDataDescriptor[_C, _V]:
         ...
 
@@ -174,6 +176,26 @@ class NonDataDescriptor(Protocol[_C, _V]):
 class DataDescriptor(NonDataDescriptor[_C, _V], Protocol):
     def __set__(self, _instance: _C, _value: _V) -> None:
         ...
+
+    def __delete__(self, _instance: _C) -> None:
+        ...
+
+
+class PositiveFloat:
+    @overload
+    def __get__(self, obj: None, objtype: None) -> PositiveFloat:
+        ...
+
+    @overload
+    def __get__(self, obj: object, objtype: type[object]) -> float:
+        ...
+
+    def __get__(
+        self, obj: object | None, objtype: type[object] | None = None
+    ) -> PositiveFloat | float:
+        if obj is None:
+            return self
+        return cast(float, obj.__dict__[self.name])
 
 
 # Third party protocols

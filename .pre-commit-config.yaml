@@ -64,12 +64,11 @@ repos:
       )$
 
 - repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v0.931
+  rev: v0.942
   hooks:
   - id: mypy
     exclude: |
       (?x)^(
-      src/eve/datamodels.py | # until datamodels is upgraded to 3.10
       src/functional/ffront/func_to_foast.py | # until mypy supports match
       src/functional/ffront/func_to_past.py | # until mypy supports match
       src/functional/ffront/decorator.py | # until mypy supports match

@@ -49,19 +49,22 @@ from .extended_typing import (
     Type,
     TypeVar,
     Union,
+    final,
 )
 
 
-class NothingType(type):
+@final
+class NOTHING_TYPE(type):
     def __bool__(cls) -> bool:
         return False
 
 
 #: Marker value used to avoid confusion with `None`
 #: (specially in contexts where `None` could be a valid value)
-class NOTHING(metaclass=NothingType):
+@final
+class NOTHING(metaclass=NOTHING_TYPE):
     def __new__(cls: type) -> NoReturn:  # type: ignore[misc]  # should return an instance
-        raise TypeError(f"{cls.__name__} is used as a sentinel class and cannot be instantiated.")
+        raise TypeError(f"{cls.__name__} is used as a sentinel value and cannot be instantiated.")
 
 
 #: Typing definitions for `__get_validators__()` methods
@@ -125,11 +128,17 @@ class Result(Generic[_T_co, _ErrorT]):
     value: Optional[_T_co]
     error: Optional[_ErrorT]
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return self.error is None
 
     @classmethod
-    def from_try(cls: Type[_ResulT], func, *args, __errors=(), **kwargs) -> _ResulT:  # type: ignore[misc]  # covariant variable as a parameter
+    def from_try(
+        cls: Type[_ResulT],
+        func: Callable,
+        *args: Any,
+        __errors: Tuple[Type[Exception], ...] = (),
+        **kwargs: Any,
+    ) -> _ResulT:  # type: ignore[misc]  # covariant variable as a parameter
         try:
             return cls(func(*args, **kwargs))
         except Exception as error:
