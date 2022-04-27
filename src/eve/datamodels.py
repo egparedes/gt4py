@@ -91,7 +91,7 @@ from eve.extended_typing import (
     TypingAnnotation,
     Union,
 )
-from eve.type_definitions import NOTHING
+from eve.type_definitions import NOTHING, NothingType
 
 
 # Typing
@@ -148,7 +148,12 @@ else:
 RootValidator = Callable[[Type[DataModelTP], DataModelTP], None]
 BoundRootValidator = Callable[[DataModelTP], None]
 
-FieldTypeValidatorFactory = Callable[[str, SourceTypingAnnotation], Optional[FieldValidator]]
+# FieldTypeValidatorFactory = Callable[[str, SourceTypingAnnotation], Optional[FieldValidator]]
+
+
+class FieldTypeValidatorFactory(Protocol):
+    def __call__(self, name: str, type_annotation: TypingAnnotation) -> Optional[FieldValidator]:
+        ...
 
 
 # Implementation
@@ -159,12 +164,8 @@ _MODEL_FIELDS: Final = "__datamodel_fields__"
 _MODEL_PARAMS: Final = "__datamodel_params__"
 _ROOT_VALIDATORS: Final = "__datamodel_root_validators__"
 
-
-_KNOWN_MUTABLE_TYPES: Final = (list, dict, set)
 _CACHE_HASH_THRESHOLD: Final = 6
 
-
-# -- Data Models --
 
 if sys.version_info >= (3, 10):
     _dataclass: Final = functools.partial(dataclasses.dataclass, slots=True)
@@ -178,39 +179,48 @@ class _ForwardRefValidator:
 
     factory: FieldTypeValidatorFactory
 
-    #: Actual type validators created after resolving the forward references.
-    validator: Optional[eve_tv.TypeValidator] = None
+    #: Actual type validator created after resolving the forward references.
+    validator: Union[eve_tv.TypeValidator, NothingType] = NOTHING
 
     def __call__(self, instance: DataModelTP, attribute: attr.Attribute, value: Any) -> None:
-        if self.validator is None:
+        if self.validator is NOTHING:
             model_cls = instance.__class__
             update_forward_refs(model_cls)
             self.validator = self.factory(
-                getattr(getattr(model_cls, _MODEL_FIELDS), attribute.name).type, name=attribute.name
+                attribute.name, getattr(getattr(model_cls, _MODEL_FIELDS), attribute.name).type
             )
 
-        self.validator(value)
+        if self.validator:
+            self.validator(value)
 
 
-def from_generic_tv_factory(factory: eve_tv.TypeValidatorFactory) -> FieldTypeValidatorFactory:
-    @functools.wraps(factory)
-    def enhanced_factory(name: str, annotation: TypingAnnotation) -> Optional[FieldValidator]:
+def from_type_validator_factory(factory: eve_tv.TypeValidatorFactory) -> FieldTypeValidatorFactory:
+    """implements"""
+
+    def _field_type_validator_factory(
+        name: str, annotation: TypingAnnotation
+    ) -> Optional[FieldValidator]:
         """Create an ``attr.s`` strict type validator for ``ForwardRef`` typings.
 
         The generated validator will resolve the field type to an actual type
         the first time is called.
         """
         if isinstance(annotation, ForwardRef):
-            return _ForwardRefValidator(factory)
+            return _ForwardRefValidator(lambda name, annotation: factory(annotation, name=name))
         else:
             simple_validator = factory(annotation, name=name)
-            return lambda __i, __a, value: simple_validator(value)
+            if simple_validator is not None:
+                return lambda __i, __a, value: simple_validator(value)
+            else:
+                return None
 
-    return enhanced_factory
+    return _field_type_validator_factory
 
 
-DefaultTypeValidatorFactory: Final[Optional[FieldTypeValidatorFactory]] = (
-    from_generic_tv_factory(eve_tv.simple_type_validator_factory) if __debug__ else None
+simple_type_validator_factory = from_type_validator_factory(eve_tv.simple_type_validator_factory)
+
+DefaultFieldTypeValidatorFactory: Final[Optional[FieldTypeValidatorFactory]] = (
+    simple_type_validator_factory if __debug__ else None
 )
 
 
@@ -227,7 +237,7 @@ def datamodel(
     match_args: bool = True,
     kw_only: bool = False,
     slots: bool = False,
-    type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultTypeValidatorFactory,
+    type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultFieldTypeValidatorFactory,
 ) -> Callable[[Type[_T]], Type[_T]]:
     ...
 
@@ -245,7 +255,7 @@ def datamodel(
     match_args: bool = True,
     kw_only: bool = False,
     slots: bool = False,
-    type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultTypeValidatorFactory,
+    type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultFieldTypeValidatorFactory,
 ) -> Type[_T]:
     ...
 
@@ -262,7 +272,7 @@ def datamodel(
     match_args: bool = True,
     kw_only: bool = False,
     slots: bool = False,
-    type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultTypeValidatorFactory,
+    type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultFieldTypeValidatorFactory,
 ) -> Union[Type[_T], Callable[[Type[_T]], Type[_T]]]:
     """Add generated special methods to classes according to the specified attributes (class decorator).
 
@@ -294,7 +304,7 @@ def datamodel(
         Currently implemented using :func:`attr.s` from `attrs <https://www.attrs.org/>`_
 
     """
-    kwargs = {
+    datamodel_options: Final = {
         "repr": repr,
         "eq": eq,
         "order": order,
@@ -307,9 +317,13 @@ def datamodel(
     }
 
     if cls is None:  # called as @datamodel()
-        return functools.partial(_make_datamodel, **kwargs)
+        return functools.partial(_make_datamodel, **datamodel_options)
     else:  # called as @datamodel
-        return _make_datamodel(cls, **kwargs, stacklevel_offset=1)
+        return _make_datamodel(
+            cls,
+            stacklevel_offset=1,
+            **datamodel_options,  # type: ignore[arg-type]
+        )
 
 
 # class DataModel(DataModelTp):
@@ -337,7 +351,9 @@ class DataModel:
         match_args: bool = True,
         kw_only: bool = False,
         slots: bool = False,
-        type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultTypeValidatorFactory,
+        type_validation_factory: Optional[
+            FieldTypeValidatorFactory
+        ] = DefaultFieldTypeValidatorFactory,
         **kwargs: Any,
     ) -> None:
         super(DataModel, cls).__init_subclass__(
@@ -806,7 +822,7 @@ def _make_post_init(has_post_init: bool) -> Callable[[DataModelTP], None]:
                 for validator in self.__datamodel_root_validators__:
                     validator.__get__(self)(self)
 
-            self.__post_init__()
+            self.__post_init__()  # type: ignore[attr-defined]  # attr._config is not visible for mypy
 
     else:
 
@@ -843,34 +859,29 @@ def _make_devtools_pretty() -> Callable[
 
 
 if sys.version_info >= (3, 9):
-    GenericTypeAlias: Final = types.GenericAlias
+    _GenericTypeAlias = types.GenericAlias
+    _GenericTypeAliasType: Final[Type] = types.GenericAlias
 else:
-    GenericTypeAlias: Final = typing._GenericAlias
+    _GenericTypeAlias = typing._GenericAlias
+    _GenericTypeAliasType: Final[Type] = typing._GenericAlias
 
 
 def _make_data_model_class_getitem() -> classmethod:
     def __class_getitem__(
         cls: Type[GenericDataModelTP], args: Union[Type, Tuple[Type]]
-    ) -> GenericTypeAlias:
+    ) -> _GenericTypeAlias:
         """Return an instance compatible with aliases created by :class:`typing.Generic` classes.
 
         See :class:`GenericDataModelAlias` for further information.
         """
         type_args: Tuple[Type] = args if isinstance(args, tuple) else (args,)
         concrete_cls = concretize(cls, *type_args)
-        return GenericTypeAlias(concrete_cls, type_args)
+        return _GenericTypeAliasType(concrete_cls, type_args)
 
     return classmethod(__class_getitem__)
 
 
-def typeguard_validation_factory(annotation) -> Callable:
-    import typeguard
-
-    def _validator(cls, attrib, value):
-        print(f"{attrib=}, {value=}")
-        assert typeguard.check_type(attrib.name, value, attrib.type)
-
-    return _validator
+_KNOWN_MUTABLE_TYPES: Final = (list, dict, set)
 
 
 def _make_datamodel(
@@ -913,7 +924,7 @@ def _make_datamodel(
             elif not isinstance(cls.__dict__[key], attr._make._CountingAttr):  # type: ignore[attr-defined]  # attr._make is not visible for mypy
                 # Default value
                 if isinstance(cls_attr_value, _KNOWN_MUTABLE_TYPES):
-                    raise warnings.warn(
+                    warnings.warn(
                         f"'{cls_attr_value.__class__.__name__}' value used as default in '{cls.__name__}.{key}'.\n"
                         "Mutable types should not be normally used as field defaults (use 'default_factory' instead).",
                         stacklevel=2 + stacklevel_offset,
@@ -991,14 +1002,15 @@ def _make_datamodel(
         slots=slots,
     )(cls)
     assert new_cls is cls or slots
+
     if "__attrs_init__" in new_cls.__dict__:
         assert "__auto_init__" not in cls.__dict__
         new_cls.__auto_init__ = new_cls.__attrs_init__  # type: ignore[attr-defined]  # adding new attribute
 
     # Final postprocessing
-    cls.__pretty__ = _make_devtools_pretty()  # type: ignore[attr-defined]  # adding new attribute
+    new_cls.__pretty__ = _make_devtools_pretty()  # type: ignore[attr-defined]  # adding new attribute
     setattr(
-        cls,
+        new_cls,
         _MODEL_PARAMS,
         utils.FrozenNamespace(
             init=True,
@@ -1010,14 +1022,16 @@ def _make_datamodel(
         ),
     )
     setattr(
-        cls,
+        new_cls,
         _MODEL_FIELDS,
         utils.FrozenNamespace(
-            **{field_attr.name: field_attr for field_attr in cls.__attrs_attrs__}
+            **{
+                f_attr.name: f_attr for f_attr in new_cls.__attrs_attrs__  # type: ignore[attr-defined]  # new_cls.__attrs_attrs__ is valid
+            }
         ),
     )
 
-    return cls
+    return new_cls
 
 
 @utils.optional_lru_cache(maxsize=None, typed=True)

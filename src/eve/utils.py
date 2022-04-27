@@ -64,7 +64,7 @@ from .extended_typing import (
     TypeVar,
     Union,
 )
-from .type_definitions import NOTHING, NOTHING_TYPE
+from .type_definitions import NOTHING, NothingType
 
 
 try:
@@ -1066,7 +1066,7 @@ class XIterable(Iterable[T]):
     def islice(
         self,
         __start_or_stop: int,
-        __stop_or_nothing: Union[int, NOTHING_TYPE] = NOTHING,
+        __stop_or_nothing: Union[int, NothingType] = NOTHING,
         step: int = 1,
     ) -> XIterable[T]:
         """Select elements from an iterable.
@@ -1281,7 +1281,7 @@ class XIterable(Iterable[T]):
         key: str,
         *,
         as_dict: Literal[False],
-        init: Union[S, NOTHING_TYPE],
+        init: Union[S, NothingType],
     ) -> XIterable[Tuple[str, S]]:
         ...
 
@@ -1293,7 +1293,7 @@ class XIterable(Iterable[T]):
         __attr_keys1: str,
         *attr_keys: str,
         as_dict: Literal[False],
-        init: Union[S, NOTHING_TYPE],
+        init: Union[S, NothingType],
     ) -> XIterable[Tuple[Tuple[str, ...], S]]:
         ...
 
@@ -1304,7 +1304,7 @@ class XIterable(Iterable[T]):
         key: str,
         *,
         as_dict: Literal[True],
-        init: Union[S, NOTHING_TYPE],
+        init: Union[S, NothingType],
     ) -> Dict[str, S]:
         ...
 
@@ -1316,7 +1316,7 @@ class XIterable(Iterable[T]):
         __attr_keys1: str,
         *attr_keys: str,
         as_dict: Literal[True],
-        init: Union[S, NOTHING_TYPE],
+        init: Union[S, NothingType],
     ) -> Dict[Tuple[str, ...], S]:
         ...
 
@@ -1327,7 +1327,7 @@ class XIterable(Iterable[T]):
         key: List[K],
         *,
         as_dict: Literal[False],
-        init: Union[S, NOTHING_TYPE],
+        init: Union[S, NothingType],
     ) -> XIterable[Tuple[K, S]]:
         ...
 
@@ -1338,7 +1338,7 @@ class XIterable(Iterable[T]):
         key: List[K],
         *,
         as_dict: Literal[True],
-        init: Union[S, NOTHING_TYPE],
+        init: Union[S, NothingType],
     ) -> Dict[K, S]:
         ...
 
@@ -1349,7 +1349,7 @@ class XIterable(Iterable[T]):
         key: Callable[[T], K],
         *,
         as_dict: Literal[False],
-        init: Union[S, NOTHING_TYPE],
+        init: Union[S, NothingType],
     ) -> XIterable[Tuple[K, S]]:
         ...
 
@@ -1360,7 +1360,7 @@ class XIterable(Iterable[T]):
         key: Callable[[T], K],
         *,
         as_dict: Literal[True],
-        init: Union[S, NOTHING_TYPE],
+        init: Union[S, NothingType],
     ) -> Dict[K, S]:
         ...
 
@@ -1370,7 +1370,7 @@ class XIterable(Iterable[T]):
         key: Union[str, List[K], Callable[[T], K]],
         *attr_keys: str,
         as_dict: bool = False,
-        init: Union[S, NOTHING_TYPE] = NOTHING,
+        init: Union[S, NothingType] = NOTHING,
     ) -> Union[
         XIterable[Tuple[str, S]],
         Dict[str, S],

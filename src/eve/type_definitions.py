@@ -54,7 +54,7 @@ from .extended_typing import (
 
 
 @final
-class NOTHING_TYPE(type):
+class NothingType(type):
     def __bool__(cls) -> bool:
         return False
 
@@ -62,7 +62,7 @@ class NOTHING_TYPE(type):
 #: Marker value used to avoid confusion with `None`
 #: (specially in contexts where `None` could be a valid value)
 @final
-class NOTHING(metaclass=NOTHING_TYPE):
+class NOTHING(metaclass=NothingType):
     def __new__(cls: type) -> NoReturn:  # type: ignore[misc]  # should return an instance
         raise TypeError(f"{cls.__name__} is used as a sentinel value and cannot be instantiated.")
 
