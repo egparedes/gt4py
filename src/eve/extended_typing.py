@@ -126,7 +126,6 @@ NoArgsCallable = Callable[[], Any]
 
 
 # Typing annotations
-
 if _sys.version_info >= (3, 9):
     SolvedTypingAnnotation = Union[
         Type,
@@ -144,8 +143,8 @@ else:
 TypingAnnotation = Union[ForwardRef, SolvedTypingAnnotation]
 SourceTypingAnnotation = Union[str, TypingAnnotation]
 
-_TypingSpecialFormType = _typing._SpecialForm
-_GenericAliasType: Final[Type] = (
+TypingSpecialFormType = _typing._SpecialForm
+TypingGenericAliasType: Final[Type] = (
     _types.GenericAlias if _sys.version_info >= (3, 9) else _typing._GenericAlias  # type: ignore[attr-defined]  # _GenericAlias is not exported in stub
 )
 
@@ -190,6 +189,25 @@ class DevToolsPrettyPrintable(Protocol):
 
 
 # Extra functionality
+if _sys.version_info >= (3, 9):
+
+    def is_actual_type(obj: Any) -> bool:
+        """Check if an object is an actual type and not a GenericAlias.
+
+        This is needed because since Python 3.9: ``isinstance(types.GenericAlias(),  type) is True``.
+        """
+        return isinstance(obj, type) and not isinstance(obj, _types.GenericAlias)
+
+else:
+
+    def is_actual_type(obj: Any) -> bool:
+        """Check if an object is an actual type and not a GenericAlias.
+
+        This is only needed for Python >= 3.9, where ``isinstance(types.GenericAlias(),  type) is True``.
+        """
+        return isinstance(obj, type)
+
+
 def is_protocol(type_: Type) -> bool:
     """Check if a type is a Protocol definition."""
     this_module = _sys.modules[is_protocol.__module__]
@@ -370,7 +388,7 @@ def infer_type(  # noqa: C901  # function is complex but well organized in indep
     """
     _reveal = _functools.partial(infer_type, annotate_callable_kwargs=annotate_callable_kwargs)
 
-    if isinstance(value, (_GenericAliasType, _TypingSpecialFormType)):
+    if isinstance(value, (TypingGenericAliasType, TypingSpecialFormType)):
         return value
 
     if value in (None, type(None)):
@@ -382,23 +400,23 @@ def infer_type(  # noqa: C901  # function is complex but well organized in indep
     if isinstance(value, tuple):
         unique_type, args = _collapse_type_args(*(_reveal(item) for item in value))
         if unique_type and len(args) > 1:
-            return _GenericAliasType(tuple, (args[0], ...))
+            return TypingGenericAliasType(tuple, (args[0], ...))
         elif args:
-            return _GenericAliasType(tuple, args)
+            return TypingGenericAliasType(tuple, args)
         else:
-            return _GenericAliasType(tuple, (Any, ...))
+            return TypingGenericAliasType(tuple, (Any, ...))
 
     if isinstance(value, (list, set, frozenset)):
         t: Union[Type[List], Type[Set], Type[FrozenSet]] = type(value)
         unique_type, args = _collapse_type_args(*(_reveal(item) for item in value))
-        return _GenericAliasType(t, args[0] if unique_type else Any)
+        return TypingGenericAliasType(t, args[0] if unique_type else Any)
 
     if isinstance(value, dict):
         unique_key_type, keys = _collapse_type_args(*(_reveal(key) for key in value.keys()))
         unique_value_type, values = _collapse_type_args(*(_reveal(v) for v in value.values()))
         kt = keys[0] if unique_key_type else Any
         vt = values[0] if unique_value_type else Any
-        return _GenericAliasType(dict, (kt, vt))
+        return TypingGenericAliasType(dict, (kt, vt))
 
     if isinstance(value, _types.FunctionType):
         try:

@@ -14,7 +14,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Definitions of useful field and general types."""
+"""Generic interface and implementations of run-time type validation for arbitrary values."""
 
 
 from __future__ import annotations
@@ -24,25 +24,24 @@ import collections.abc
 import dataclasses
 import functools
 
-from . import exceptions, extended_typing as xtyping, type_definitions
+from . import exceptions, extended_typing as xtyping
 from .extended_typing import (
     Any,
-    ClassVar,
     Dict,
     Final,
     ForwardRef,
+    Literal,
     Optional,
     Protocol,
     Sequence,
     Type,
     TypeVar,
     TypingAnnotation,
-    Union,
-    runtime_checkable,
 )
 
 
-@runtime_checkable
+# Protocols
+@xtyping.runtime_checkable
 class TypeValidator(Protocol):
     @abc.abstractmethod
     def __call__(
@@ -53,66 +52,27 @@ class TypeValidator(Protocol):
         *,
         globalns: Optional[Dict[str, Any]] = None,
         localns: Optional[Dict[str, Any]] = None,
+        required: bool = True,
         **kwargs: Any,
     ) -> None:
-        """Protocol defining the interface for type validation functions ensuring that ``value`` matches ``expected_type``.
+        """Protocol for callables checking that ``value`` matches ``type_annotation``.
 
         Arguments:
             value: value to be checked against the typing annotation.
             type_annotation: a valid typing annotation.
+            name: the name of the checked value (used for error messages).
 
         Keyword Arguments:
-            name: the name of the value to check (used for error messages).
             globalns: globals dict used in the evaluation of the annotations.
             localns: locals dict used in the evaluation of the annotations.
+            required: if ``True``, raise ``ValueError`` when provided type annotation is not supported.
             **kwargs: arbitrary implementation-defined arguments (e.g. for memoization).
 
         Raises:
             TypeError: if there is a type mismatch.
-            ValueError: if there is a type mismatch.
-
+            ValueError: if ``required is True`` and ``type_annotation`` is not supported.
         """
         ...
-
-
-TypeValidatorResult = type_definitions.Result[bool, Union[TypeError, ValueError]]
-
-
-class SafeTypeValidator(Protocol):
-    def __call__(
-        self,
-        value: Any,
-        type_annotation: TypingAnnotation,
-        name: Optional[str] = None,
-        *,
-        globalns: Optional[Dict[str, Any]] = None,
-        localns: Optional[Dict[str, Any]] = None,
-        **kwargs: Any,
-    ) -> TypeValidatorResult:
-        """Protocol defining the interface for type validation functions ensuring that ``value`` matches ``expected_type``.
-
-        Arguments:
-            value: value to be checked against the typing annotation.
-            type_annotation: a valid typing annotation.
-
-        Keyword Arguments:
-            name: the name of the value to check (used for error messages).
-            globalns: globals dict used in the evaluation of the annotations.
-            localns: locals dict used in the evaluation of the annotations.
-            **kwargs: arbitrary implementation-defined arguments (e.g. for memoization).
-
-        """
-        ...
-
-
-def as_safe_type_validator(type_validator: TypeValidator) -> SafeTypeValidator:
-    @functools.wraps(type_validator)
-    def safe_type_validator(*args: Any, **kwargs: Any) -> TypeValidatorResult:
-        return TypeValidatorResult.from_try(
-            type_validator, *args, **kwargs, __errors=(TypeError, ValueError)
-        )
-
-    return safe_type_validator
 
 
 class FixedTypeValidator(Protocol):
@@ -122,12 +82,48 @@ class FixedTypeValidator(Protocol):
         value: Any,
         **kwargs: Any,
     ) -> None:
-        """Protocol defining the interface for type validation functions ensuring that ``value`` matches ``expected_type``."""
+        """Protocol for callables checking that ``value`` matches a fixed type_annotation.
+
+        Arguments:
+            value: value to be checked against the typing annotation.
+
+        Keyword Arguments:
+            **kwargs: arbitrary implementation-defined arguments (e.g. for memoization).
+
+        Raises:
+            TypeError: if there is a type mismatch.
+        """
         ...
 
 
-@runtime_checkable
+@xtyping.runtime_checkable
 class TypeValidatorFactory(Protocol):
+    @xtyping.overload
+    def __call__(
+        self,
+        type_annotation: TypingAnnotation,
+        name: Optional[str] = None,
+        *,
+        globalns: Optional[Dict[str, Any]] = None,
+        localns: Optional[Dict[str, Any]] = None,
+        required: Literal[True] = True,
+        **kwargs: Any,
+    ) -> FixedTypeValidator:
+        ...
+
+    @xtyping.overload
+    def __call__(
+        self,
+        type_annotation: TypingAnnotation,
+        name: Optional[str] = None,
+        *,
+        globalns: Optional[Dict[str, Any]] = None,
+        localns: Optional[Dict[str, Any]] = None,
+        required: Literal[False] = False,
+        **kwargs: Any,
+    ) -> Optional[FixedTypeValidator]:
+        ...
+
     @abc.abstractmethod
     def __call__(
         self,
@@ -136,56 +132,65 @@ class TypeValidatorFactory(Protocol):
         *,
         globalns: Optional[Dict[str, Any]] = None,
         localns: Optional[Dict[str, Any]] = None,
+        required: bool = True,
         **kwargs: Any,
     ) -> Optional[FixedTypeValidator]:
+        """Protocol for :class:`FixedTypeValidator`s.
+
+        The arguments match the specification in :class:`TypeValidator`.
+
+        Raises:
+            TypeError: if there is a type mismatch.
+            ValueError: if ``required is True`` and ``type_annotation`` is not supported.
+        """
         ...
 
 
-# Implementation
-class _SimpleTypeValidatorFactory:
-    @classmethod
-    def make_validator(  # noqa: C901  # too complex but well organized
-        cls,
+# Implementations
+@xtyping.final
+@dataclasses.dataclass(frozen=True)
+class SimpleTypeValidatorFactory(TypeValidatorFactory):
+    """A simple :class:`TypeValidatorFactory` implementation.
+
+    Check :class:`FixedTypeValidator` and :class:`TypeValidatorFactory` for details.
+
+    Keyword Arguments:
+        strict_int (bool): do not accept ``bool`` values as ``int`` (default: ``True``).
+    """
+
+    def __call__(  # noqa: C901  # complex but well organized in cases
+        self,
         type_annotation: TypingAnnotation,
         name: Optional[str] = None,
         *,
         globalns: Optional[Dict[str, Any]] = None,
         localns: Optional[Dict[str, Any]] = None,
+        required: bool = True,
         **kwargs: Any,
     ) -> Optional[FixedTypeValidator]:
-        """Make a simple :class:`TypeValidator` for the given annotation.
-
-        Check :class:`FixedTypeValidator` and :class:`TypeValidatorFactory` for details.
-
-        Keyword Arguments:
-            strict_int (bool): do not accept ``bool`` values as ``int`` (default: ``True``).
-            required (bool): do not accept ``bool`` values as ``int`` (default: ``True``).
-
-        """
         if name is None:
             name = "<value>"
 
         make_recursive = functools.partial(
-            cls.make_validator, name=name, globalns=globalns, localns=localns, **kwargs
+            self.__call__, name=name, globalns=globalns, localns=localns, **kwargs
         )
+
         try:
             # Non-generic types
-            if isinstance(
-                type_annotation, type
-            ) and type_annotation is not type(  # noqa: E721  # use isinstance
-                None
+            if xtyping.is_actual_type(type_annotation) and not isinstance(
+                None, type_annotation  # NoneType is a different case
             ):
                 assert not xtyping.get_args(type_annotation)
                 if type_annotation is int and kwargs.get("strict_int", True):
-                    return cls.make_is_instance_of_int(name)
+                    return self.make_is_instance_of_int(name)
                 else:
-                    return cls.make_is_instance_of(name, type_annotation)
+                    return self.make_is_instance_of(name, type_annotation)
 
             if isinstance(type_annotation, TypeVar):
                 if type_annotation.__bound__:
-                    return cls.make_is_instance_of(name, type_annotation.__bound__)
+                    return self.make_is_instance_of(name, type_annotation.__bound__)
                 else:
-                    return cls._make_is_any(name)
+                    return self._make_is_any(name)
 
             if isinstance(type_annotation, ForwardRef):
                 return make_recursive(
@@ -193,7 +198,7 @@ class _SimpleTypeValidatorFactory:
                 )
 
             if type_annotation is Any:
-                return cls._make_is_any(name)
+                return self._make_is_any(name)
 
             # Generic and parametrized type hints
             origin_type = xtyping.get_origin(type_annotation)
@@ -201,11 +206,11 @@ class _SimpleTypeValidatorFactory:
 
             if origin_type is xtyping.Literal:
                 if len(type_args) == 1:
-                    return cls.make_is_literal(name, type_args[0])
+                    return self.make_is_literal(name, type_args[0])
                 else:
-                    return cls.combine_validators_as_or(
+                    return self.combine_validators_as_or(
                         name,
-                        *(cls.make_is_literal(name, a) for a in type_args),
+                        *(self.make_is_literal(name, a) for a in type_args),
                         error_type=ValueError,
                     )
 
@@ -217,15 +222,15 @@ class _SimpleTypeValidatorFactory:
                         has_none = True
                     else:
                         if (v := make_recursive(t)) is None:
-                            raise exceptions.EveTypeError(f"{t} type annotation is not supported.")
+                            raise exceptions.EveValueError(f"{t} type annotation is not supported.")
                         validators.append(v)
 
                 validator = (
-                    cls.combine_validators_as_or(name, *validators)
+                    self.combine_validators_as_or(name, *validators)
                     if len(validators) > 1
                     else validators[0]
                 )
-                return cls.combine_optional(name, validator) if has_none else validator
+                return self.combine_optional(name, validator) if has_none else validator
 
             if isinstance(origin_type, type):
                 # Deal with generic collections
@@ -233,14 +238,14 @@ class _SimpleTypeValidatorFactory:
                     if len(type_args) == 2 and (type_args[1] is Ellipsis):
                         # Tuple as an immutable sequence type (e.g. Tuple[int, ...])
                         if (member_validator := make_recursive(type_args[0])) is None:
-                            raise exceptions.EveTypeError(
+                            raise exceptions.EveValueError(
                                 f"{type_args[0]} type annotation is not supported."
                             )
 
-                        return cls.make_is_iterable_of(
+                        return self.make_is_iterable_of(
                             name,
                             member_validator,
-                            iterable_validator=cls.make_is_instance_of(name, origin_type),
+                            iterable_validator=self.make_is_instance_of(name, origin_type),
                         )
 
                     else:
@@ -248,47 +253,49 @@ class _SimpleTypeValidatorFactory:
                         item_validators = []
                         for t in type_args:
                             if (v := make_recursive(t)) is None:
-                                raise exceptions.EveTypeError(
+                                raise exceptions.EveValueError(
                                     f"{t} type annotation is not supported."
                                 )
                             item_validators.append(v)
 
-                        return cls.make_is_tuple_of(name, tuple(item_validators), origin_type)
+                        return self.make_is_tuple_of(name, tuple(item_validators), origin_type)
 
                 if issubclass(origin_type, (collections.abc.Sequence, collections.abc.Set)):
                     assert len(type_args) == 1
                     if (member_validator := make_recursive(type_args[0])) is None:
-                        raise exceptions.EveTypeError(
+                        raise exceptions.EveValueError(
                             f"{type_args[0]} type annotation is not supported."
                         )
 
-                    return cls.make_is_iterable_of(
+                    return self.make_is_iterable_of(
                         name,
                         member_validator,
-                        iterable_validator=cls.make_is_instance_of(name, origin_type),
+                        iterable_validator=self.make_is_instance_of(name, origin_type),
                     )
 
                 if issubclass(origin_type, collections.abc.Mapping):
                     assert len(type_args) == 2
                     if (key_validator := make_recursive(type_args[0])) is None:
-                        raise exceptions.EveTypeError(
+                        raise exceptions.EveValueError(
                             f"{type_args[0]} type annotation is not supported."
                         )
                     if (value_validator := make_recursive(type_args[1])) is None:
-                        raise exceptions.EveTypeError(
+                        raise exceptions.EveValueError(
                             f"{type_args[1]} type annotation is not supported."
                         )
 
-                    return cls.make_is_mapping_of(
+                    return self.make_is_mapping_of(
                         name,
                         key_validator,
                         value_validator,
-                        mapping_validator=cls.make_is_instance_of(name, origin_type),
+                        mapping_validator=self.make_is_instance_of(name, origin_type),
                     )
 
-        except exceptions.EveTypeError as error:
-            if kwargs.get("required", True):
+        except exceptions.EveValueError as error:
+            if required:
                 raise error
+
+        assert required is False
 
         return None
 
@@ -437,7 +444,7 @@ class _SimpleTypeValidatorFactory:
         return _combined_validator
 
 
-simple_type_validator_factory = _SimpleTypeValidatorFactory.make_validator
+simple_type_validator_factory: Final = SimpleTypeValidatorFactory()
 
 
 def simple_type_validator(
@@ -447,25 +454,11 @@ def simple_type_validator(
     *,
     globalns: Optional[Dict[str, Any]] = None,
     localns: Optional[Dict[str, Any]] = None,
+    required: bool = True,
     **kwargs: Any,
 ) -> None:
     type_validator = simple_type_validator_factory(
-        type_annotation, name=name, globalns=globalns, localns=localns, **kwargs
+        type_annotation, name=name, globalns=globalns, localns=localns, required=required, **kwargs
     )
-    if not type_validator:
-        raise exceptions.EveTypeError(f"{type_annotation} type annotation is not supported.")
-    type_validator(value, **kwargs)
-
-
-safe_simple_type_validator: Final[SafeTypeValidator] = as_safe_type_validator(simple_type_validator)
-
-
-# def typeguard_type_validator_factory(
-#     type_annotation: SourceTypingAnnotation,
-# ) -> Optional[AttrsValidatorType]:
-#     import typeguard
-
-#     def _validator(instance: _C, attribute_info: _A, value: _V) -> None:
-#         typeguard.check_type(f"'{attribute_info.name}'", value, expected_type=annotation)
-
-#     return _validator
+    if type_validator is not None:
+        type_validator(value, **kwargs)
