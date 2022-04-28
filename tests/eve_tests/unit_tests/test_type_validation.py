@@ -18,12 +18,14 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import sys
 import typing
 
 import pytest
 
 from eve import type_validation as eve_tv
 from eve.extended_typing import (
+    Any,
     Final,
     List,
     Optional,
@@ -39,7 +41,21 @@ VALIDATORS: Final = [eve_tv.simple_type_validator]
 FACTORIES: Final = [eve_tv.simple_type_validator_factory]
 
 
-sample_type_data: Final[List[Tuple[str, Sequence, Sequence]]] = [
+class SampleEnum(enum.Enum):
+    FOO = "foo"
+    BLA = "bla"
+
+
+class SampleEmptyClass:
+    pass
+
+
+@dataclasses.dataclass
+class SampleDataClass:
+    a: int
+
+
+SAMPLE_TYPE_DATA: List[Tuple[Any, Sequence, Sequence]] = [
     (bool, [True, False], [1, "True"]),
     (int, [1, -1], [1.0, True, "1"]),
     (float, [1.0], [1, "1.0"]),
@@ -63,11 +79,36 @@ sample_type_data: Final[List[Tuple[str, Sequence, Sequence]]] = [
         [{1: (2, 3.0)}, {1.0: (2, None)}, {"1": {1, 2}}],
         [{(1, 1.0, "1"): set()}, {1: [1]}, {"1": (1,)}],
     ),
+    (SampleEnum, [SampleEnum.FOO, SampleEnum.BLA], [SampleEnum, "foo", "bla"]),
+    (
+        SampleEmptyClass,
+        [SampleEmptyClass(), SampleEmptyClass()],
+        [object(), "", None, SampleDataClass(1), SampleEmptyClass],
+    ),
+    (
+        SampleDataClass,
+        [SampleDataClass(1), SampleDataClass(-42)],
+        [object(), int(1), "1", SampleDataClass],
+    ),
 ]
+
+if sys.version_info >= (3, 10):
+
+    @dataclasses.dataclass(slots=True)
+    class SampleSlottedDataClass:
+        b: float
+
+    SAMPLE_TYPE_DATA.append(
+        (
+            SampleSlottedDataClass,
+            [SampleSlottedDataClass(1.0), SampleSlottedDataClass(1)],
+            [object(), float(1.2), int(1), "1.2", SampleSlottedDataClass],
+        )
+    )
 
 
 @pytest.mark.parametrize("validator", VALIDATORS)
-@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], sample_type_data)
+@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DATA)
 def test_validators(
     validator: eve_tv.TypeValidator,
     type_hint: SourceTypingAnnotation,
@@ -83,7 +124,7 @@ def test_validators(
 
 
 @pytest.mark.parametrize("factory", FACTORIES)
-@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], sample_type_data)
+@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DATA)
 def test_validator_factories(
     factory: eve_tv.TypeValidatorFactory,
     type_hint: SourceTypingAnnotation,
@@ -97,41 +138,3 @@ def test_validator_factories(
     for value in wrong_values:
         with pytest.raises((TypeError, ValueError), match="'<value>'"):
             validator(value)
-
-
-# T = TypeVar("T")
-
-
-# class SampleEnum(enum.Enum):
-#     FOO = "foo"
-#     BLA = "bla"
-
-
-# class SampleEmptyClass:
-#     pass
-
-
-# @dataclasses.dataclass
-# class SampleDataClass:
-#     a: int
-
-
-# @dataclasses.dataclass(slots=True)
-# class SampleSlottedDataClass:
-#     b: float
-
-
-# # Reuse sample_type_data from test_field_type_hint
-# @pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], sample_type_data)
-# def test_concrete_field_type_validation(
-#     type_hint: str, valid_values: Sequence[Any], wrong_values: Sequence[Any]
-# ):
-#     concrete_type: Type = eval(type_hint)
-#     Model: Type[datamodels.DataModelTP] = typing.get_origin(GenericModel[concrete_type])  # type: ignore[valid-type,assignment]
-
-#     for value in valid_values:
-#         Model(value=value)
-
-#     for value in wrong_values:
-#         with pytest.raises((TypeError, ValueError), match="'value'"):
-#             Model(value=value)
