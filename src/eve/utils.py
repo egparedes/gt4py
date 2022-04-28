@@ -49,7 +49,6 @@ from boltons.strutils import (  # noqa: F401
     slugify as slugify,
     unwrap_text as unwrap_text,
 )
-from boltons.typeutils import classproperty as classproperty  # noqa: F401
 
 from .extended_typing import (
     Any,
