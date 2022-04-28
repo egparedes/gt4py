@@ -46,6 +46,7 @@ from eve.extended_typing import (
 
 
 VALIDATORS: Final = [eve_tv.simple_type_validator]
+FACTORIES: Final = [eve_tv.simple_type_validator_factory]
 
 
 sample_type_data: Final[List[Tuple[str, Sequence, Sequence]]] = [
@@ -91,20 +92,21 @@ def test_validators(
             validator(value, type_hint, "<value>")
 
 
-@pytest.mark.parametrize("validator", VALIDATORS)
+@pytest.mark.parametrize("factory", FACTORIES)
 @pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], sample_type_data)
-def test_validators(
-    validator: eve_tv.TypeValidator,
+def test_validator_factories(
+    factory: eve_tv.TypeValidatorFactory,
     type_hint: SourceTypingAnnotation,
     valid_values: Sequence,
     wrong_values: Sequence,
 ):
+    validator = factory(type_hint, name="<value>")
     for value in valid_values:
-        validator(value, type_hint, "<value>")
+        validator(value)
 
     for value in wrong_values:
         with pytest.raises((TypeError, ValueError), match="'<value>'"):
-            validator(value, type_hint, "<value>")
+            validator(value)
 
 
 # T = TypeVar("T")
