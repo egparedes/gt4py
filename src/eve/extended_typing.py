@@ -304,7 +304,7 @@ class CallableKwargsInfo:
     data: Dict[str, Any]
 
 
-def deduce_type(  # noqa: C901  # function is complex but well organized in independent cases
+def infer_type(  # noqa: C901  # function is complex but well organized in independent cases
     value: Any,
     *,
     annotate_callable_kwargs: bool = False,
@@ -319,36 +319,36 @@ def deduce_type(  # noqa: C901  # function is complex but well organized in inde
         none_as_type:  if ``True``, ``None`` hints will be transformed to ``type(None)``.
 
     Examples:
-        >>> deduce_type(3)
+        >>> infer_type(3)
         <class 'int'>
 
-        >>> deduce_type((3, "four"))
+        >>> infer_type((3, "four"))
         tuple[int, str]
 
-        >>> deduce_type((3, 4))
+        >>> infer_type((3, 4))
         tuple[int, ...]
 
-        >>> deduce_type(frozenset([1, 2, 3]))
+        >>> infer_type(frozenset([1, 2, 3]))
         frozenset[int]
 
-        >>> deduce_type({'a': 0, 'b': 1})
+        >>> infer_type({'a': 0, 'b': 1})
         dict[str, int]
 
-        >>> deduce_type({'a': 0, 'b': 'B'})
+        >>> infer_type({'a': 0, 'b': 'B'})
         dict[str, typing.Any]
 
-        >>> print("Result:", deduce_type(lambda a, b: a + b))
+        >>> print("Result:", infer_type(lambda a, b: a + b))
         Result: ...Callable[[typing.Any, typing.Any], typing.Any]
 
         >>> def f(a: int, b) -> int: ...
-        >>> print("Result:", deduce_type(f))
+        >>> print("Result:", infer_type(f))
         Result: ...Callable[[int, typing.Any], int]
 
         >>> def f(a: int, b) -> int: ...
-        >>> print("Result:", deduce_type(f))
+        >>> print("Result:", infer_type(f))
         Result: ...Callable[..., int]
 
-        >>> print("Result:", deduce_type(Dict[int, Union[int, float]]))
+        >>> print("Result:", infer_type(Dict[int, Union[int, float]]))
         Result: ...ict[int, typing.Union[int, float]]
 
     For advanced cases, using :func:`functools.singledispatch` with custom hooks
@@ -356,19 +356,19 @@ def deduce_type(  # noqa: C901  # function is complex but well organized in inde
 
     Example:
         >>> import functools, numbers
-        >>> extended_deduce_type = functools.singledispatch(deduce_type)
-        >>> @extended_deduce_type.register(int)
-        ... @extended_deduce_type.register(float)
-        ... @extended_deduce_type.register(complex)
-        ... def _deduce_type_number(value, *, annotate_callable_kwargs: bool = False):
+        >>> extended_infer_type = functools.singledispatch(infer_type)
+        >>> @extended_infer_type.register(int)
+        ... @extended_infer_type.register(float)
+        ... @extended_infer_type.register(complex)
+        ... def _infer_type_number(value, *, annotate_callable_kwargs: bool = False):
         ...    return numbers.Number
-        >>> extended_deduce_type(3.4)
+        >>> extended_infer_type(3.4)
         <class 'numbers.Number'>
-        >>> deduce_type(3.4)
+        >>> infer_type(3.4)
         <class 'float'>
 
     """
-    _reveal = _functools.partial(deduce_type, annotate_callable_kwargs=annotate_callable_kwargs)
+    _reveal = _functools.partial(infer_type, annotate_callable_kwargs=annotate_callable_kwargs)
 
     if isinstance(value, (_GenericAliasType, _TypingSpecialFormType)):
         return value
