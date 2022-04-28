@@ -56,6 +56,7 @@ from .extended_typing import (
     Callable,
     Collection,
     Dict,
+    Final,
     Generic,
     Iterable,
     Iterator,
@@ -483,18 +484,19 @@ class FrozenNamespace(types.SimpleNamespace, Generic[T]):
         return self.__dict__.values()
 
 
+if sys.version_info >= (3, 10):
+    _field_opts: Final = {"kw_only": True}
+else:
+    _field_opts: Final = {}
+
+
 @dataclasses.dataclass
 class UIDGenerator:
     """Simple unique id generator using different methods."""
 
-    if sys.version_info >= (3, 10):
-        prefix: Optional[str] = dataclasses.field(default=None, kw_only=True)
-        width: Optional[int] = dataclasses.field(default=None, kw_only=True)
-        warn_unsafe: Optional[bool] = dataclasses.field(default=None, kw_only=True)
-    else:
-        prefix: Optional[str] = dataclasses.field(default=None)
-        width: Optional[int] = dataclasses.field(default=None)
-        warn_unsafe: Optional[bool] = dataclasses.field(default=None)
+    prefix: Optional[str] = dataclasses.field(default=None, **_field_opts)
+    width: Optional[int] = dataclasses.field(default=None, **_field_opts)
+    warn_unsafe: Optional[bool] = dataclasses.field(default=None, **_field_opts)
 
     #: Constantly increasing counter for generation of sequential unique ids
     _counter: Iterator[int] = dataclasses.field(
