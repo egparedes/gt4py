@@ -35,16 +35,20 @@ import uuid
 import warnings
 
 import xxhash
-from boltons.iterutils import flatten as flatten  # noqa: F401
-from boltons.iterutils import flatten_iter as flatten_iter
-from boltons.iterutils import is_collection as is_collection
-from boltons.strutils import a10n as a10n  # noqa: F401
-from boltons.strutils import asciify as asciify
-from boltons.strutils import format_int_list as format_int_list
-from boltons.strutils import iter_splitlines as iter_splitlines
-from boltons.strutils import parse_int_list as parse_int_list
-from boltons.strutils import slugify as slugify
-from boltons.strutils import unwrap_text as unwrap_text
+from boltons.iterutils import (  # noqa: F401
+    flatten as flatten,
+    flatten_iter as flatten_iter,
+    is_collection as is_collection,
+)
+from boltons.strutils import (  # noqa: F401
+    a10n as a10n,
+    asciify as asciify,
+    format_int_list as format_int_list,
+    iter_splitlines as iter_splitlines,
+    parse_int_list as parse_int_list,
+    slugify as slugify,
+    unwrap_text as unwrap_text,
+)
 from boltons.typeutils import classproperty as classproperty  # noqa: F401
 
 from .extended_typing import (

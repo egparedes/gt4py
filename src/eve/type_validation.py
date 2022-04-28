@@ -24,9 +24,7 @@ import collections.abc
 import dataclasses
 import functools
 
-from . import exceptions
-from . import extended_typing as xtyping
-from . import type_definitions
+from . import exceptions, extended_typing as xtyping, type_definitions
 from .extended_typing import (
     Any,
     ClassVar,
