@@ -191,7 +191,7 @@ class DevToolsPrettyPrintable(Protocol):
 # Extra functionality
 if _sys.version_info >= (3, 9):
 
-    def is_actual_type(obj: Any) -> bool:
+    def is_actual_type(obj: Any) -> TypeGuard[Type]:
         """Check if an object is an actual type and not a GenericAlias.
 
         This is needed because since Python 3.9: ``isinstance(types.GenericAlias(),  type) is True``.
@@ -200,7 +200,7 @@ if _sys.version_info >= (3, 9):
 
 else:
 
-    def is_actual_type(obj: Any) -> bool:
+    def is_actual_type(obj: Any) -> TypeGuard[Type]:
         """Check if an object is an actual type and not a GenericAlias.
 
         This is only needed for Python >= 3.9, where ``isinstance(types.GenericAlias(),  type) is True``.

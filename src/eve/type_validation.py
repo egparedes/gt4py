@@ -119,7 +119,7 @@ class TypeValidatorFactory(Protocol):
         *,
         globalns: Optional[Dict[str, Any]] = None,
         localns: Optional[Dict[str, Any]] = None,
-        required: Literal[False] = False,
+        required: bool = True,
         **kwargs: Any,
     ) -> Optional[FixedTypeValidator]:
         ...
@@ -157,6 +157,32 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
     Keyword Arguments:
         strict_int (bool): do not accept ``bool`` values as ``int`` (default: ``True``).
     """
+
+    @xtyping.overload
+    def __call__(
+        self,
+        type_annotation: TypingAnnotation,
+        name: Optional[str] = None,
+        *,
+        globalns: Optional[Dict[str, Any]] = None,
+        localns: Optional[Dict[str, Any]] = None,
+        required: Literal[True] = True,
+        **kwargs: Any,
+    ) -> FixedTypeValidator:
+        ...
+
+    @xtyping.overload
+    def __call__(
+        self,
+        type_annotation: TypingAnnotation,
+        name: Optional[str] = None,
+        *,
+        globalns: Optional[Dict[str, Any]] = None,
+        localns: Optional[Dict[str, Any]] = None,
+        required: bool = True,
+        **kwargs: Any,
+    ) -> Optional[FixedTypeValidator]:
+        ...
 
     def __call__(  # noqa: C901  # complex but well organized in cases
         self,
