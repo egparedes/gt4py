@@ -24,23 +24,13 @@ import pytest
 
 from eve import type_validation as eve_tv
 from eve.extended_typing import (
-    Any,
-    Callable,
-    ClassVar,
-    Dict,
     Final,
-    ForwardRef,
-    Generic,
     List,
-    Literal,
-    MutableSequence,
     Optional,
     Sequence,
     Set,
     SourceTypingAnnotation,
     Tuple,
-    Type,
-    TypeVar,
     Union,
 )
 
