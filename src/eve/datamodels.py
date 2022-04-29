@@ -93,11 +93,14 @@ from eve.type_definitions import NOTHING, NothingType
 
 
 # Typing
-Attribute: TypeAlias = attr.Attribute
+_T = TypeVar("_T")
 
 
 class _AttrsClassTP(Protocol):
     __attrs_attrs__: ClassVar[Tuple[attr.Attribute, ...]]
+
+
+Attribute: TypeAlias = attr.Attribute
 
 
 class DataModelTP(_AttrsClassTP, xtyping.DevToolsPrettyPrintable, Protocol):
@@ -122,29 +125,19 @@ class GenericDataModelTP(DataModelTP, Protocol):
         ...
 
 
-# _A = TypeVar("_A")
-# _C = TypeVar("_C")
-# _V = TypeVar("_V")
-
-
-# class ClassAttributeValidator(Protocol[_C, _A, _V]):
-#     def __call__(self, instance: _C, attribute_info: _A, value: _V) -> None:
-#         ...
-
-_T = TypeVar("_T")
-_AttrsValidator = Callable[[Any, attr.Attribute, _T], Any]
-FieldValidator = Callable[[DataModelTP, Attribute, _T], None]
-BoundFieldValidator = Callable[[Attribute, _T], None]
+if xtyping.TYPE_CHECKING:
+    _AttrsValidator = Callable[[Any, attr.Attribute[_T], _T], Any]
+    FieldValidator = Callable[[DataModelTP, attr.Attribute[_T], _T], None]
+    BoundFieldValidator = Callable[[attr.Attribute[_T], _T], None]
+else:
+    _AttrsValidator = Callable[[Any, attr.Attribute, _T], Any]
+    FieldValidator = Callable[[DataModelTP, Attribute, _T], None]
+    BoundFieldValidator = Callable[[Attribute, _T], None]
 
 RootValidator = Callable[[Type[DataModelTP], DataModelTP], None]
 BoundRootValidator = Callable[[DataModelTP], None]
 
-# FieldTypeValidatorFactory = Callable[[str, SourceTypingAnnotation], Optional[FieldValidator]]
-
-
-class FieldTypeValidatorFactory(Protocol):
-    def __call__(self, type_annotation: TypingAnnotation, name: str) -> Optional[FieldValidator]:
-        ...
+FieldTypeValidatorFactory = Callable[[TypingAnnotation, str], Optional[FieldValidator]]
 
 
 # Implementation

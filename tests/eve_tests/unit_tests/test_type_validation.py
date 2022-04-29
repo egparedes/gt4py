@@ -55,7 +55,8 @@ class SampleDataClass:
     a: int
 
 
-SAMPLE_TYPE_DATA: List[Tuple[Any, Sequence, Sequence]] = [
+# Each item contains: (annotation: Any, valid_values: Sequence, wrong_values: Sequence)
+SAMPLE_TYPE_DEFINITIONS: List[Tuple[Any, Sequence, Sequence]] = [
     (bool, [True, False], [1, "True"]),
     (int, [1, -1], [1.0, True, "1"]),
     (float, [1.0], [1, "1.0"]),
@@ -98,7 +99,7 @@ if sys.version_info >= (3, 10):
     class SampleSlottedDataClass:
         b: float
 
-    SAMPLE_TYPE_DATA.append(
+    SAMPLE_TYPE_DEFINITIONS.append(
         (
             SampleSlottedDataClass,
             [SampleSlottedDataClass(1.0), SampleSlottedDataClass(1)],
@@ -108,7 +109,7 @@ if sys.version_info >= (3, 10):
 
 
 @pytest.mark.parametrize("validator", VALIDATORS)
-@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DATA)
+@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DEFINITIONS)
 def test_validators(
     validator: eve_tv.TypeValidator,
     type_hint: SourceTypingAnnotation,
@@ -124,7 +125,7 @@ def test_validators(
 
 
 @pytest.mark.parametrize("factory", FACTORIES)
-@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DATA)
+@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DEFINITIONS)
 def test_validator_factories(
     factory: eve_tv.TypeValidatorFactory,
     type_hint: SourceTypingAnnotation,
@@ -138,3 +139,13 @@ def test_validator_factories(
     for value in wrong_values:
         with pytest.raises((TypeError, ValueError), match="'<value>'"):
             validator(value)
+
+
+# @pytest.mark.parametrize("factory", FACTORIES)
+# def test_invalid_annotation(factory: eve_tv.TypeValidatorFactory):
+
+
+# @pytest.mark.parametrize("factory", FACTORIES)
+# def test_forward_refs(factory: eve_tv.TypeValidatorFactory):
+
+#     validator = factory("", name="<value>")

@@ -20,11 +20,9 @@
 from __future__ import annotations
 
 import ast
-import dataclasses
 import enum
 import functools
 import re
-import sys
 
 import pydantic
 import xxhash
@@ -42,20 +40,7 @@ from pydantic import (  # noqa: F401
 )
 from pydantic.types import ConstrainedStr
 
-from .extended_typing import (
-    Any,
-    Callable,
-    Final,
-    Generator,
-    Generic,
-    NoReturn,
-    Optional,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-    final,
-)
+from .extended_typing import Any, Callable, Generator, NoReturn, Optional, Tuple, Type, Union, final
 
 
 @final

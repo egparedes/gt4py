@@ -485,6 +485,7 @@ class ChildModelWithValidators(ModelWithValidators):
     pass
 
 
+@typing.no_type_check
 @pytest.mark.parametrize("model_class", [ModelWithValidators, ChildModelWithValidators])
 def test_field_validators(model_class: Type[Union[ModelWithValidators, ChildModelWithValidators]]):
 
