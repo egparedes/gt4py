@@ -349,9 +349,7 @@ def test_deferred_class_type_hint():
         list_value: List[RecursiveModel]
 
     assert isinstance(RecursiveModel.__datamodel_fields__.list_value.type, ForwardRef)
-    datamodels.update_forward_refs(
-        RecursiveModel, {"RecursiveModel": RecursiveModel}, fields=["list_value"]
-    )
+    datamodels.update_forward_refs(RecursiveModel, {"RecursiveModel": RecursiveModel})
     assert RecursiveModel.__datamodel_fields__.list_value.type.__args__[0] == RecursiveModel
 
     m1 = RecursiveModel(int_value=1, list_value=[])
@@ -379,16 +377,8 @@ def test_deferred_class_type_hint():
     datamodels.update_forward_refs(
         CollectorModel,
         {"NotYetDefinedModel1": NotYetDefinedModel1, "NotYetDefinedModel2": NotYetDefinedModel2},
-        fields=["value1"],
     )
     assert CollectorModel.__datamodel_fields__.value1.type == NotYetDefinedModel1
-    # value2 field should have not been updated
-    assert isinstance(CollectorModel.__datamodel_fields__.value2.type, ForwardRef)
-
-    datamodels.update_forward_refs(
-        CollectorModel,
-        {"NotYetDefinedModel1": NotYetDefinedModel1, "NotYetDefinedModel2": NotYetDefinedModel2},
-    )
     assert CollectorModel.__datamodel_fields__.value2.type == NotYetDefinedModel2
 
     CollectorModel(value1=NotYetDefinedModel1(int_value=1), value2=NotYetDefinedModel2(int_value=2))
@@ -811,3 +801,19 @@ def test_concrete_field_type_validation(
     for value in wrong_values:
         with pytest.raises((TypeError, ValueError), match="'value'"):
             Model(value=value)
+
+
+def test_coertion():
+    class CoercedModel(datamodels.DataModel):
+        as_int: datamodels.Coerce[int]
+        only_int: int
+
+    print(CoercedModel.__attrs_attrs__.as_int)
+    print(CoercedModel.__attrs_attrs__.only_int)
+    instance = CoercedModel(-2, 2)
+    assert instance.as_int == -2
+    assert instance.only_int == 2
+
+    instance = CoercedModel("-2", 2)
+    assert instance.as_int == -2
+    assert instance.only_int == 2
