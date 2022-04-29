@@ -219,7 +219,18 @@ def _has_custom_hash(type_: Type) -> bool:
 
 def is_hashable(obj: Any) -> TypeGuard[Hashable]:
     """Check if an object is hashable (by value)."""
-    return _has_custom_hash(obj.__class__)
+    if obj in (None, type):
+        return True
+
+    obj_type = obj if isinstance(obj, type) else type(obj)
+    if _has_custom_hash(obj_type):
+        try:
+            hash(obj)
+            return True
+        except Exception:
+            pass
+
+    return False
 
 
 def is_hashable_type(
@@ -231,9 +242,7 @@ def is_hashable_type(
     """Check if a type annotation describes a hashable (by value) type."""
     if is_actual_type(type_annotation):
         assert not get_args(type_annotation)
-        return (
-            _has_custom_hash(type_annotation.__class__) if type_annotation != type(None) else True
-        )
+        return True if type_annotation in (type, type(None)) else _has_custom_hash(type_annotation)
 
     if isinstance(type_annotation, TypeVar):
         return is_hashable_type(type_annotation.__bound__) if type_annotation.__bound__ else False
@@ -259,7 +268,7 @@ def is_hashable_type(
     if isinstance(origin_type, type) and is_hashable_type(origin_type):
         return all(is_hashable_type(t) for t in type_args if t != Ellipsis)
 
-    return False
+    return type_annotation is None
 
 
 def is_protocol(type_: Type) -> bool:
