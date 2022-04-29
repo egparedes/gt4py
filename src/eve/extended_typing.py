@@ -127,25 +127,30 @@ NoArgsCallable = Callable[[], Any]
 
 # Typing annotations
 if _sys.version_info >= (3, 9):
-    SolvedTypingAnnotation = Union[
+    SolvedTypeAnnotation = Union[
         Type,
         _typing._SpecialForm,
         _types.GenericAlias,
         _typing._BaseGenericAlias,  # type: ignore[name-defined]  # _BaseGenericAlias is not exported in stub
     ]
 else:
-    SolvedTypingAnnotation = Union[  # type: ignore[misc]  # mypy consider this assignment a redefinition
+    SolvedTypeAnnotation = Union[  # type: ignore[misc]  # mypy consider this assignment a redefinition
         Type,
         _typing._SpecialForm,
         _typing._GenericAlias,  # type: ignore[attr-defined]  # _GenericAlias is not exported in stub
     ]
 
-TypingAnnotation = Union[ForwardRef, SolvedTypingAnnotation]
-SourceTypingAnnotation = Union[str, TypingAnnotation]
+TypeAnnotation = Union[ForwardRef, SolvedTypeAnnotation]
+SourceTypeAnnotation = Union[str, TypeAnnotation]
 
-TypingSpecialFormType = _typing._SpecialForm
-TypingGenericAliasType: Final[Type] = (
+StdGenericAliasType: Final[Type] = (
     _types.GenericAlias if _sys.version_info >= (3, 9) else _typing._GenericAlias  # type: ignore[attr-defined]  # _GenericAlias is not exported in stub
+)
+
+
+_TypingSpecialFormType: Final[Type] = _typing._SpecialForm
+_TypingGenericAliasType: Final[Type] = (
+    _typing._BaseGenericAlias if _sys.version_info >= (3, 9) else _typing._GenericAlias
 )
 
 # Standard Python protocols
@@ -206,6 +211,55 @@ else:
         This is only needed for Python >= 3.9, where ``isinstance(types.GenericAlias(),  type) is True``.
         """
         return isinstance(obj, type)
+
+
+def _has_custom_hash(type_: Type) -> bool:
+    return type_.__hash__ is not None and type_.__hash__ != object.__hash__
+
+
+def is_hashable(obj: Any) -> TypeGuard[Hashable]:
+    """Check if an object is hashable (by value)."""
+    return _has_custom_hash(obj.__class__)
+
+
+def is_hashable_type(
+    type_annotation: TypeAnnotation,
+    *,
+    globalns: Optional[Dict[str, Any]] = None,
+    localns: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Check if a type annotation describes a hashable (by value) type."""
+    if is_actual_type(type_annotation):
+        assert not get_args(type_annotation)
+        return (
+            _has_custom_hash(type_annotation.__class__) if type_annotation != type(None) else True
+        )
+
+    if isinstance(type_annotation, TypeVar):
+        return is_hashable_type(type_annotation.__bound__) if type_annotation.__bound__ else False
+
+    if isinstance(type_annotation, ForwardRef):
+        return is_hashable_type(
+            eval_forward_ref(type_annotation, globalns=globalns, localns=localns)
+        )
+
+    if type_annotation is Any:
+        return False
+
+    # Generic types
+    origin_type = get_origin(type_annotation)
+    type_args = get_args(type_annotation)
+
+    if origin_type is Literal:
+        return True
+
+    if origin_type is Union:
+        return all(is_hashable_type(t) for t in type_args)
+
+    if isinstance(origin_type, type) and is_hashable_type(origin_type):
+        return all(is_hashable_type(t) for t in type_args if t != Ellipsis)
+
+    return False
 
 
 def is_protocol(type_: Type) -> bool:
@@ -273,7 +327,7 @@ def eval_forward_ref(
     localns: Optional[Dict[str, Any]] = None,
     *,
     include_extras: bool = False,
-) -> SolvedTypingAnnotation:
+) -> SolvedTypeAnnotation:
     """Resolve forward references in type annotations.
 
     Arguments:
@@ -327,7 +381,7 @@ def infer_type(  # noqa: C901  # function is complex but well organized in indep
     *,
     annotate_callable_kwargs: bool = False,
     none_as_type: bool = True,
-) -> TypingAnnotation:
+) -> TypeAnnotation:
     """Generate a typing definition from a value.
 
     Keyword Arguments:
@@ -388,7 +442,7 @@ def infer_type(  # noqa: C901  # function is complex but well organized in indep
     """
     _reveal = _functools.partial(infer_type, annotate_callable_kwargs=annotate_callable_kwargs)
 
-    if isinstance(value, (TypingGenericAliasType, TypingSpecialFormType)):
+    if isinstance(value, (StdGenericAliasType, _TypingSpecialFormType)):
         return value
 
     if value in (None, type(None)):
@@ -400,23 +454,23 @@ def infer_type(  # noqa: C901  # function is complex but well organized in indep
     if isinstance(value, tuple):
         unique_type, args = _collapse_type_args(*(_reveal(item) for item in value))
         if unique_type and len(args) > 1:
-            return TypingGenericAliasType(tuple, (args[0], ...))
+            return StdGenericAliasType(tuple, (args[0], ...))
         elif args:
-            return TypingGenericAliasType(tuple, args)
+            return StdGenericAliasType(tuple, args)
         else:
-            return TypingGenericAliasType(tuple, (Any, ...))
+            return StdGenericAliasType(tuple, (Any, ...))
 
     if isinstance(value, (list, set, frozenset)):
         t: Union[Type[List], Type[Set], Type[FrozenSet]] = type(value)
         unique_type, args = _collapse_type_args(*(_reveal(item) for item in value))
-        return TypingGenericAliasType(t, args[0] if unique_type else Any)
+        return StdGenericAliasType(t, args[0] if unique_type else Any)
 
     if isinstance(value, dict):
         unique_key_type, keys = _collapse_type_args(*(_reveal(key) for key in value.keys()))
         unique_value_type, values = _collapse_type_args(*(_reveal(v) for v in value.values()))
         kt = keys[0] if unique_key_type else Any
         vt = values[0] if unique_value_type else Any
-        return TypingGenericAliasType(dict, (kt, vt))
+        return StdGenericAliasType(dict, (kt, vt))
 
     if isinstance(value, _types.FunctionType):
         try:

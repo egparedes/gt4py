@@ -31,7 +31,7 @@ from eve.extended_typing import (
     Optional,
     Sequence,
     Set,
-    SourceTypingAnnotation,
+    SourceTypeAnnotation,
     Tuple,
     Union,
 )
@@ -112,7 +112,7 @@ if sys.version_info >= (3, 10):
 @pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DEFINITIONS)
 def test_validators(
     validator: type_val.TypeValidator,
-    type_hint: SourceTypingAnnotation,
+    type_hint: SourceTypeAnnotation,
     valid_values: Sequence,
     wrong_values: Sequence,
 ):
@@ -128,7 +128,7 @@ def test_validators(
 @pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DEFINITIONS)
 def test_validator_factories(
     factory: type_val.TypeValidatorFactory,
-    type_hint: SourceTypingAnnotation,
+    type_hint: SourceTypeAnnotation,
     valid_values: Sequence,
     wrong_values: Sequence,
 ):

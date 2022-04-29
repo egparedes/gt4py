@@ -35,8 +35,8 @@ from .extended_typing import (
     Protocol,
     Sequence,
     Type,
+    TypeAnnotation,
     TypeVar,
-    TypingAnnotation,
 )
 
 
@@ -47,7 +47,7 @@ class TypeValidator(Protocol):
     def __call__(
         self,
         value: Any,
-        type_annotation: TypingAnnotation,
+        type_annotation: TypeAnnotation,
         name: Optional[str] = None,
         *,
         globalns: Optional[Dict[str, Any]] = None,
@@ -101,7 +101,7 @@ class TypeValidatorFactory(Protocol):
     @xtyping.overload
     def __call__(
         self,
-        type_annotation: TypingAnnotation,
+        type_annotation: TypeAnnotation,
         name: Optional[str] = None,
         *,
         globalns: Optional[Dict[str, Any]] = None,
@@ -114,7 +114,7 @@ class TypeValidatorFactory(Protocol):
     @xtyping.overload
     def __call__(  # noqa: F811  # redefinion of unused member
         self,
-        type_annotation: TypingAnnotation,
+        type_annotation: TypeAnnotation,
         name: Optional[str] = None,
         *,
         globalns: Optional[Dict[str, Any]] = None,
@@ -127,7 +127,7 @@ class TypeValidatorFactory(Protocol):
     @abc.abstractmethod
     def __call__(  # noqa: F811  # redefinion of unused member
         self,
-        type_annotation: TypingAnnotation,
+        type_annotation: TypeAnnotation,
         name: Optional[str] = None,
         *,
         globalns: Optional[Dict[str, Any]] = None,
@@ -161,7 +161,7 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
     @xtyping.overload
     def __call__(
         self,
-        type_annotation: TypingAnnotation,
+        type_annotation: TypeAnnotation,
         name: Optional[str] = None,
         *,
         globalns: Optional[Dict[str, Any]] = None,
@@ -174,7 +174,7 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
     @xtyping.overload
     def __call__(  # noqa: F811  # redefinion of unused member
         self,
-        type_annotation: TypingAnnotation,
+        type_annotation: TypeAnnotation,
         name: Optional[str] = None,
         *,
         globalns: Optional[Dict[str, Any]] = None,
@@ -186,7 +186,7 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
 
     def __call__(  # noqa: F811,C901  # redefinion of unused member / complex but well organized in cases
         self,
-        type_annotation: TypingAnnotation,
+        type_annotation: TypeAnnotation,
         name: Optional[str] = None,
         *,
         globalns: Optional[Dict[str, Any]] = None,
@@ -475,7 +475,7 @@ simple_type_validator_factory: Final = SimpleTypeValidatorFactory()
 
 def simple_type_validator(
     value: Any,
-    type_annotation: TypingAnnotation,
+    type_annotation: TypeAnnotation,
     name: Optional[str] = None,
     *,
     globalns: Optional[Dict[str, Any]] = None,

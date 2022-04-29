@@ -91,8 +91,8 @@ from eve.extended_typing import (
     Tuple,
     Type,
     TypeAlias,
+    TypeAnnotation,
     TypeVar,
-    TypingAnnotation,
     Union,
 )
 from eve.type_definitions import NOTHING, NothingType
@@ -152,7 +152,7 @@ else:
 RootValidator = Callable[[Type[DataModelTP], DataModelTP], None]
 BoundRootValidator = Callable[[DataModelTP], None]
 
-FieldTypeValidatorFactory = Callable[[TypingAnnotation, str], Optional[FieldValidator]]
+FieldTypeValidatorFactory = Callable[[TypeAnnotation, str], Optional[FieldValidator]]
 
 TypeConverter = Callable[[Any], _T]
 
@@ -197,7 +197,7 @@ def from_type_validator_factory(
     """...implements"""
 
     def _field_type_validator_factory(
-        type_annotation: TypingAnnotation,
+        type_annotation: TypeAnnotation,
         name: str,
     ) -> Optional[FieldValidator]:
         """Create an ``attr.s`` strict type validator for ``ForwardRef`` typings.
