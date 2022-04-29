@@ -886,7 +886,7 @@ def _make_data_model_class_getitem() -> classmethod:
     return classmethod(__class_getitem__)
 
 
-def _make_type_converter(type_annotation: Type[_T], name: str) -> TypeConverter[_T]:
+def _make_type_converter(type_annotation: Type[_T]) -> TypeConverter[_T]:
     if xtyping.is_actual_type(type_annotation) and not isinstance(
         None, type_annotation  # NoneType is a different case
     ):
@@ -896,7 +896,7 @@ def _make_type_converter(type_annotation: Type[_T], name: str) -> TypeConverter[
 
     if isinstance(type_annotation, TypeVar):
         return (
-            _make_type_converter(type_annotation.__bound__, name)
+            _make_type_converter(type_annotation.__bound__)
             if type_annotation.__bound__
             else lambda x: x
         )
@@ -908,17 +908,6 @@ def _make_type_converter(type_annotation: Type[_T], name: str) -> TypeConverter[
         f"Automatic type coertion for {type_annotation} types is not supported."
     )
 
-
-# _CONCRETE_COLLECTIONS_CONVERTERS: Final[Mapping[Type, Tuple[TypeConverter, TypeConverter]]] = {
-#     collections.abc.Sequence: (lambda tuple, tuple),
-#     collections.abc.Mapping: [lambda x: types.MappingProxyType if isinstance(), type],
-# }
-
-# TODO(egparedes): implement full instance freezing
-# TODO: def _frozen_setattr(instance, attribute, value):    # noqa: E800
-# TODO:      raise attr.exceptions.FrozenAttributeError(
-# TODO:         f"Trying to modify immutable '{attribute.name}' attribute in '{type(instance).__name__}' instance."
-# TODO:      )
 
 _CACHE_HASH_THRESHOLD: Final = 6
 _KNOWN_MUTABLE_TYPES: Final = (list, dict, set)
@@ -942,11 +931,13 @@ def _make_datamodel(
     """Actual implementation of the Data Model creation.
 
     See :func:`datamodel` for the description of the parameters.
+
     """
+    mro_bases: Tuple[Type, ...] = cls.__mro__[1:]
+
     if "__annotations__" not in cls.__dict__:
         cls.__annotations__ = {}
     annotations = cls.__dict__["__annotations__"]
-    mro_bases: Tuple[Type, ...] = cls.__mro__[1:]
     resolved_annotations = xtyping.get_partial_type_hints(cls, include_extras=True)
 
     if frozen == "strict":
@@ -971,9 +962,11 @@ def _make_datamodel(
                 if coerce or _COERCE_TYPE_TAG in user_extras
                 else None
             )
+
             type_validator = (
                 type_validation_factory(type_hint, key) if type_validation_factory else None
             )
+
             cls_attr_value = cls.__dict__.get(key, NOTHING)
             if cls_attr_value is NOTHING:
                 # The field has no definition in the class dict, it's only an annotation
@@ -1070,11 +1063,26 @@ def _make_datamodel(
     )(cls)
     assert (new_cls is cls) or slots
 
+    # Final checks and postprocessing
+    if strict_frozen:
+        unhashable_fields = []
+        for f_attr in new_cls.__attrs_attrs__:
+            if is_datamodel(f_attr.type):
+                if getattr(f_attr.type, _MODEL_PARAMS).strict_frozen is True:
+                    continue
+            elif xtyping.is_hashable_type(f_attr.type):
+                continue
+            unhashable_fields.append(f_attr.name)
+
+        if unhashable_fields:
+            raise exceptions.EveTypeError(
+                f"Fields {unhashable_fields} are not considered strictly immutable."
+            )
+
     if "__attrs_init__" in new_cls.__dict__:
         assert "__auto_init__" not in cls.__dict__
         new_cls.__auto_init__ = new_cls.__attrs_init__  # type: ignore[attr-defined]  # adding new attribute
 
-    # Final postprocessing
     new_cls.__pretty__ = _make_devtools_pretty()  # type: ignore[attr-defined]  # adding new attribute
     setattr(
         new_cls,
@@ -1086,6 +1094,7 @@ def _make_datamodel(
             order=order,
             unsafe_hash=unsafe_hash,
             frozen=frozen,
+            strict_frozen=strict_frozen,
             match_args=match_args,
             kw_only=kw_only,
             slots=slots,
