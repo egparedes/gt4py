@@ -27,6 +27,7 @@ import re
 import pydantic
 import xxhash
 from boltons.typeutils import classproperty as classproperty  # noqa: F401
+from frozendict import frozendict as frozendict  # noqa: F401
 from pydantic import validator  # noqa
 from pydantic import (  # noqa: F401
     NegativeFloat,

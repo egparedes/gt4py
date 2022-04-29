@@ -67,7 +67,13 @@ import warnings
 import attr  # type: ignore[import]  # stubs not installed for attr (only attrs)
 import attrs
 
-from eve import extended_typing as xtyping, type_validation as eve_tv, utils
+from eve import (
+    exceptions,
+    extended_typing as xtyping,
+    type_definitions,
+    type_validation as type_val,
+    utils,
+)
 from eve.extended_typing import (
     Any,
     Callable,
@@ -96,9 +102,13 @@ from eve.type_definitions import NOTHING, NothingType
 _T = TypeVar("_T")
 
 _COERCE_TYPE_TAG: Final = "__DATAMODEL_COERCE_TYPE_TAG"
+_FROZEN_TYPE_TAG: Final = "__DATAMODEL_FROZEN_TYPE_TAG"
 
 #: Type hint marker to define fields that should be coerced at initization
 Coerce = xtyping.Annotated[_T, _COERCE_TYPE_TAG]
+
+#: Type hint marker to define fields that should be coerced at initization
+Frozen = xtyping.Annotated[_T, _FROZEN_TYPE_TAG]
 
 
 class _AttrsClassTP(Protocol):
@@ -113,7 +123,7 @@ class DataModelTP(_AttrsClassTP, xtyping.DevToolsPrettyPrintable, Protocol):
         ...
 
     __datamodel_fields__: ClassVar[utils.FrozenNamespace[Attribute]]
-    __datamodel_params__: ClassVar[utils.FrozenNamespace[Type]]
+    __datamodel_params__: ClassVar[utils.FrozenNamespace[Any]]
     __datamodel_root_validators__: ClassVar[
         Tuple[xtyping.NonDataDescriptor[DataModelTP, BoundRootValidator], ...]
     ]
@@ -144,6 +154,7 @@ BoundRootValidator = Callable[[DataModelTP], None]
 
 FieldTypeValidatorFactory = Callable[[TypingAnnotation, str], Optional[FieldValidator]]
 
+TypeConverter = Callable[[Any], _T]
 
 # Implementation
 _FIELD_VALIDATOR_TAG: Final = "__DATAMODEL_FIELD_VALIDATOR_TAG"
@@ -163,9 +174,9 @@ else:
 class _ForwardRefValidator:
     """Implementation of ``attr.s`` type validator for ``ForwardRef`` typings."""
 
-    factory: eve_tv.TypeValidatorFactory
+    factory: type_val.TypeValidatorFactory
     #: Actual type validator created after resolving the forward references.
-    validator: Union[eve_tv.FixedTypeValidator, None, NothingType] = NOTHING
+    validator: Union[type_val.FixedTypeValidator, None, NothingType] = NOTHING
 
     def __call__(self, instance: DataModelTP, attribute: attr.Attribute, value: Any) -> None:
         if self.validator is NOTHING:
@@ -180,7 +191,9 @@ class _ForwardRefValidator:
             self.validator(value)
 
 
-def from_type_validator_factory(factory: eve_tv.TypeValidatorFactory) -> FieldTypeValidatorFactory:
+def from_type_validator_factory(
+    factory: type_val.TypeValidatorFactory,
+) -> FieldTypeValidatorFactory:
     """...implements"""
 
     def _field_type_validator_factory(
@@ -205,7 +218,7 @@ def from_type_validator_factory(factory: eve_tv.TypeValidatorFactory) -> FieldTy
     return _field_type_validator_factory
 
 
-simple_type_validator_factory = from_type_validator_factory(eve_tv.simple_type_validator_factory)
+simple_type_validator_factory = from_type_validator_factory(type_val.simple_type_validator_factory)
 
 DefaultFieldTypeValidatorFactory: Final[Optional[FieldTypeValidatorFactory]] = (
     simple_type_validator_factory if __debug__ else None
@@ -232,7 +245,7 @@ def datamodel(
     eq: bool = _EQ_DEFAULT,
     order: bool = _ORDER_DEFAULT,
     unsafe_hash: bool = _UNSAFE_HASH_DEFAULT,
-    frozen: bool = _FROZEN_DEFAULT,
+    frozen: bool | Literal["strict"] = _FROZEN_DEFAULT,
     match_args: bool = _MATCH_ARGS_DEFAULT,
     kw_only: bool = _KW_ONLY_DEFAULT,
     slots: bool = _SLOTS_DEFAULT,
@@ -251,7 +264,7 @@ def datamodel(
     eq: bool = _EQ_DEFAULT,
     order: bool = _ORDER_DEFAULT,
     unsafe_hash: bool = _UNSAFE_HASH_DEFAULT,
-    frozen: bool = _FROZEN_DEFAULT,
+    frozen: bool | Literal["strict"] = _FROZEN_DEFAULT,
     match_args: bool = _MATCH_ARGS_DEFAULT,
     kw_only: bool = _KW_ONLY_DEFAULT,
     slots: bool = _SLOTS_DEFAULT,
@@ -269,7 +282,7 @@ def datamodel(
     eq: bool = _EQ_DEFAULT,
     order: bool = _ORDER_DEFAULT,
     unsafe_hash: bool = _UNSAFE_HASH_DEFAULT,
-    frozen: bool = _FROZEN_DEFAULT,
+    frozen: bool | Literal["strict"] = _FROZEN_DEFAULT,
     match_args: bool = _MATCH_ARGS_DEFAULT,
     kw_only: bool = _KW_ONLY_DEFAULT,
     slots: bool = _SLOTS_DEFAULT,
@@ -329,7 +342,6 @@ def datamodel(
         )
 
 
-# class DataModel(DataModelTp):
 class DataModel:
     """Base class to automatically convert any subclass into a Data Model.
 
@@ -350,7 +362,7 @@ class DataModel:
         eq: bool = _EQ_DEFAULT,
         order: bool = _ORDER_DEFAULT,
         unsafe_hash: bool = _UNSAFE_HASH_DEFAULT,
-        frozen: bool = _FROZEN_DEFAULT,
+        frozen: bool | Literal["strict"] = _FROZEN_DEFAULT,
         match_args: bool = _MATCH_ARGS_DEFAULT,
         kw_only: bool = _KW_ONLY_DEFAULT,
         slots: bool = _SLOTS_DEFAULT,
@@ -729,163 +741,6 @@ def concretize(
 
 
 # -- Helpers --
-# TODO(egparedes): implement full instance freezing
-# TODO: def _frozen_setattr(instance, attribute, value):    # noqa: E800
-# TODO:      raise attr.exceptions.FrozenAttributeError(
-# TODO:         f"Trying to modify immutable '{attribute.name}' attribute in '{type(instance).__name__}' instance."
-# TODO:      )
-
-
-def _make_type_converter(type_hint: Type[_T]) -> Callable[[Any], _T]:
-    return type_hint if isinstance(type_hint, type) else lambda x: x  # type: ignore
-
-    # def __call__(  # noqa: F811,C901  # redefinion of unused member / complex but well organized in cases
-    #     self,
-    #     type_annotation: TypingAnnotation,
-    #     name: Optional[str] = None,
-    #     *,
-    #     globalns: Optional[Dict[str, Any]] = None,
-    #     localns: Optional[Dict[str, Any]] = None,
-    #     required: bool = True,
-    #     **kwargs: Any,
-    # ) -> Optional[FixedTypeValidator]:
-    #     if name is None:
-    #         name = "<value>"
-
-    #     make_recursive = functools.partial(
-    #         self.__call__, name=name, globalns=globalns, localns=localns, **kwargs
-    #     )
-
-    #     try:
-    #         # Non-generic types
-    #         if xtyping.is_actual_type(type_annotation) and not isinstance(
-    #             None, type_annotation  # NoneType is a different case
-    #         ):
-    #             assert not xtyping.get_args(type_annotation)
-    #             if type_annotation is int and kwargs.get("strict_int", True):
-    #                 return self.make_is_instance_of_int(name)
-    #             else:
-    #                 return self.make_is_instance_of(name, type_annotation)
-
-    #         if isinstance(type_annotation, TypeVar):
-    #             if type_annotation.__bound__:
-    #                 return self.make_is_instance_of(name, type_annotation.__bound__)
-    #             else:
-    #                 return self._make_is_any(name)
-
-    #         if isinstance(type_annotation, ForwardRef):
-    #             return make_recursive(
-    #                 xtyping.eval_forward_ref(type_annotation, globalns=globalns, localns=localns)
-    #             )
-
-    #         if type_annotation is Any:
-    #             return self._make_is_any(name)
-
-    #         # Generic and parametrized type hints
-    #         origin_type = xtyping.get_origin(type_annotation)
-    #         type_args = xtyping.get_args(type_annotation)
-
-    #         if origin_type is xtyping.Literal:
-    #             if len(type_args) == 1:
-    #                 return self.make_is_literal(name, type_args[0])
-    #             else:
-    #                 return self.combine_validators_as_or(
-    #                     name,
-    #                     *(self.make_is_literal(name, a) for a in type_args),
-    #                     error_type=ValueError,
-    #                 )
-
-    #         if origin_type is xtyping.Union:
-    #             has_none = False
-    #             validators = []
-    #             for t in type_args:
-    #                 if t in (type(None), None):
-    #                     has_none = True
-    #                 else:
-    #                     if (v := make_recursive(t)) is None:
-    #                         raise exceptions.EveValueError(f"{t} type annotation is not supported.")
-    #                     validators.append(v)
-
-    #             validator = (
-    #                 self.combine_validators_as_or(name, *validators)
-    #                 if len(validators) > 1
-    #                 else validators[0]
-    #             )
-    #             return self.combine_optional(name, validator) if has_none else validator
-
-    #         if isinstance(origin_type, type):
-    #             # Deal with generic collections
-    #             if issubclass(origin_type, tuple):
-    #                 if len(type_args) == 2 and (type_args[1] is Ellipsis):
-    #                     # Tuple as an immutable sequence type (e.g. Tuple[int, ...])
-    #                     if (member_validator := make_recursive(type_args[0])) is None:
-    #                         raise exceptions.EveValueError(
-    #                             f"{type_args[0]} type annotation is not supported."
-    #                         )
-
-    #                     return self.make_is_iterable_of(
-    #                         name,
-    #                         member_validator,
-    #                         iterable_validator=self.make_is_instance_of(name, origin_type),
-    #                     )
-
-    #                 else:
-    #                     # Tuple as a heterogeneous container (e.g. Tuple[int, float])
-    #                     item_validators = []
-    #                     for t in type_args:
-    #                         if (v := make_recursive(t)) is None:
-    #                             raise exceptions.EveValueError(
-    #                                 f"{t} type annotation is not supported."
-    #                             )
-    #                         item_validators.append(v)
-
-    #                     return self.make_is_tuple_of(name, tuple(item_validators), origin_type)
-
-    #             if issubclass(origin_type, (collections.abc.Sequence, collections.abc.Set)):
-    #                 assert len(type_args) == 1
-    #                 if (member_validator := make_recursive(type_args[0])) is None:
-    #                     raise exceptions.EveValueError(
-    #                         f"{type_args[0]} type annotation is not supported."
-    #                     )
-
-    #                 return self.make_is_iterable_of(
-    #                     name,
-    #                     member_validator,
-    #                     iterable_validator=self.make_is_instance_of(name, origin_type),
-    #                 )
-
-    #             if issubclass(origin_type, collections.abc.Mapping):
-    #                 assert len(type_args) == 2
-    #                 if (key_validator := make_recursive(type_args[0])) is None:
-    #                     raise exceptions.EveValueError(
-    #                         f"{type_args[0]} type annotation is not supported."
-    #                     )
-    #                 if (value_validator := make_recursive(type_args[1])) is None:
-    #                     raise exceptions.EveValueError(
-    #                         f"{type_args[1]} type annotation is not supported."
-    #                     )
-
-    #                 return self.make_is_mapping_of(
-    #                     name,
-    #                     key_validator,
-    #                     value_validator,
-    #                     mapping_validator=self.make_is_instance_of(name, origin_type),
-    #                 )
-
-    #     except exceptions.EveValueError as error:
-    #         if required:
-    #             raise error
-
-    #     assert required is False
-
-    #     return None
-
-
-##################################3
-##################################3
-##################################3
-
-
 def _collect_field_validators(cls: Type) -> Dict[str, FieldValidator]:
     result = {}
     for member in cls.__dict__.values():
@@ -1031,7 +886,40 @@ def _make_data_model_class_getitem() -> classmethod:
     return classmethod(__class_getitem__)
 
 
-# Implementation details in _make_datamodel
+def _make_type_converter(type_annotation: Type[_T], name: str) -> TypeConverter[_T]:
+    if xtyping.is_actual_type(type_annotation) and not isinstance(
+        None, type_annotation  # NoneType is a different case
+    ):
+        assert not xtyping.get_args(type_annotation)
+        assert callable(type_annotation)
+        return type_annotation
+
+    if isinstance(type_annotation, TypeVar):
+        return (
+            _make_type_converter(type_annotation.__bound__, name)
+            if type_annotation.__bound__
+            else lambda x: x
+        )
+
+    if type_annotation is Any:
+        return lambda x: x
+
+    raise exceptions.EveTypeError(
+        f"Automatic type coertion for {type_annotation} types is not supported."
+    )
+
+
+# _CONCRETE_COLLECTIONS_CONVERTERS: Final[Mapping[Type, Tuple[TypeConverter, TypeConverter]]] = {
+#     collections.abc.Sequence: (lambda tuple, tuple),
+#     collections.abc.Mapping: [lambda x: types.MappingProxyType if isinstance(), type],
+# }
+
+# TODO(egparedes): implement full instance freezing
+# TODO: def _frozen_setattr(instance, attribute, value):    # noqa: E800
+# TODO:      raise attr.exceptions.FrozenAttributeError(
+# TODO:         f"Trying to modify immutable '{attribute.name}' attribute in '{type(instance).__name__}' instance."
+# TODO:      )
+
 _CACHE_HASH_THRESHOLD: Final = 6
 _KNOWN_MUTABLE_TYPES: Final = (list, dict, set)
 
@@ -1043,7 +931,7 @@ def _make_datamodel(
     eq: bool,
     order: bool,
     unsafe_hash: bool,
-    frozen: bool,
+    frozen: bool | Literal["strict"],
     match_args: bool,
     kw_only: bool,
     slots: bool,
@@ -1061,7 +949,13 @@ def _make_datamodel(
     mro_bases: Tuple[Type, ...] = cls.__mro__[1:]
     resolved_annotations = xtyping.get_partial_type_hints(cls, include_extras=True)
 
-    # Create attrib definitions with automatic type validators (and converters)
+    if frozen == "strict":
+        frozen = True
+        strict_frozen = True
+    else:
+        strict_frozen = False
+
+    # Create attrib definitions with automatic type validators and converters
     # for the annotated fields. The keys in the original annotations are used for
     # iteration, since the resolved annotations also contain superclasses' annotations
     for key in annotations:
@@ -1071,19 +965,21 @@ def _make_datamodel(
             type_hint, *user_extras = solved_hint, []
         annotations[key] = type_hint
 
-        converter = None
-        if coerce or _COERCE_TYPE_TAG in user_extras:
-            converter = _make_type_converter(type_hint)
         if xtyping.get_origin(type_hint) is not ClassVar:
+            converter = (
+                _make_type_converter(type_hint)
+                if coerce or _COERCE_TYPE_TAG in user_extras
+                else None
+            )
             type_validator = (
                 type_validation_factory(type_hint, key) if type_validation_factory else None
             )
             cls_attr_value = cls.__dict__.get(key, NOTHING)
             if cls_attr_value is NOTHING:
-                # Missing definition
+                # The field has no definition in the class dict, it's only an annotation
                 setattr(cls, key, attrs.field(converter=converter, validator=type_validator))
             elif not isinstance(cls.__dict__[key], attr._make._CountingAttr):  # type: ignore[attr-defined]  # attr._make is not visible for mypy
-                # Default value
+                # The field contains the default value in the class dict
                 if isinstance(cls_attr_value, _KNOWN_MUTABLE_TYPES):
                     warnings.warn(
                         f"'{cls_attr_value.__class__.__name__}' value used as default in '{cls.__name__}.{key}'.\n"
@@ -1098,8 +994,8 @@ def _make_datamodel(
                     ),
                 )
             else:
-                # A field() function has been used to customize the definition.
-                # We need to:
+                # A field() function has been used to customize the definition of the field.
+                # Here we need to:
                 #  - prepend the type validator to the list of provided validators (if any)
                 #  - add the converter if the field needs to be coerced
                 counting_attr = cls.__dict__[key]
@@ -1172,7 +1068,7 @@ def _make_datamodel(
         kw_only=kw_only,
         slots=slots,
     )(cls)
-    assert new_cls is cls or slots
+    assert (new_cls is cls) or slots
 
     if "__attrs_init__" in new_cls.__dict__:
         assert "__auto_init__" not in cls.__dict__
@@ -1190,6 +1086,11 @@ def _make_datamodel(
             order=order,
             unsafe_hash=unsafe_hash,
             frozen=frozen,
+            match_args=match_args,
+            kw_only=kw_only,
+            slots=slots,
+            coerce=coerce,
+            type_validation_factory=type_validation_factory,
         ),
     )
     setattr(

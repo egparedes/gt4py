@@ -23,7 +23,7 @@ import typing
 
 import pytest
 
-from eve import type_validation as eve_tv
+from eve import type_validation as type_val
 from eve.extended_typing import (
     Any,
     Final,
@@ -37,8 +37,8 @@ from eve.extended_typing import (
 )
 
 
-VALIDATORS: Final = [eve_tv.simple_type_validator]
-FACTORIES: Final = [eve_tv.simple_type_validator_factory]
+VALIDATORS: Final = [type_val.simple_type_validator]
+FACTORIES: Final = [type_val.simple_type_validator_factory]
 
 
 class SampleEnum(enum.Enum):
@@ -111,7 +111,7 @@ if sys.version_info >= (3, 10):
 @pytest.mark.parametrize("validator", VALIDATORS)
 @pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DEFINITIONS)
 def test_validators(
-    validator: eve_tv.TypeValidator,
+    validator: type_val.TypeValidator,
     type_hint: SourceTypingAnnotation,
     valid_values: Sequence,
     wrong_values: Sequence,
@@ -127,7 +127,7 @@ def test_validators(
 @pytest.mark.parametrize("factory", FACTORIES)
 @pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DEFINITIONS)
 def test_validator_factories(
-    factory: eve_tv.TypeValidatorFactory,
+    factory: type_val.TypeValidatorFactory,
     type_hint: SourceTypingAnnotation,
     valid_values: Sequence,
     wrong_values: Sequence,
