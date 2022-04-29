@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import copy as _copy
 import dataclasses as _dataclasses
 import functools as _functools
 import inspect as _inspect
@@ -153,6 +154,7 @@ _TypingGenericAliasType: Final[Type] = (
     _typing._BaseGenericAlias if _sys.version_info >= (3, 9) else _typing._GenericAlias
 )
 
+
 # Standard Python protocols
 _C = TypeVar("_C")
 _V = TypeVar("_V")
@@ -211,6 +213,11 @@ else:
         This is only needed for Python >= 3.9, where ``isinstance(types.GenericAlias(),  type) is True``.
         """
         return isinstance(obj, type)
+
+_T = TypeVar("_T")
+
+def get_actual_type(obj: _T) -> Type[_T]:
+    return _TypingGenericAliasType if isinstance(obj, _TypingGenericAliasType) else type(obj)
 
 
 def _has_custom_hash(type_: Type) -> bool:
@@ -508,3 +515,41 @@ def infer_type(  # noqa: C901  # function is complex but well organized in indep
             return Callable
 
     return type(value)
+
+
+def replace_types(type_annotation: TypeAnnotation, changes: Dict[type, type]) -> TypeAnnotation:
+    if is_actual_type(type_annotation):
+        return changes.get(type_annotation, type_annotation)
+
+    if isinstance(type_annotation, TypeVar):
+        new_bound = changes.get(old_bound := type_annotation.__bound__, type_annotation.__bound__)
+
+        old_constraints = type_annotation.__constraints__
+        new_constraints = tuple(changes.get(c, c) for c in old_constraints)
+
+        if new_bound != old_bound or new_constraints != old_constraints:
+            return TypeVar(
+                type_annotation.__name__,
+                new_constraints,
+                bound=new_bound,
+                covariant=type_annotation.__covariant__,
+                contravariant=type_annotation.__contravariant__,
+            )
+        else:
+            return type_annotation
+
+    # Generic and parametrized type hints
+    type_args = get_args(type_annotation)
+    new_args = tuple(replace_types(arg, changes) for arg in type_args) if type_args else tuple()
+
+    if new_args != type_args:
+        origin_type = get_origin(type_annotation)
+        if isinstance(origin_type, type):
+            # Alias of generic type
+            alias_type = get_actual_type(type_annotation)
+            return alias_type(changes.get(origin_type, origin_type), new_args)
+
+        if isinstance(type_annotation, _TypingGenericAliasType):
+            type_annotation.copy_with(new_args)
+
+    return type_annotation

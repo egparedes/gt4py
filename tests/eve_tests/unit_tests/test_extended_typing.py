@@ -31,8 +31,8 @@ from eve.extended_typing import (
     Dict,
     ForwardRef,
     FrozenSet,
-    Mapping,
     List,
+    Mapping,
     Sequence,
     Set,
     Tuple,
@@ -288,3 +288,10 @@ def test_infer_type():
             Callable[[int, float], type(None)], xtyping.CallableKwargsInfo({"foo": Tuple[str, ...]})
         ]
     )
+
+
+def test_replace_types():
+    hint = Dict[int, float]
+
+    print(xtyping.replace_types(hint, {int: float}))
+    print(xtyping.replace_types(hint, {float: int}))

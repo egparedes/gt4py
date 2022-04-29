@@ -911,6 +911,11 @@ def _make_type_converter(type_annotation: Type[_T]) -> TypeConverter[_T]:
 
 _CACHE_HASH_THRESHOLD: Final = 6
 _KNOWN_MUTABLE_TYPES: Final = (list, dict, set)
+_FROZEN_COLLECTIONS_CHANGES: Final = {
+    list: tuple,
+    set: frozenset,
+    dict: type_definitions.frozendict,
+}
 
 
 def _make_datamodel(
@@ -951,15 +956,18 @@ def _make_datamodel(
     # iteration, since the resolved annotations also contain superclasses' annotations
     for key in annotations:
         if xtyping.get_origin(solved_hint := resolved_annotations[key]) == xtyping.Annotated:
-            type_hint, *user_extras = xtyping.get_args(solved_hint)
+            type_hint, *type_extras = xtyping.get_args(solved_hint)
         else:
-            type_hint, *user_extras = solved_hint, []
+            type_hint, *type_extras = solved_hint, []
+
+        if _FROZEN_TYPE_TAG in type_extras:
+            type_hint = xtyping.replace_types(type_hint, _FROZEN_COLLECTIONS_CHANGES)
         annotations[key] = type_hint
 
         if xtyping.get_origin(type_hint) is not ClassVar:
             converter = (
                 _make_type_converter(type_hint)
-                if coerce or _COERCE_TYPE_TAG in user_extras
+                if coerce or _COERCE_TYPE_TAG in type_extras
                 else None
             )
 
