@@ -67,14 +67,14 @@ import warnings
 import attr  # type: ignore[import]  # stubs not installed for attr (only attrs)
 import attrs
 
-from eve import (
+from . import (
     exceptions,
     extended_typing as xtyping,
     type_definitions,
     type_validation as type_val,
     utils,
 )
-from eve.extended_typing import (
+from .extended_typing import (
     Any,
     Callable,
     ClassVar,
@@ -95,20 +95,20 @@ from eve.extended_typing import (
     TypeVar,
     Union,
 )
-from eve.type_definitions import NOTHING, NothingType
+from .type_definitions import NOTHING, NothingType
 
 
 # Typing
 _T = TypeVar("_T")
 
-_COERCE_TYPE_TAG: Final = "__DATAMODEL_COERCE_TYPE_TAG"
+_COERCED_TYPE_TAG: Final = "__DATAMODEL_COERCE_TYPE_TAG"
 _FROZEN_TYPE_TAG: Final = "__DATAMODEL_FROZEN_TYPE_TAG"
 
 #: Type hint marker to define fields that should be coerced at initization
-Coerce = xtyping.Annotated[_T, _COERCE_TYPE_TAG]
+Coerced = xtyping.Annotated[_T, _COERCED_TYPE_TAG]
 
 #: Type hint marker to define fields that should be coerced at initization
-Frozen = xtyping.Annotated[_T, _FROZEN_TYPE_TAG]
+Frozen = xtyping.Annotated[Coerced[_T], _FROZEN_TYPE_TAG]
 
 
 class _AttrsClassTP(Protocol):
@@ -967,7 +967,7 @@ def _make_datamodel(
         if xtyping.get_origin(type_hint) is not ClassVar:
             converter = (
                 _make_type_converter(type_hint)
-                if coerce or _COERCE_TYPE_TAG in type_extras
+                if coerce or _COERCED_TYPE_TAG in type_extras
                 else None
             )
 

@@ -18,7 +18,6 @@
 
 from __future__ import annotations
 
-import copy as _copy
 import dataclasses as _dataclasses
 import functools as _functools
 import inspect as _inspect
@@ -121,8 +120,8 @@ def __dir__() -> List[str]:
 
 # Common type aliases
 _T_co = TypeVar("_T_co", covariant=True)
-
 FrozenList: TypeAlias = Tuple[_T_co, ...]
+
 NoArgsCallable = Callable[[], Any]
 
 
@@ -214,7 +213,9 @@ else:
         """
         return isinstance(obj, type)
 
+
 _T = TypeVar("_T")
+
 
 def get_actual_type(obj: _T) -> Type[_T]:
     return _TypingGenericAliasType if isinstance(obj, _TypingGenericAliasType) else type(obj)
@@ -252,7 +253,11 @@ def is_hashable_type(
         return True if type_annotation in (type, type(None)) else _has_custom_hash(type_annotation)
 
     if isinstance(type_annotation, TypeVar):
-        return is_hashable_type(type_annotation.__bound__) if type_annotation.__bound__ else False
+        if type_annotation.__bound__:
+            return is_hashable_type(type_annotation.__bound__)
+        if type_annotation.__constraints__:
+            return all(is_hashable_type(c) for c in type_annotation.__constraints__)
+        return False
 
     if isinstance(type_annotation, ForwardRef):
         return is_hashable_type(

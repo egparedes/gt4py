@@ -290,8 +290,9 @@ def test_infer_type():
     )
 
 
-def test_replace_types():
-    hint = Dict[int, float]
+# @pytest.mark.parametrize(["hint","changes","expected"], [(list, list(), (1, []), dict())])
+# def test_replace_types():
+#     hint = Dict[int, float]
 
-    print(xtyping.replace_types(hint, {int: float}))
-    print(xtyping.replace_types(hint, {float: int}))
+#     assert xtyping.replace_types(hint, {int: float}) == Dict[float, float]
+#     assert xtyping.replace_types(hint, {float: int}) == Dict[int, int]

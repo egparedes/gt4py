@@ -257,9 +257,12 @@ def optional_lru_cache(
         def inner(*args: Any, **kwargs: Any) -> Any:
             try:
                 return cached(*args, **kwargs)
-            except TypeError:
-                # Catch errors due to non-hashable arguments and fallback to original function
-                return func(*args, **kwargs)
+            except TypeError as error:
+                if error.args and error.args[0].startswith("unhashable"):
+                    # Catch errors due to non-hashable arguments and fallback to original function
+                    return func(*args, **kwargs)
+                else:
+                    raise error
 
         return inner
 

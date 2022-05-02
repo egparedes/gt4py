@@ -26,7 +26,10 @@ import pytest
 from eve import type_validation as type_val
 from eve.extended_typing import (
     Any,
+    Callable,
+    Dict,
     Final,
+    ForwardRef,
     List,
     Optional,
     Sequence,
@@ -55,41 +58,85 @@ class SampleDataClass:
     a: int
 
 
-# Each item contains: (annotation: Any, valid_values: Sequence, wrong_values: Sequence)
-SAMPLE_TYPE_DEFINITIONS: List[Tuple[Any, Sequence, Sequence]] = [
-    (bool, [True, False], [1, "True"]),
-    (int, [1, -1], [1.0, True, "1"]),
-    (float, [1.0], [1, "1.0"]),
-    (str, ["", "one"], [1, ("one",)]),
-    (complex, [1j], [1, 1.0, "1j"]),
-    (bytes, [b"bytes", b""], ["string", ["a"]]),
-    (typing.Any, ["any"], tuple()),
-    (typing.Literal[1, 1.0, True], [1, 1.0, True], [False]),
-    (typing.Tuple[int, str], [(3, "three")], [(), (3, 3)]),
-    (typing.Tuple[int, ...], [(1, 2, 3), ()], [3, (3, "three")]),
-    (typing.List[int], ([1, 2, 3], []), (1, [1.0])),
-    (typing.Set[int], ({1, 2, 3}, set()), (1, [1], (1,), {1: None})),
-    (typing.Dict[int, str], ({}, {3: "three"}), ([(3, "three")], 3, "three", [])),
-    (typing.Sequence[int], ([1, 2, 3], [], (1, 2, 3), tuple()), (1, [1.0], {1})),
-    (typing.MutableSequence[int], ([1, 2, 3], []), ((1, 2, 3), tuple(), 1, [1.0], {1})),
-    (typing.Set[int], ({1, 2, 3}, set()), (1, [1], (1,), {1: None})),
-    (typing.Union[int, float, str], [1, 3.0, "one"], [[1], [], 1j]),
-    (typing.Optional[int], [1, None], [[1], [], 1j]),
+# Each item should be a tuple like:
+#   class SampleDataCase(NamedTuple):
+#       annotation: Any
+#       valid_values: Sequence
+#       wrong_values: Sequence
+#       globalns: Optional[Dict[str, Any]]
+#       localns: Optional[Dict[str, Any]]
+
+
+SAMPLE_TYPE_DEFINITIONS: List[
+    Tuple[Any, Sequence, Sequence, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]
+] = [
+    (bool, [True, False], [1, "True"], None, None),
+    (int, [1, -1], [1.0, "1"], None, None),
+    (float, [1.0], [1, "1.0"], None, None),
+    (complex, [1.0j, 1 + 2j, 3j], [1, "1.0"], None, None),
+    (str, ["", "one"], [1, ("one",)], None, None),
+    (complex, [1j], [1, 1.0, "1j"], None, None),
+    (bytes, [b"bytes", b""], ["string", ["a"]], None, None),
+    (typing.Any, ["any"], tuple(), None, None),
+    (
+        typing.Literal[1, True],
+        [1, True],
+        [False],
+        None,
+        None,
+    ),  # float literals are not supported by PEP 586
+    (typing.Tuple[int, str], [(3, "three")], [(), (3, 3)], None, None),
+    (typing.Tuple[int, ...], [(1, 2, 3), ()], [3, (3, "three")], None, None),
+    (typing.List[int], ([1, 2, 3], []), (1, [1.0]), None, None),
+    (typing.Set[int], ({1, 2, 3}, set()), (1, [1], (1,), {1: None}), None, None),
+    (typing.Dict[int, str], ({}, {3: "three"}), ([(3, "three")], 3, "three", []), None, None),
+    (typing.Sequence[int], ([1, 2, 3], [], (1, 2, 3), tuple()), (1, [1.0], {1}), None, None),
+    (typing.MutableSequence[int], ([1, 2, 3], []), ((1, 2, 3), tuple(), 1, [1.0], {1}), None, None),
+    (typing.Set[int], ({1, 2, 3}, set()), (1, [1], (1,), {1: None}), None, None),
+    (typing.Union[int, float, str], [1, 3.0, "one"], [[1], [], 1j], None, None),
+    (typing.Optional[int], [1, None], [[1], [], 1j], None, None),
     (
         typing.Dict[Union[int, float, str], Union[Tuple[int, Optional[float]], Set[int]]],
         [{1: (2, 3.0)}, {1.0: (2, None)}, {"1": {1, 2}}],
         [{(1, 1.0, "1"): set()}, {1: [1]}, {"1": (1,)}],
+        None,
+        None,
     ),
-    (SampleEnum, [SampleEnum.FOO, SampleEnum.BLA], [SampleEnum, "foo", "bla"]),
+    (SampleEnum, [SampleEnum.FOO, SampleEnum.BLA], [SampleEnum, "foo", "bla"], None, None),
     (
         SampleEmptyClass,
         [SampleEmptyClass(), SampleEmptyClass()],
         [object(), "", None, SampleDataClass(1), SampleEmptyClass],
+        None,
+        None,
     ),
     (
         SampleDataClass,
         [SampleDataClass(1), SampleDataClass(-42)],
         [object(), int(1), "1", SampleDataClass],
+        None,
+        None,
+    ),
+    (
+        ForwardRef("SampleDataClass"),
+        [SampleDataClass(1), SampleDataClass(-42)],
+        [object(), int(1), "1", SampleDataClass],
+        {"SampleDataClass": SampleDataClass},
+        None,
+    ),
+    (
+        ForwardRef("SampleDataClass"),
+        [SampleDataClass(1), SampleDataClass(-42)],
+        [object(), int(1), "1", SampleDataClass],
+        None,
+        {"SampleDataClass": SampleDataClass},
+    ),
+    (
+        ForwardRef("typing.List[SampleEmptyClass]"),
+        ([], [SampleEmptyClass()], [SampleEmptyClass()] * 5),
+        (SampleEmptyClass(), [1], (SampleEmptyClass(),), {1: SampleEmptyClass()}),
+        globals(),
+        None,
     ),
 ]
 
@@ -104,48 +151,105 @@ if sys.version_info >= (3, 10):
             SampleSlottedDataClass,
             [SampleSlottedDataClass(1.0), SampleSlottedDataClass(1)],
             [object(), float(1.2), int(1), "1.2", SampleSlottedDataClass],
+            None,
+            None,
         )
     )
 
 
 @pytest.mark.parametrize("validator", VALIDATORS)
-@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DEFINITIONS)
+@pytest.mark.parametrize(
+    ["type_hint", "valid_values", "wrong_values", "globalns", "localns"], SAMPLE_TYPE_DEFINITIONS
+)
 def test_validators(
     validator: type_val.TypeValidator,
     type_hint: SourceTypeAnnotation,
     valid_values: Sequence,
     wrong_values: Sequence,
+    globalns: Optional[Dict[str, Any]],
+    localns: Optional[Dict[str, Any]],
 ):
     for value in valid_values:
-        validator(value, type_hint, "<value>")
+        validator(value, type_hint, "<value>", globalns=globalns, localns=localns)
 
     for value in wrong_values:
-        with pytest.raises((TypeError, ValueError), match="'<value>'"):
-            validator(value, type_hint, "<value>")
+        with pytest.raises((TypeError), match="'<value>'"):
+            validator(value, type_hint, "<value>", globalns=globalns, localns=localns)
 
 
 @pytest.mark.parametrize("factory", FACTORIES)
-@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DEFINITIONS)
+@pytest.mark.parametrize(
+    ["type_hint", "valid_values", "wrong_values", "globalns", "localns"], SAMPLE_TYPE_DEFINITIONS
+)
 def test_validator_factories(
     factory: type_val.TypeValidatorFactory,
     type_hint: SourceTypeAnnotation,
     valid_values: Sequence,
     wrong_values: Sequence,
+    globalns: Optional[Dict[str, Any]],
+    localns: Optional[Dict[str, Any]],
 ):
-    validator = factory(type_hint, name="<value>")
+    validator = factory(type_hint, name="<value>", globalns=globalns, localns=localns)
     for value in valid_values:
         validator(value)
 
     for value in wrong_values:
-        with pytest.raises((TypeError, ValueError), match="'<value>'"):
+        with pytest.raises((TypeError), match="'<value>'"):
             validator(value)
 
 
-# @pytest.mark.parametrize("factory", FACTORIES)
-# def test_invalid_annotation(factory: eve_tv.TypeValidatorFactory):
+@pytest.mark.parametrize("factory", FACTORIES)
+@pytest.mark.parametrize("type_hint", [123, callable, True, "asdfasdf"])
+def test_validator_factories_with_invalid_hints(
+    factory: type_val.TypeValidatorFactory, type_hint: SourceTypeAnnotation
+):
+    with pytest.raises(ValueError, match="annotation is not supported"):
+        factory(type_hint, name="<value>")
 
 
-# @pytest.mark.parametrize("factory", FACTORIES)
-# def test_forward_refs(factory: eve_tv.TypeValidatorFactory):
+@pytest.mark.parametrize(
+    "type_hint",
+    [
+        int,
+        float,
+        SampleEmptyClass,
+        SampleDataClass,
+        SampleEnum,
+        List[int],
+        Dict[Tuple[int, ...], List[Set[complex]]],
+    ],
+)
+def test_simple_validation_cache(type_hint):
+    validator = type_val.simple_type_validator_factory(type_hint, "value")
+    assert type_val.simple_type_validator_factory(type_hint, "value") is validator
 
-#     validator = factory("", name="<value>")
+    assert type_val.simple_type_validator_factory(type_hint, "value_2") is not validator
+    assert type_val.simple_type_validator_factory(Optional[float], "value") is not validator
+    assert type_val.simple_type_validator_factory(List[float], "value") is not validator
+
+    opt_validator = type_val.simple_type_validator_factory(type_hint, "value", required=False)
+    assert opt_validator not in (validator, None)
+
+
+def test_simple_validation_particularities():
+    # strict int
+    strict_validator = type_val.simple_type_validator_factory(int, "value", strict_int=True)
+    lenient_validator = type_val.simple_type_validator_factory(int, "value", strict_int=False)
+    strict_validator(3)
+    lenient_validator(3)
+
+    with pytest.raises(TypeError, match="'bool'>"):
+        strict_validator(True)
+    lenient_validator(True)
+
+    # not supported annotations
+    assert (
+        type_val.simple_type_validator_factory(Callable[[int], float], "value", required=False)
+        is None
+    )
+
+    with pytest.raises(ValueError, match="annotation is not supported"):
+        type_val.simple_type_validator_factory(Callable[[int], float], "value", required=True)
+
+    with pytest.raises(ValueError, match="annotation is not supported"):
+        type_val.simple_type_validator_factory(Callable[[int], float], "value")

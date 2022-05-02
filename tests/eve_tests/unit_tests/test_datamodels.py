@@ -805,7 +805,7 @@ def test_concrete_field_type_validation(
 
 def test_coertion():
     class CoercedModel(datamodels.DataModel):
-        as_int: datamodels.Coerce[int]
+        as_int: datamodels.Coerced[int]
         only_int: int
 
     print(CoercedModel.__attrs_attrs__.as_int)

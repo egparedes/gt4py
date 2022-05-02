@@ -24,7 +24,7 @@ import collections.abc
 import dataclasses
 import functools
 
-from . import exceptions, extended_typing as xtyping
+from . import exceptions, extended_typing as xtyping, utils
 from .extended_typing import (
     Any,
     Dict,
@@ -237,7 +237,7 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
                     return self.combine_validators_as_or(
                         name,
                         *(self.make_is_literal(name, a) for a in type_args),
-                        error_type=ValueError,
+                        error_type=TypeError,
                     )
 
             if origin_type is xtyping.Union:
@@ -317,11 +317,14 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
                         mapping_validator=self.make_is_instance_of(name, origin_type),
                     )
 
+            # TODO(egparedes): add support for Callables
+            raise exceptions.EveValueError(f"{type_annotation} type annotation is not supported.")
+
         except exceptions.EveValueError as error:
             if required:
                 raise error
 
-        assert required is False
+        assert bool(required) is False
 
         return None
 
@@ -363,16 +366,16 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
 
             def _is_literal(value: Any, **kwargs: Any) -> None:
                 if value is not literal_value:
-                    raise ValueError(
-                        f"Provided value '{value}' for '{name}' does not match {literal_value}."
+                    raise TypeError(
+                        f"Provided value '{value}' for '{name}' does not match literal {literal_value}."
                     )
 
         else:
 
             def _is_literal(value: Any, **kwargs: Any) -> None:
                 if value != literal_value:
-                    raise ValueError(
-                        f"Provided value '{value}' for '{name}' does not match {literal_value}."
+                    raise TypeError(
+                        f"Provided value '{value}' for '{name}' does not match literal {literal_value}."
                     )
 
         return _is_literal
@@ -470,7 +473,10 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
         return _combined_validator
 
 
-simple_type_validator_factory: Final = SimpleTypeValidatorFactory()
+#: Public (with optional cache) entry point for :class:`SimpleTypeValidatorFactory`.
+simple_type_validator_factory: Final = utils.optional_lru_cache(
+    SimpleTypeValidatorFactory(), typed=True
+)
 
 
 def simple_type_validator(
@@ -483,8 +489,19 @@ def simple_type_validator(
     required: bool = True,
     **kwargs: Any,
 ) -> None:
+    """A simple :class:`TypeValidator` implementation.
+
+    Check :class:`TypeValidator` and :class:`SimpleTypeValidatorFactory` for details.
+
+    Keyword Arguments:
+        strict_int (bool): do not accept ``bool`` values as ``int`` (default: ``True``).
+    """
     type_validator = simple_type_validator_factory(
         type_annotation, name=name, globalns=globalns, localns=localns, required=required, **kwargs
     )
     if type_validator is not None:
         type_validator(value, **kwargs)
+
+
+# TODO(egparedes): add other implementations for advanced 3rd-party validators
+# TODO(egparedes): e.g. 'typeguard' and specially 'beartype'
