@@ -29,6 +29,7 @@ import typing as _typing
 # Definitions in 'typing_extensions' take priority over those in 'typing'
 from typing import *  # noqa: F403
 
+import frozendict as _frozendict
 from typing_extensions import *  # type: ignore[misc]  # noqa: F403
 
 
@@ -120,7 +121,15 @@ def __dir__() -> List[str]:
 
 # Common type aliases
 _T_co = TypeVar("_T_co", covariant=True)
+_T_contra = TypeVar("_T_contra", contravariant=True)
 FrozenList: TypeAlias = Tuple[_T_co, ...]
+if _sys.version_info >= (3, 9):
+    FrozenDict: TypeAlias = _frozendict.frozendict[_T_contra, _T_co]
+else:
+
+    class FrozenDict(_frozendict.frozendict, Generic[_T_contra, _T_co]):  # type: ignore[no-redef]  # mypy consider this  a redefinition
+        ...
+
 
 NoArgsCallable = Callable[[], Any]
 
@@ -150,7 +159,7 @@ StdGenericAliasType: Final[Type] = (
 
 _TypingSpecialFormType: Final[Type] = _typing._SpecialForm
 _TypingGenericAliasType: Final[Type] = (
-    _typing._BaseGenericAlias if _sys.version_info >= (3, 9) else _typing._GenericAlias
+    _typing._BaseGenericAlias if _sys.version_info >= (3, 9) else _typing._GenericAlias  # type: ignore[attr-defined]  # _BaseGenericAlias / _GenericAlias are not exported in stub
 )
 
 
