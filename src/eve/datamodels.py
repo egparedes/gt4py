@@ -29,6 +29,14 @@ but it is not an exact copy. Implementation-wise, Data Models classes are just
 customized ``attrs`` classes, and therefore external tools compatible with ``attrs``
 classes should also work with Data Models classes.
 
+A valid ``__init__`` method for the Data Model class is always generated. If the class
+already defines a custom ``__init__`` method, the generated method will be named
+``__auto_init__`` and should be called from the custom ``__init__`` to profit from
+datamodels features. Additionally, if custom ``__pre_init__(self) -> None`` or 
+``__post_init__(self) -> None`` methods exist in the class, they will be automatically
+called from the generated ``__init__`` before and after the instance creation.
+
+
 Examples:
     >>> @datamodel
     ... class SampleModel:
@@ -66,6 +74,25 @@ Examples:
     Traceback (most recent call last):
         ...
     ValueError: 'name' value cannot appear in 'friends' list.
+
+    >>> @datamodel
+    ... class CustomModel:
+    ...     value: float
+    ...     num_instances: ClassVar[int] = 0
+    ... 
+    ...     def __init__(self, a: int, b: int) -> None:
+    ...         self.__auto_init__(a/b)
+    ... 
+    ...     def __pre_init__(self) -> None:
+    ...         self.__class__.num_instances += 1
+    ... 
+    ...     def __post_init__(self) -> None:
+    ...         print(f"Instance {self.num_instances} == {self.value}")
+
+    >>> CustomModel(3, 2)
+    Instance 1 == 1.5
+    CustomModel(value=1.5)
+    
 """
 
 from __future__ import annotations
@@ -133,6 +160,7 @@ class DataModelTP(_AttrsClassTP, xtyping.DevToolsPrettyPrintable, Protocol):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         ...
 
+    # Optional: __auto_init__, __pre_init__, __post_init__
     __datamodel_fields__: ClassVar[utils.FrozenNamespace[Attribute]]
     __datamodel_params__: ClassVar[utils.FrozenNamespace[Any]]
     __datamodel_root_validators__: ClassVar[
