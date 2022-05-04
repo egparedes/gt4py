@@ -333,7 +333,7 @@ def test_deferred_class_type_hint():
         GlobalRecursiveModel(value="wrong_value")
     with pytest.raises(TypeError, match="others"):
         GlobalRecursiveModel(others={"A": -1})
-    with pytest.raises(ValueError, match="others"):
+    with pytest.raises(TypeError, match="others"):
         GlobalRecursiveModel(others={"a": "wrong"})
 
     assert GlobalRecursiveModel.__datamodel_fields__.value.type.__args__[0] == GlobalRecursiveModel

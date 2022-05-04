@@ -16,43 +16,56 @@
 
 """Data Model class and related utils.
 
-Data Models can be considered as an extension to ``dataclasses`` providing
-run-time validation utils for fields. Values assigned to fields at
-initialization are validated with automatic type checkings using the
+Data Models can be considered as enhanced  `attrs <https://www.attrs.org>`_
+/ `dataclasses <https://docs.python.org/3/library/dataclasses.html>`_ providing
+additional features like automatic run-time validation. Values assigned to fields
+at initialization can be validated with automatic type checkings using the
 field type definition. Custom field validation methods can also be added with
 the :func:`validator` decorator, and global instance validation methods with
 :func:`root_validator`.
 
-The datamodels API is intentionally copying ``dataclasses`` API as close as
-possible. Actually, Data Model classes are also ``dataclasses``, so all functions
-dealing with ``dataclasses`` should also work with Data Models.
+The datamodels API tries to follow ``dataclasses`` API conventions when possible,
+but it is not an exact copy. Implementation-wise, Data Models classes are just
+customized ``attrs`` classes, and therefore external tools compatible with ``attrs``
+classes should also work with Data Models classes.
 
-Notes:
-    Since the current implementation uses `attrs <https://www.attrs.org/>`_ internally,
-    Data Model classes are also ``attrs`` classes.
-
-Examples: (Doctests disabled)
-    <<< @datamodel
+Examples:
+    >>> @datamodel
     ... class SampleModel:
     ...     name: str
-    ...     value: int
+    ...     amount: int
     ...
     ...     @validator('name')
     ...     def _name_validator(self, attribute, value):
-    ...         if len(value) < 5:
+    ...         if len(value) < 3:
     ...             raise ValueError(
     ...                 f"Provided value '{value}' for '{attribute.name}' field is too short."
     ...             )
 
+    >>> SampleModel("Some Name", 10)
+    SampleModel(name='Some Name', amount=10)
 
-    <<< class AnotherSampleModel(DataModel):
+    >>> SampleModel("A", 10)
+    Traceback (most recent call last):
+        ...
+    ValueError: Provided value 'A' for 'name' field is too short.
+
+    >>> class AnotherSampleModel(DataModel):
     ...     name: str
     ...     friends: List[str]
     ...
     ...     @root_validator
     ...     def _root_validator(cls, instance):
-    ...         if instace.name in instance.friends:
+    ...         if instance.name in instance.friends:
     ...             raise ValueError("'name' value cannot appear in 'friends' list.")
+
+    >>> AnotherSampleModel("Eve", ["Liam", "John"])
+    AnotherSampleModel(name='Eve', friends=['Liam', 'John'])
+
+    >>> AnotherSampleModel("Eve", ["Eve", "John"])
+    Traceback (most recent call last):
+        ...
+    ValueError: 'name' value cannot appear in 'friends' list.
 """
 
 from __future__ import annotations
@@ -94,6 +107,8 @@ from .extended_typing import (
     TypeAnnotation,
     TypeVar,
     Union,
+    cast,
+    overload,
 )
 from .type_definitions import NOTHING, NothingType
 
@@ -102,13 +117,9 @@ from .type_definitions import NOTHING, NothingType
 _T = TypeVar("_T")
 
 _COERCED_TYPE_TAG: Final = "__DATAMODEL_COERCE_TYPE_TAG"
-_FROZEN_TYPE_TAG: Final = "__DATAMODEL_FROZEN_TYPE_TAG"
 
 #: Type hint marker to define fields that should be coerced at initization
 Coerced = xtyping.Annotated[_T, _COERCED_TYPE_TAG]
-
-#: Type hint marker to define fields that should be coerced at initization
-Frozen = xtyping.Annotated[Coerced[_T], _FROZEN_TYPE_TAG]
 
 
 class _AttrsClassTP(Protocol):
@@ -171,10 +182,16 @@ else:
 
 
 @dataclasses.dataclass(**_dataclass_opts)
-class _ForwardRefValidator:
-    """Implementation of ``attr.s`` type validator for ``ForwardRef`` typings."""
+class ForwardRefValidator:
+    """Implementation of ``attrs`` field validator for ``ForwardRef`` typings.
 
+    The first time is called it will update the class' field type annotations
+    and then create the actual type validator for the field.
+    """
+
+    #: Type factory used to create the actual field validator.
     factory: type_val.TypeValidatorFactory
+
     #: Actual type validator created after resolving the forward references.
     validator: Union[type_val.FixedTypeValidator, None, NothingType] = NOTHING
 
@@ -191,22 +208,18 @@ class _ForwardRefValidator:
             self.validator(value)
 
 
-def from_type_validator_factory(
+def field_type_validator_factory(
     factory: type_val.TypeValidatorFactory,
 ) -> FieldTypeValidatorFactory:
-    """...implements"""
+    """Create a factory of field type validators from a factory of type validators."""
 
     def _field_type_validator_factory(
         type_annotation: TypeAnnotation,
         name: str,
     ) -> Optional[FieldValidator]:
-        """Create an ``attr.s`` strict type validator for ``ForwardRef`` typings.
-
-        The generated validator will resolve the field type to an actual type
-        the first time is called.
-        """
+        """Field type validator for datamodels, supporting forward references."""
         if isinstance(type_annotation, ForwardRef):
-            return _ForwardRefValidator(factory)
+            return ForwardRefValidator(factory)
         else:
             simple_validator: Final = factory(type_annotation, name)
             return (
@@ -218,8 +231,10 @@ def from_type_validator_factory(
     return _field_type_validator_factory
 
 
-simple_type_validator_factory = from_type_validator_factory(type_val.simple_type_validator_factory)
+simple_type_validator_factory = field_type_validator_factory(type_val.simple_type_validator_factory)
 
+#: Default type validator factory used by datamodels classes.
+#: `None` by default if running in optimized mode.
 DefaultFieldTypeValidatorFactory: Final[Optional[FieldTypeValidatorFactory]] = (
     simple_type_validator_factory if __debug__ else None
 )
@@ -236,7 +251,7 @@ _SLOTS_DEFAULT: Final = False
 _COERCE_DEFAULT: Final = False
 
 
-@xtyping.overload
+@overload
 def datamodel(
     cls: Literal[None] = None,
     /,
@@ -255,8 +270,8 @@ def datamodel(
     ...
 
 
-@xtyping.overload
-def datamodel(
+@overload
+def datamodel(  # noqa: F811  # redefinion of unused symbol
     cls: Type[_T],
     /,
     *,
@@ -274,7 +289,7 @@ def datamodel(
     ...
 
 
-def datamodel(
+def datamodel(  # noqa: F811  # redefinion of unused symbol
     cls: Type[_T] = None,
     /,
     *,
@@ -291,8 +306,12 @@ def datamodel(
 ) -> Union[Type[_T], Callable[[Type[_T]], Type[_T]]]:
     """Add generated special methods to classes according to the specified attributes (class decorator).
 
-    Examines PEP 526 ``__annotations__`` to determine field types and creates
-    strict type validation functions for the fields.
+    It converts the class to an `attrs <https://www.attrs.org/>`_ with some extra features.
+    Adding strict type validation functions for the fields is done by means of
+    the ``type_validation_factory`` argument, falling back to the default factory
+        (:class:`DefaultFieldTypeValidatorFactory`). The generated field type
+    validators are generated by using PEP 526 ``__annotations__`` to determine field
+    types and creating validation functions for them.
 
     Arguments:
         cls: Original class definition.
@@ -314,9 +333,19 @@ def datamodel(
         frozen: If ``True``, assigning to fields will generate an exception.
             This emulates read-only frozen instances. The ``__setattr__()`` and
             ``__delattr__()`` methods should not be defined in the class.
-
-    Note:
-        Currently implemented using :func:`attr.s` from `attrs <https://www.attrs.org/>`_
+        match_args: If ``True`` (default) and ``__match_args__`` is not already defined in the class,
+            set ``__match_args__`` on the class to support PEP 634 (Structural Pattern Matching).
+            It is a tuple of all positional-only ``__init__`` parameter names on
+            Python 3.10 and later. Ignored on older Python versions.
+            If false, or if , then __match_args__ will not be generated.
+        kw_only: If ``True`` (default is ``False``), make all fields keyword-only in the generated
+            ``__init__`` (if ``init`` is ``False``, this parameter is ignored).
+        slots: slots: If ``True`` (the default is ``False``), ``__slots__`` attribute will be generated
+            and a new slotted class will be returned instead of the original one.
+        coerce: If ``True`` (default is ``False``), make all fields ``Coerced`` fields,
+            meaning that an automatic type converter will be generated.
+        type_validation_factory: Type validation factory used to build the field type validators.
+            If ``None``, type validators will not be generators.
 
     """
     datamodel_options: Final = {
@@ -374,7 +403,7 @@ class DataModel:
     ) -> None:
         super(DataModel, cls).__init_subclass__(
             **kwargs
-        )  # type: ignore[call-arg]  # super() does not need to be object
+        )  # type: ignore[call-arg]  # superclass is guaranteed to accept kwargs
         _make_datamodel(
             cls,
             repr=repr,
@@ -401,7 +430,7 @@ def field(
     compare: bool = True,
     metadata: Optional[Mapping[Any, Any]] = None,
     kw_only: bool = _KW_ONLY_DEFAULT,
-) -> Any:  # attr.s lies on purpose in some typings
+) -> Any:  # attr.s lies in some typings
     """Define a new attribute on a class with advanced options.
 
     Keyword Arguments:
@@ -449,7 +478,7 @@ def field(
     else:
         defaults_kwargs = {}
 
-    return attrs.field(  # type: ignore[call-overload]  # attrs lies on purpose in some typings
+    return attrs.field(  # type: ignore[call-overload]  # attrs lies in some typings
         **defaults_kwargs,
         init=init,
         repr=repr,
@@ -511,21 +540,21 @@ def is_generic(model: Union[DataModelTP, Type[DataModelTP]]) -> bool:
     return len(getattr(model, "__parameters__", [])) > 0
 
 
-@xtyping.overload
+@overload
 def get_fields(
     model: Union[DataModelTP, Type[DataModelTP]], *, as_dataclass: Literal[False] = False
 ) -> utils.FrozenNamespace:
     ...
 
 
-@xtyping.overload
-def get_fields(
+@overload
+def get_fields(  # noqa: F811  # redefinion of unused symbol
     model: Union[DataModelTP, Type[DataModelTP]], *, as_dataclass: Literal[True]
 ) -> Tuple[dataclasses.Field, ...]:
     ...
 
 
-def get_fields(
+def get_fields(  # noqa: F811  # redefinion of unused symbol
     model: Union[DataModelTP, Type[DataModelTP]], *, as_dataclass: bool = False
 ) -> Union[utils.FrozenNamespace, Tuple[dataclasses.Field, ...]]:
     """Return the field meta-information of a Data Model.
@@ -775,7 +804,7 @@ def _get_attribute_from_bases(
             if base_field_attrib.name == name:
                 if annotations is not None:
                     annotations[name] = base.__annotations__[name]
-                return xtyping.cast(Attribute, base_field_attrib)
+                return cast(Attribute, base_field_attrib)
 
     return None
 
@@ -892,7 +921,7 @@ def _make_type_converter(type_annotation: Type[_T]) -> TypeConverter[_T]:
     ):
         assert not xtyping.get_args(type_annotation)
         assert callable(type_annotation)
-        return type_annotation
+        return lambda x: x if isinstance(x, type_annotation) else type_annotation(x)
 
     if isinstance(type_annotation, TypeVar):
         return (
@@ -945,11 +974,7 @@ def _make_datamodel(
     annotations = cls.__dict__["__annotations__"]
     resolved_annotations = xtyping.get_partial_type_hints(cls, include_extras=True)
 
-    if frozen == "strict":
-        frozen = True
-        strict_frozen = True
-    else:
-        strict_frozen = False
+    frozen, strict_frozen = (True, True) if frozen == "strict" else (frozen, False)
 
     # Create attrib definitions with automatic type validators and converters
     # for the annotated fields. The keys in the original annotations are used for
@@ -959,10 +984,6 @@ def _make_datamodel(
             type_hint, *type_extras = xtyping.get_args(solved_hint)
         else:
             type_hint, *type_extras = solved_hint, []
-
-        if _FROZEN_TYPE_TAG in type_extras:
-            type_hint = xtyping.replace_types(type_hint, _FROZEN_COLLECTIONS_CHANGES)
-        annotations[key] = type_hint
 
         if xtyping.get_origin(type_hint) is not ClassVar:
             converter = (
