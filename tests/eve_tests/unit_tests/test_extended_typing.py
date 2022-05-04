@@ -287,11 +287,3 @@ def test_infer_type():
             Callable[[int, float], type(None)], xtyping.CallableKwargsInfo({"foo": Tuple[str, ...]})
         ]
     )
-
-
-# @pytest.mark.parametrize(["hint","changes","expected"], [(list, list(), (1, []), dict())])
-# def test_replace_types():
-#     hint = Dict[int, float]
-
-#     assert xtyping.replace_types(hint, {int: float}) == Dict[float, float]
-#     assert xtyping.replace_types(hint, {float: int}) == Dict[int, int]

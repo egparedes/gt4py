@@ -32,7 +32,7 @@ classes should also work with Data Models classes.
 A valid ``__init__`` method for the Data Model class is always generated. If the class
 already defines a custom ``__init__`` method, the generated method will be named
 ``__auto_init__`` and should be called from the custom ``__init__`` to profit from
-datamodels features. Additionally, if custom ``__pre_init__(self) -> None`` or 
+datamodels features. Additionally, if custom ``__pre_init__(self) -> None`` or
 ``__post_init__(self) -> None`` methods exist in the class, they will be automatically
 called from the generated ``__init__`` before and after the instance creation.
 
@@ -79,20 +79,20 @@ Examples:
     ... class CustomModel:
     ...     value: float
     ...     num_instances: ClassVar[int] = 0
-    ... 
+    ...
     ...     def __init__(self, a: int, b: int) -> None:
     ...         self.__auto_init__(a/b)
-    ... 
+    ...
     ...     def __pre_init__(self) -> None:
     ...         self.__class__.num_instances += 1
-    ... 
+    ...
     ...     def __post_init__(self) -> None:
     ...         print(f"Instance {self.num_instances} == {self.value}")
 
     >>> CustomModel(3, 2)
     Instance 1 == 1.5
     CustomModel(value=1.5)
-    
+
 """
 
 from __future__ import annotations
@@ -950,7 +950,7 @@ _FROZEN_COLLECTIONS_CHANGES: Final = {
 }
 
 
-def _make_datamodel(
+def _make_datamodel(  # noqa: C901  # too complex but still readable
     cls: Type[_T],
     *,
     repr: bool,  # noqa: A002   # shadowing 'repr' python builtin
