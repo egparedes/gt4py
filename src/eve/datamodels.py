@@ -448,25 +448,25 @@ def field(
         hash: This can be a ``bool`` or ``None``. If ``True``, this field is included
             in the generated ``__hash__()`` method. If ``None``, use the value of
             `compare`, which would normally be the expected behavior: a field
-            should be considered in the `hash` if it’s used for comparisons.
+            should be considered in the `hash` if it is used for comparisons.
             Setting this value to anything other than ``None`` is `discouraged`.
         compare: If ``True``, this field is included in the generated equality and
             comparison methods (__eq__(), __gt__(), et al.).
         metadata: An arbitrary mapping, not used at all by Data Models, and provided
             only as a third-party extension mechanism. Multiple third-parties can each
             have their own key, to use as a namespace in the metadata.
+        kw_only: If ``True`` (default is ``False``), make this field keyword-only in the
+            generated ``__init__`` (if ``init`` is ``False``, this parameter is ignored).
 
-    Examples:  (Doctests disabled)
-        <<< from typing import List
-        <<< @datamodel
+    Examples:
+        >>> from typing import List
+        >>> @datamodel
         ... class C:
         ...     mylist: List[int] = field(default_factory=lambda : [1, 2, 3])
-        <<< c = C()
-        <<< c.mylist
+        >>> c = C()
+        >>> c.mylist
         [1, 2, 3]
 
-    Note:
-        Currently implemented using :func:`attr.ib` from `attrs <https://www.attrs.org/>`_
     """
     if default is not NOTHING and default_factory is not None:
         raise ValueError("Cannot specify both 'default' and 'default_factory'.")
@@ -490,7 +490,7 @@ def field(
     )
 
 
-def validator(name: str) -> Callable[[Callable], Callable]:
+def validator(name: str) -> Callable[[FieldValidator], FieldValidator]:
     """Define a custom field validator for a specific field (decorator function).
 
     Arguments:
@@ -505,14 +505,14 @@ def validator(name: str) -> Callable[[Callable], Callable]:
     """
     assert isinstance(name, str)
 
-    def _field_validator_maker(func: Callable) -> Callable:
+    def _field_validator_maker(func: FieldValidator) -> FieldValidator:
         setattr(func, _FIELD_VALIDATOR_TAG, name)
         return func
 
     return _field_validator_maker
 
 
-def root_validator(func: Callable, /) -> classmethod:
+def root_validator(func: RootValidator, /) -> classmethod:
     """Define a custom root validator (decorator function).
 
     The decorated functions should have the following signature:
@@ -540,48 +540,23 @@ def is_generic(model: Union[DataModelTP, Type[DataModelTP]]) -> bool:
     return len(getattr(model, "__parameters__", [])) > 0
 
 
-@overload
-def get_fields(
-    model: Union[DataModelTP, Type[DataModelTP]], *, as_dataclass: Literal[False] = False
-) -> utils.FrozenNamespace:
-    ...
-
-
-@overload
-def get_fields(  # noqa: F811  # redefinion of unused symbol
-    model: Union[DataModelTP, Type[DataModelTP]], *, as_dataclass: Literal[True]
-) -> Tuple[dataclasses.Field, ...]:
-    ...
-
-
-def get_fields(  # noqa: F811  # redefinion of unused symbol
-    model: Union[DataModelTP, Type[DataModelTP]], *, as_dataclass: bool = False
-) -> Union[utils.FrozenNamespace, Tuple[dataclasses.Field, ...]]:
+def get_fields(model: Union[DataModelTP, Type[DataModelTP]]) -> utils.FrozenNamespace:
     """Return the field meta-information of a Data Model.
 
     Arguments:
         model: A Data Model class or instance.
 
-    Keyword Arguments:
-        as_dataclass: If ``True`` (the default is ``False``), field information is returned
-            as :class:`dataclass.Field` instances instead of :class:`Attribute`.
-
-    Examples: (Doctests disabled)
-        <<< from typing import List
-        <<< @datamodel
+    Examples:
+        >>> from typing import List
+        >>> @datamodel
         ... class Model:
-        ...     amount: int = 1
         ...     name: str
-        ...     numbers: List[float]
-        <<< fields(Model)  # doctest:+ELLIPSIS
-        FrozenNamespace(amount=Attribute(name='amount', default=1, ...),\
- name=Attribute(name='name', default=NOTHING, ...),\
- numbers=Attribute(name='numbers', default=NOTHING, ...))
-
-        <<< fields(Model, as_dataclass=True)  # doctest:+ELLIPSIS
-        (Field(name='amount',type=<class 'int'>,default=1,default_factory=...),\
- Field(name='name',type=<class 'str'>,default=...),\
- Field(name='numbers',type=typing.List[float],default=...))
+        ...     amount: int = 1
+        ...     numbers: List[float] = field(default_factory=list)
+        >>> fields(Model)  # doctest:+ELLIPSIS
+        FrozenNamespace(name=Attribute(name='name', default=NOTHING, ...),\
+ amount=Attribute(name='amount', default=1, ...),\
+ numbers=Attribute(name='numbers', default=Factory(factory=<class 'list'>, ...))
 
     """  # noqa: RST201  # doctest conventions confuse RST validator
     if not is_datamodel(model):
@@ -589,12 +564,9 @@ def get_fields(  # noqa: F811  # redefinion of unused symbol
     if not isinstance(model, type):
         model = model.__class__
 
-    if as_dataclass:
-        return dataclasses.fields(model)
-    else:
-        ns = getattr(model, _MODEL_FIELDS)
-        assert isinstance(ns, utils.FrozenNamespace)
-        return ns
+    ns = getattr(model, _MODEL_FIELDS)
+    assert isinstance(ns, utils.FrozenNamespace)
+    return ns
 
 
 fields = get_fields
@@ -616,13 +588,13 @@ def asdict(
         retain_collection_types: Do not convert to ``list`` when encountering an
             attribute whose type is ``tuple`` or ``set``.
 
-    Examples:  (Doctests disabled)
-        <<< @datamodel
+    Examples:
+        >>> @datamodel
         ... class C:
         ...     x: int
         ...     y: int
-        <<< c = C(x=1, y=2)
-        <<< assert asdict(c) == {'x': 1, 'y': 2}
+        >>> c = C(x=1, y=2)
+        >>> assert asdict(c) == {'x': 1, 'y': 2}
     """  # noqa: RST301  # sphinx.napoleon conventions confuse RST validator
     if not is_datamodel(instance) or isinstance(instance, type):
         raise TypeError(f"Invalid datamodel instance: '{instance}'.")
@@ -651,13 +623,13 @@ def astuple(
             encountering an attribute which type is ``tuple``, ``dict``
             or ``set``.
 
-    Examples:  (Doctests disabled)
-        <<< @datamodel
+    Examples:
+        >>> @datamodel
         ... class C:
         ...     x: int
         ...     y: int
-        <<< c = C(x=1, y=2)
-        <<< assert astuple(c) == (1, 2)
+        >>> c = C(x=1, y=2)
+        >>> assert astuple(c) == (1, 2)
     """  # noqa: RST301  # sphinx.napoleon conventions confuse RST validator
     if not is_datamodel(instance) or isinstance(instance, type):
         raise TypeError(f"Invalid datamodel instance: '{instance}'.")
@@ -679,8 +651,8 @@ def update_forward_refs(
     """Update Data Model class meta-information replacing forwarded type annotations with actual types.
 
     Arguments:
-        local_ns: locals dict used in the evaluation of the annotations
-            (globals are automatically taken from model.__module__).
+        localns: locals ``dict`` used in the evaluation of the annotations
+            (globals are automatically taken from ``model.__module__``).
 
     Returns:
         The provided class (so it can be used as a decorator too).
@@ -689,7 +661,7 @@ def update_forward_refs(
     if not (isinstance(model_cls, type) and is_datamodel(model_cls)):
         raise TypeError(f"Invalid datamodel class: '{model_cls}'.")
 
-    # attrs.resolve_types() caches the exact class (in MRO) whose types have been already resolved
+    # attrs.resolve_types() caches the exact class (in the MRO) whose types have been already resolved
     if getattr(model_cls, "__attrs_types_resolved__", None) != model_cls:
         fields = list(model_cls.__datamodel_fields__.keys())
         current_datamodel_fields = getattr(model_cls, _MODEL_FIELDS)
@@ -980,7 +952,8 @@ def _make_datamodel(
     # for the annotated fields. The keys in the original annotations are used for
     # iteration, since the resolved annotations also contain superclasses' annotations
     for key in annotations:
-        if xtyping.get_origin(solved_hint := resolved_annotations[key]) == xtyping.Annotated:
+        solved_hint = annotations[key] = resolved_annotations[key]
+        if xtyping.get_origin(solved_hint) == xtyping.Annotated:
             type_hint, *type_extras = xtyping.get_args(solved_hint)
         else:
             type_hint, *type_extras = solved_hint, []
