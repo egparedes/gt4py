@@ -168,6 +168,7 @@ FieldTypeValidatorFactory = Callable[[TypeAnnotation, str], Optional[FieldValida
 TypeConverter = Callable[[Any], _T]
 
 # Implementation
+_DATAMODEL_TAG: Final = "__DATAMODEL_TAG"
 _FIELD_VALIDATOR_TAG: Final = "__DATAMODEL_FIELD_VALIDATOR_TAG"
 _ROOT_VALIDATOR_TAG: Final = "__DATAMODEL_ROOT_VALIDATOR_TAG"
 
@@ -837,6 +838,8 @@ def _make_post_init(has_post_init: bool) -> Callable[[DataModelTP], None]:
                 for validator in type(self).__datamodel_root_validators__:
                     validator.__get__(self)(self)
 
+    setattr(__attrs_post_init__, _DATAMODEL_TAG, True)
+
     return __attrs_post_init__
 
 
@@ -1043,11 +1046,17 @@ def _make_datamodel(
 
     # Apply attrs.define() to enhance the class once all datamodels features
     # have been converted into attrs options
-    assert "__attrs_pre_init__" not in cls.__dict__
     if "__pre_init__" in cls.__dict__:
+        if "__attrs_pre_init__" in cls.__dict__:
+            raise TypeError(
+                f"'{cls.__name__}' class contains custom '__attrs_pre_init__', which conflicts with `__pre_init__` ."
+            )
         cls.__attrs_pre_init__ = cls.__pre_init__  # type: ignore[attr-defined]  # adding new attribute
 
-    assert "__attrs_post_init__" not in cls.__dict__
+    if "__attrs_post_init__" in cls.__dict__ and not hasattr(
+        cls.__attrs_post_init__, _DATAMODEL_TAG
+    ):
+        raise TypeError(f"'{cls.__name__}' class contains forbidden custom '__attrs_post_init__'.")
     cls.__attrs_post_init__ = _make_post_init(has_post_init="__post_init__" in cls.__dict__)  # type: ignore[attr-defined]  # adding new attribute
     cls.__class_getitem__ = _make_data_model_class_getitem()  # type: ignore[attr-defined]  # adding new attribute
 

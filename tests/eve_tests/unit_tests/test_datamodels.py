@@ -25,6 +25,7 @@ from typing import (
     Callable,
     ClassVar,
     Dict,
+    Final,
     ForwardRef,
     Generic,
     List,
@@ -49,7 +50,7 @@ from eve import datamodels, utils
 T = TypeVar("T")
 
 
-example_model_factories: List[factory.Factory] = []
+SAMPLE_MODEL_FACTORIES: List[factory.Factory] = []
 
 
 def register_factory(
@@ -79,7 +80,7 @@ class EmptyModel(datamodels.DataModel):
     pass
 
 
-@register_factory(collection=example_model_factories)
+@register_factory(collection=SAMPLE_MODEL_FACTORIES)
 class EmptyModelFactory(factory.Factory):
     class Meta:
         model = EmptyModel
@@ -89,7 +90,7 @@ class IntModel(datamodels.DataModel):
     value: int
 
 
-@register_factory(collection=example_model_factories)
+@register_factory(collection=SAMPLE_MODEL_FACTORIES)
 class IntModelFactory(factory.Factory):
     class Meta:
         model = IntModel
@@ -101,7 +102,7 @@ class AnyModel(datamodels.DataModel):
     value: Any
 
 
-@register_factory(collection=example_model_factories)
+@register_factory(collection=SAMPLE_MODEL_FACTORIES)
 class AnyModelFactory(factory.Factory):
     class Meta:
         model = AnyModel
@@ -113,7 +114,7 @@ class GenericModel(datamodels.DataModel, Generic[T]):
     value: T
 
 
-@register_factory(collection=example_model_factories)
+@register_factory(collection=SAMPLE_MODEL_FACTORIES)
 class GenericModelFactory(factory.Factory):
     class Meta:
         model = GenericModel
@@ -121,7 +122,7 @@ class GenericModelFactory(factory.Factory):
     value = "generic value"
 
 
-@pytest.fixture(params=example_model_factories)
+@pytest.fixture(params=SAMPLE_MODEL_FACTORIES)
 def example_model_factory(request) -> datamodels.DataModelTP:
     return request.param
 
@@ -164,6 +165,214 @@ def test_init():
     assert model.value == 1
     assert model.enum_value == SampleEnum.FOO
     assert model.list_value == [1, 2, 3]
+
+
+def test_custom_init():
+    @datamodels.datamodel
+    class ModelWithCustomInit:
+        value: float
+        enum_value: SampleEnum
+        list_value: List[float]
+
+        def __init__(self, single_value: float) -> None:
+            self.__auto_init__(single_value, SampleEnum.BLA, [1.0] * int(single_value))
+
+    model = ModelWithCustomInit(3.5)
+    assert model.value == 3.5
+    assert model.enum_value == SampleEnum.BLA
+    assert model.list_value == [1.0, 1.0, 1.0]
+
+    @datamodels.datamodel
+    class ModelWithInitHooks:
+        value: float
+        STATIC_INT: ClassVar[int] = 0
+
+        def __pre_init__(self) -> None:
+            self.__class__.STATIC_INT += 1
+
+        def __post_init__(self) -> None:
+            self.value *= 10
+
+    assert ModelWithInitHooks.STATIC_INT == 0
+    model = ModelWithInitHooks(3.5)
+    assert ModelWithInitHooks.STATIC_INT == 1
+    assert model.value == 3.5 * 10
+
+    @datamodels.datamodel
+    class ModelWithCustomInitAndHooks:
+        value: float
+        STATIC_INT: ClassVar[int] = 0
+
+        def __init__(self, str_value: str) -> None:
+            self.__auto_init__(float(str_value))
+
+        def __pre_init__(self) -> None:
+            self.__class__.STATIC_INT += 1
+
+        def __post_init__(self) -> None:
+            self.value *= 10
+
+    assert ModelWithCustomInitAndHooks.STATIC_INT == 0
+    model = ModelWithCustomInitAndHooks("-5.25")
+    assert ModelWithCustomInitAndHooks.STATIC_INT == 1
+    assert model.value == -5.25 * 10
+
+    @datamodels.datamodel
+    class ModelWithReallyCustomInit:
+        value: float
+        STATIC_INT: ClassVar[int] = 0
+
+        def __init__(self, str_value: str) -> None:
+            self.value = float(str_value)
+
+        def __pre_init__(self) -> None:
+            self.__class__.STATIC_INT += 1
+
+        def __post_init__(self) -> None:
+            self.value *= 10
+
+    assert ModelWithReallyCustomInit.STATIC_INT == 0
+    model = ModelWithReallyCustomInit("-5.25")
+    assert ModelWithReallyCustomInit.STATIC_INT == 0
+    assert model.value == -5.25
+
+
+def test_kw_only_model():
+    @datamodels.datamodel
+    class Model:
+        int_value: int
+        str_value: str
+
+    @datamodels.datamodel(kw_only=True)
+    class KwModel:
+        int_value: int
+        str_value: str
+
+    @datamodels.datamodel(kw_only=False)
+    class NotKwModel:
+        int_value: int
+        str_value: str
+
+    model = Model(1, "foo")
+    kw_model = KwModel(int_value=1, str_value="foo")
+    not_kw_model = NotKwModel(1, str_value="foo")
+    assert (model.int_value, model.str_value) == (kw_model.int_value, kw_model.str_value)
+    assert (model.int_value, model.str_value) == (not_kw_model.int_value, not_kw_model.str_value)
+
+    with pytest.raises(TypeError, match="takes 1 positional argument but 3 were given"):
+        KwModel(1, "foo")
+
+    with pytest.raises(TypeError, match="takes 1 positional argument but 2 positional"):
+        KwModel(1, str_value="foo")
+
+    @datamodels.datamodel
+    class MixedModel:
+        int_value: int
+        str_value: str = datamodels.field(kw_only=True)
+
+    assert MixedModel(int_value=3, str_value="foo") == MixedModel(3, str_value="foo")
+
+    with pytest.raises(TypeError, match="takes 2 positional arguments but 3 were given"):
+        MixedModel(3, "foo")
+
+
+def test_slots():
+    class Model:
+        as_int: int
+        a_str: str
+
+    assert "__slots__" not in Model.__dict__
+
+    SlottedModel = datamodels.datamodel(Model, slots=True)
+    model = SlottedModel(33, "foo")
+
+    assert (model.as_int, model.a_str) == (33, "foo")
+    assert "__dict__" not in dir(model)
+    assert "__slots__" in SlottedModel.__dict__
+    assert SlottedModel is not Model
+
+    DataModel = datamodels.datamodel(Model, slots=False)
+    model = DataModel(33, "foo")
+
+    assert (model.as_int, model.a_str) == (33, "foo")
+    assert "__dict__" in dir(model)
+    assert "__slots__" not in DataModel.__dict__
+    assert DataModel is Model
+
+
+def test_coertion():
+    @datamodels.datamodel(coerce=True)
+    class CoercedModel:
+        as_int: int
+        a_str: str
+
+    instance = CoercedModel(-2, "2")
+    assert instance.as_int == -2
+    assert instance.a_str == "2"
+
+    instance = CoercedModel(-2, 2)
+    assert instance.as_int == -2
+    assert instance.a_str == "2"
+
+    A_STR = """
+        Lorem ipsum dolor sit amet, nonumy accusam suscipit et mei, ipsum saperet no nec,
+        te volumus insolens nam. Verear scripserit delicatissimi cu vis, eam graeci facete in.
+        Atqui inani maiorum sea ex. Vim vidit intellegam eu. Mei dico lorem eu, at per paulo
+        aperiri admodum. Summo iriure consequuntur per ea, his ex amet tacimates.
+    """
+    instance = CoercedModel("-2", A_STR)
+    assert instance.as_int == -2
+    assert instance.a_str == A_STR
+    assert instance.a_str is A_STR
+
+    class PartiallyCoercedModel(datamodels.DataModel):
+        as_int: datamodels.Coerced[int]
+        only_int: int
+
+    instance = PartiallyCoercedModel(-2, 2)
+    assert instance.as_int == -2
+    assert instance.only_int == 2
+
+    instance = PartiallyCoercedModel("-2", 2)
+    assert instance.as_int == -2
+    assert instance.only_int == 2
+
+
+def test_custom_type_validation_factory():
+    @datamodels.datamodel(type_validation_factory=None)
+    class UnsafeModel:
+        an_int: int
+        a_float: float
+
+    model = UnsafeModel("foo", "bar")
+    assert isinstance(model, UnsafeModel)
+    assert model.an_int, model.a_float == ("foo", "bar")
+
+    def custom_factory(type_hint, name):
+        if type_hint is int:
+
+            def _validator(model, attrib, value):
+                if value % 2:
+                    raise TypeError("FOO")
+
+            return _validator
+
+        else:
+            return lambda model, attrib, value: None
+
+    @datamodels.datamodel(type_validation_factory=custom_factory)
+    class BooModel:
+        an_int: int
+        a_float: float
+
+    model = BooModel(2, 2.0)
+    assert model.an_int, model.a_float == (2, 2.0)
+
+    model = BooModel(2, "a float")
+    assert model.an_int, model.a_float == (2, "a float")
+
+    with pytest.raises(TypeError, match="FOO"):
+        model = BooModel(3, 2.0)
 
 
 def test_default_values():
@@ -211,7 +420,7 @@ def test_default_factories():
 
 
 # Test field specification
-sample_type_data = [
+SAMPLE_TYPE_DATA: Final = [
     ("bool", [True, False], [1, "True"]),
     ("int", [1, -1], [1.0, True, "1"]),
     ("float", [1.0], [1, "1.0"]),
@@ -238,7 +447,7 @@ sample_type_data = [
 ]
 
 
-@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], sample_type_data)
+@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DATA)
 def test_field_type_hint(type_hint: str, valid_values: Sequence[Any], wrong_values: Sequence[Any]):
     context: Dict[str, Any] = {}
     exec(
@@ -439,26 +648,26 @@ class ModelWithValidators(datamodels.DataModel):
     extra_value: Optional[Any] = None
 
     @datamodels.validator("bool_value")
-    def _bool_value_validator(self, attribute, value):
+    def _bool_value_validator(self, attribute, value) -> None:
         assert isinstance(self, ModelWithValidators)
 
     @datamodels.validator("int_value")
-    def _int_value_validator(self, attribute, value):
+    def _int_value_validator(self, attribute, value) -> None:
         if value < 0:
             raise ValueError(f"'{attribute.name}' must be larger or equal to 0")
 
     @datamodels.validator("even_int_value")
-    def _even_int_value_validator(self, attribute, value):
+    def _even_int_value_validator(self, attribute, value) -> None:
         if value % 2:
             raise ValueError(f"'{attribute.name}' must be an even number")
 
     @datamodels.validator("float_value")
-    def _float_value_validator(self, attribute, value):
+    def _float_value_validator(self, attribute, value) -> None:
         if value > 3.14159:
             raise ValueError(f"'{attribute.name}' must be lower or equal to 3.14159")
 
     @datamodels.validator("str_value")
-    def _str_value_validator(self, attribute, value):
+    def _str_value_validator(self, attribute, value) -> None:
         # This kind of validation should arguably happen in a root_validator, but
         # since float_value is defined before str_value, it should have been
         # already validated at this point
@@ -466,7 +675,7 @@ class ModelWithValidators(datamodels.DataModel):
             raise ValueError(f"'{attribute.name}' must be different to 'float_value'")
 
     @datamodels.validator("extra_value")
-    def _extra_value_validator(self, attribute, value):
+    def _extra_value_validator(self, attribute, value) -> None:
         if bool(value):
             raise ValueError(f"'{attribute.name}' must be equivalent to False")
 
@@ -507,7 +716,7 @@ def test_field_validators(model_class: Type[Union[ModelWithValidators, ChildMode
 def test_new_field_validators_in_subclass():
     class ChildModelWithValidators(ModelWithValidators):
         @datamodels.validator("int_value")
-        def _int_value_validator(self, attribute, value):
+        def _int_value_validator(self, attribute, value) -> None:
             if value > 10:
                 raise ValueError(f"'{attribute.name}' must be lower or equal to 10")
 
@@ -523,7 +732,7 @@ def test_field_validators_in_overwritten_field_in_subclass():
         int_value: int = 0
 
         @datamodels.validator("int_value")
-        def _int_value_validator(self, attribute, value):
+        def _int_value_validator(self, attribute, value) -> None:
             if value > 10:
                 raise ValueError(f"'{attribute.name}' must be lower or equal to 10")
 
@@ -537,7 +746,7 @@ def test_field_validators_in_overwritten_field_in_subclass():
         extra_value: float = 0.0
 
         @datamodels.validator("extra_value")
-        def _extra_value_validator(self, attribute, value):
+        def _extra_value_validator(self, attribute, value) -> None:
             if value < 0.0:
                 raise ValueError(f"'{attribute.name}' must be a positive number")
 
@@ -788,7 +997,7 @@ def test_basic_generic_field_type_validation():
 
 
 # Reuse sample_type_data from test_field_type_hint
-@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], sample_type_data)
+@pytest.mark.parametrize(["type_hint", "valid_values", "wrong_values"], SAMPLE_TYPE_DATA)
 def test_concrete_field_type_validation(
     type_hint: str, valid_values: Sequence[Any], wrong_values: Sequence[Any]
 ):
@@ -801,19 +1010,3 @@ def test_concrete_field_type_validation(
     for value in wrong_values:
         with pytest.raises((TypeError, ValueError), match="'value'"):
             Model(value=value)
-
-
-def test_coertion():
-    class CoercedModel(datamodels.DataModel):
-        as_int: datamodels.Coerced[int]
-        only_int: int
-
-    print(CoercedModel.__attrs_attrs__.as_int)
-    print(CoercedModel.__attrs_attrs__.only_int)
-    instance = CoercedModel(-2, 2)
-    assert instance.as_int == -2
-    assert instance.only_int == 2
-
-    instance = CoercedModel("-2", 2)
-    assert instance.as_int == -2
-    assert instance.only_int == 2
