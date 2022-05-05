@@ -20,7 +20,9 @@
 from __future__ import annotations
 
 import ast
+import ast
 import enum
+from enum import IntEnum as IntEnum
 import functools
 import re
 import sys
@@ -29,23 +31,25 @@ import pydantic
 import xxhash
 from boltons.typeutils import classproperty as classproperty  # noqa: F401
 from frozendict import frozendict as _frozendict  # noqa: F401
-from pydantic import validator  # noqa
-from pydantic import (  # noqa: F401
-    NegativeFloat,
-    NegativeInt,
-    PositiveFloat,
-    PositiveInt,
-    StrictBool as Bool,
-    StrictFloat as Float,
-    StrictInt as Int,
-    StrictStr as Str,
-)
-from pydantic.types import ConstrainedStr
+
+# from pydantic import validator  # noqa
+# from pydantic import (  # noqa: F401
+#     NegativeFloat,
+#     NegativeInt,
+#     PositiveFloat,
+#     PositiveInt,
+#     StrictBool as Bool,
+#     StrictFloat as Float,
+#     StrictInt as Int,
+#     StrictStr as Str,
+# )
+# from pydantic.types import ConstrainedStr
 
 from . import extended_typing as xtyping
 from .extended_typing import (
     Any,
     Callable,
+    ClassVar,
     Final,
     Generator,
     NoReturn,
@@ -77,107 +81,61 @@ class NOTHING(metaclass=NothingType):
         raise TypeError(f"{cls.__name__} is used as a sentinel value and cannot be instantiated.")
 
 
-#: Typing definitions for `__get_validators__()` methods
-# (defined but not exported in `pydantic.typing`)
-PydanticCallableGenerator = Generator[Callable[..., Any], None, None]
-
-
-#: :class:`bytes subclass for strict field definition
-Bytes = bytes
-
-
-class Enum(enum.Enum):
-    """Basic :class:`enum.Enum` subclass with strict type validation."""
-
-    @classmethod
-    def __get_validators__(cls) -> PydanticCallableGenerator:
-        yield cls._strict_type_validator
-
-    @classmethod
-    def _strict_type_validator(cls, v: Any) -> Enum:
-        if not isinstance(v, cls):
-            raise TypeError(f"Invalid value type [expected: {cls}, received: {v.__class__}]")
-        return v
-
-
-class IntEnum(enum.IntEnum):
-    """Basic :class:`enum.IntEnum` subclass with strict type validation."""
-
-    @classmethod
-    def __get_validators__(cls) -> PydanticCallableGenerator:
-        yield cls._strict_type_validator
-
-    @classmethod
-    def _strict_type_validator(cls, v: Any) -> IntEnum:
-        if not isinstance(v, cls):
-            raise TypeError(f"Invalid value type [expected: {cls}, received: {v.__class__}]")
-        return v
+# #: Typing definitions for `__get_validators__()` methods
+# # (defined but not exported in `pydantic.typing`)
+# PydanticCallableGenerator = Generator[Callable[..., Any], None, None]
 
 
 class StrEnum(str, enum.Enum):
-    """:class:`enum.Enum` subclass with strict type validation and supporting string operations."""
+    """:class:`enum.Enum` subclass whose members are considered as real strings."""
 
-    @classmethod
-    def __get_validators__(cls) -> PydanticCallableGenerator:
-        yield cls._strict_type_validator
-
-    @classmethod
-    def _strict_type_validator(cls, v: Any) -> StrEnum:
-        if not isinstance(v, cls):
-            raise TypeError(f"Invalid value type [expected: {cls}, received: {v.__class__}]")
-        return v
-
-    def __str__(self) -> str:
-        assert isinstance(self.value, str)
-        return self.value
+    pass
 
 
-class SymbolName(ConstrainedStr):
-    """Name of a symbol.
+class ConstrainedStr(str):
+    """Base string subclass allowing to restrict values to those satisfying a regular expression.
 
-    The name itself is only validated automatically within a Pydantic
-    model validation context. Use :meth:`from_string` to create a properly
-    validated isolated instance.
+    Subclasses should define the specific constraint pattern in the ``regex``
+    class keyword argument.
+
+    Examples:
+        >>> class OnlyLetters(ConstrainedStr, regex=re.compile(r"^[a-zA-Z]*$")): pass
+        >>> OnlyLetters("aabbCC")
+        "aabbCC"
+
+        >>> OnlyLetters("aabbCC33")
+        "aabbCC"
 
     """
 
-    #: Regular expression used to validate the name string
-    regex = re.compile(r"^[a-zA-Z_]\w*$")
-    strict = True
+    __slots__ = ()
 
-    @classmethod
-    def from_string(cls, name: str) -> SymbolName:
-        """Self-validated instance creation."""
-        name = cls.validate(name)
-        return cls(name)
+    regex: ClassVar[re.Pattern]
 
-    @staticmethod
-    @functools.lru_cache(maxsize=None)
-    def constrained(pattern: Union[str, re.Pattern]) -> Type[SymbolName]:
-        """Create a new SymbolName subclass using the provided string as validation RE."""
-        if isinstance(pattern, re.Pattern):
-            regex = pattern
-            pattern = pattern.pattern
-        else:
-            try:
-                regex = re.compile(pattern)
-            except re.error as e:
-                raise TypeError(f"Invalid regular expression definition:  '{pattern}'.") from e
+    def __new__(cls, value: str) -> ConstrainedStr:
+        if cls is ConstrainedStr:
+            raise TypeError(f"{cls} cannot be directly instantiated, it should be subclassed.")
+        instance = super().__new__(cls, value)
+        if not cls.regex.fullmatch(instance):
+            raise ValueError(
+                f"{cls.__name__}('{instance}') does not satisfies RE constraint {cls.regex}."
+            )
 
-        assert isinstance(pattern, str)
-        xxh64 = xxhash.xxh64()
-        xxh64.update(pattern.encode())
-        subclass_name = f"SymbolName_{xxh64.hexdigest()[-8:]}"
-        namespace = dict(regex=regex)
+        return instance
 
-        return type(subclass_name, (SymbolName,), namespace)
+    def __init_subclass__(cls, *, regex: re.Pattern, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        if not isinstance(regex, re.Pattern):
+            raise TypeError(
+                f"Invalid regex pattern ({regex}) for '{cls.__name__}' ConstrainedStr subclass."
+            )
+        cls.regex = regex
 
-    def __repr__(self) -> str:
-        return (
-            f"SymbolName('{super().__repr__()}')"
-            if type(self).__name__ == "SymbolName"
-            else f"SymbolName.constrained('{self.regex.pattern}')('{super().__repr__()}')"
-        )
+
+class SymbolName(ConstrainedStr, regex=re.compile(r"^[a-zA-Z_]\w*$")):
+    """String value containing a typically valid symbol name."""
+
+    pass
 
 
 class SymbolRef(ConstrainedStr):
@@ -187,6 +145,8 @@ class SymbolRef(ConstrainedStr):
     model validation context.
 
     """
+
+    regex = re.compile(r"^[a-zA-Z_]\w*$")
 
     @classmethod
     def from_string(cls, name: str) -> SymbolRef:

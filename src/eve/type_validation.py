@@ -24,6 +24,7 @@ import collections.abc
 import dataclasses
 import functools
 
+
 from . import exceptions, extended_typing as xtyping, utils
 from .extended_typing import (
     Any,
@@ -509,3 +510,53 @@ def simple_type_validator(
 
 # TODO(egparedes): add other implementations for advanced 3rd-party validators
 # TODO(egparedes): e.g. 'typeguard' and specially 'beartype'
+
+
+TypeLikeMetaT = TypeVar("TypeLikeMetaT", bound="TypeLikeMeta")
+
+
+@utils.optional_lru_cache
+def _make_concrete_type_like(
+    cls: TypeLikeMetaT,
+    type_validator_factory: TypeValidatorFactory,
+    type_annotation: TypeAnnotation,
+) -> TypeLikeMetaT:
+    class _concrete_type_like(cls):
+        _instance_type_validator_ = type_validator_factory(type_annotation, required=True)
+        _subclass_type_validator_ = type_validator_factory(Type[type_annotation], required=True)
+
+    return _concrete_type_like
+
+
+class TypeLikeMeta(type):
+    """Metaclass factory for proxy classes working as type validators using custom instance/subclass checks."""
+
+    def __new__(mcls, name, bases, dct, *, type_validator_factory: TypeValidatorFactory):
+        new_cls = super().__new__(mcls, name, bases, dct)
+        if not isinstance(type_validator_factory, TypeValidator):
+            raise TypeError(f"")
+        new_cls._type_validator_factory_ = type_validator_factory
+        return new_cls
+
+    def __getitem__(cls: TypeLikeMetaT, type_annotation: TypeAnnotation) -> TypeLikeMetaT:
+        return _make_concrete_type_like(cls, cls._type_validator_factory_, type_annotation)
+
+    def __instancecheck__(cls, instance) -> bool:
+        return cls._instance_type_validator_(instance)
+
+    def __subclasscheck__(cls, subclass) -> bool:
+        return cls._subclass_type_validator_(subclass)
+
+
+class AsValidType(metaclass=TypeLikeMeta, type_validator_factory=simple_type_validator_factory):
+    """Simple type
+
+    Examples:
+        >>> isinstance(4, AsValidType[Union[int, float]])
+        True
+        >>> isinstance(4.5, AsValidType[Union[int, float]])
+        True
+
+    """
+
+    pass
