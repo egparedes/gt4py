@@ -119,15 +119,15 @@ def __dir__() -> List[str]:
 
 
 # Common type aliases
-_T_co = TypeVar("_T_co", covariant=True)
-FrozenList: TypeAlias = Tuple[_T_co, ...]
+_ValueT = TypeVar("_ValueT")
+FrozenList: TypeAlias = Tuple[_ValueT, ...]
 
-_T_contra = TypeVar("_T_contra", contravariant=True)
+_KeyT = TypeVar("_KeyT")
 if _sys.version_info >= (3, 9):
-    FrozenDict: TypeAlias = _frozendict.frozendict[_T_contra, _T_co]
+    FrozenDict: TypeAlias = _frozendict.frozendict[_KeyT, _ValueT]
 else:
 
-    class FrozenDict(_frozendict.frozendict, Generic[_T_contra, _T_co]):  # type: ignore[no-redef]  # mypy consider this a redefinition
+    class FrozenDict(_frozendict.frozendict, Generic[_KeyT, _ValueT]):  # type: ignore[no-redef]  # mypy consider this a redefinition
         ...
 
 

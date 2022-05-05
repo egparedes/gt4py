@@ -19,19 +19,31 @@
 
 from __future__ import annotations
 
+import abc
 import collections
 import contextlib
 
-import pydantic
-
-from . import concepts, visitors
-from .extended_typing import Any, Dict, Iterator, Type
+from . import concepts, datamodels, visitors
+from .extended_typing import (
+    Any,
+    Dict,
+    Generic,
+    Iterator,
+    Protocol,
+    Type,
+    TypeVar,
+    runtime_checkable,
+)
 from .type_definitions import SymbolName
+
+
+# import pydantic
+
 
 
 class _CollectSymbols(visitors.NodeVisitor):
     def __init__(self) -> None:
-        self.collected: Dict[str, Any] = {}
+        self.collected: Dict[str, concepts.Node] = {}
 
     def visit_Node(self, node: concepts.Node) -> None:
         for name, metadata in node.__node_children__.items():
@@ -47,46 +59,53 @@ class _CollectSymbols(visitors.NodeVisitor):
             self.generic_visit(node)
 
     @classmethod
-    def apply(cls, node: concepts.TreeNode) -> Dict[str, Any]:
+    def apply(cls, node: concepts.Node) -> Dict[str, concepts.Node]:
         instance = cls()
         instance.generic_visit(node)
         return instance.collected
 
 
-class SymbolTableTrait(concepts.Model):
-    symtable_: Dict[str, Any] = pydantic.Field(default_factory=dict)
+class SymbolTableTrait(datamodels.DataModel):
+    symtable_: Dict[str, concepts.Node] = datamodels.field(init=False)
 
-    @staticmethod
-    def _collect_symbols(root_node: concepts.TreeNode) -> Dict[str, Any]:
-        return _CollectSymbols.apply(root_node)
-
-    @pydantic.root_validator(skip_on_failure=True)
-    def _collect_symbols_validator(  # type: ignore  # validators are classmethods
-        cls: Type[SymbolTableTrait], values: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        values.pop("symtable_", None)
-        values["symtable_"] = cls._collect_symbols(values)
-        return values
+    def __post_init__(self):
+        super(SymbolTableTrait, self).__post_init__()
+        object.__setattr__(self, "symtable_", {})
 
     def collect_symbols(self) -> None:
-        self.symtable_ = dict()
-        self.symtable_ = self._collect_symbols(self)
+        self.symtable_ = _CollectSymbols.apply(self)
 
-    @staticmethod
-    @contextlib.contextmanager
-    def symtable_merger(
-        node_visitor: visitors.NodeVisitor, node: concepts.Node, kwargs: Dict[str, Any]
-    ) -> Iterator[None]:
-        """Update or add the symtable to kwargs in the visitor calls.
+    @datamodels.root_validator
+    def _collect_symbols_validator(cls: Type[SymbolTableTrait], instance: SymbolTableTrait) -> None:
+        instance.collect_symbols()
 
-        This is a context manager that, when included to the contexts classvar, will
-        automatically pass 'symtable' as a keyword argument to visitor methods.
-        """
+
+# Visitors
+_OutT = TypeVar("_OutT", covariant=True)
+_KwargsT = TypeVar("_KwargsT", contravariant=True)
+
+
+@runtime_checkable
+class NodeVisitorTrait(Protocol[_OutT, _KwargsT]):
+    def visit(self, node: concepts.Node, /, **kwargs: _KwargsT) -> _OutT:
+        ...
+
+
+class SymbolTableVisitorTrait(Generic[_OutT, _KwargsT]):
+    """Update or add the symtable to kwargs in the visitor calls.
+
+    This is a context manager that, when included to the contexts classvar, will
+    automatically pass 'symtable' as a keyword argument to visitor methods.
+    """
+
+    def visit(self, node: concepts.Node, /, **kwargs: _KwargsT) -> _OutT:
         kwargs.setdefault("symtable", collections.ChainMap())
-        if has_table := isinstance(node, SymbolTableTrait):
+        if node_has_table := isinstance(node, SymbolTableTrait):
             kwargs["symtable"] = kwargs["symtable"].new_child(node.symtable_)
 
-        yield
+        result = super(SymbolTableVisitorTrait, self).visit(node, **kwargs)
 
-        if has_table:
+        if node_has_table:
             kwargs["symtable"] = kwargs["symtable"].parents
+
+        return result

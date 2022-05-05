@@ -19,12 +19,10 @@
 
 from __future__ import annotations
 
+import ast
 import functools
 
-import pydantic
-import pydantic.generics
-
-from . import iterators, utils
+from . import datamodels, iterators, utils
 from .extended_typing import (
     Any,
     Dict,
@@ -39,76 +37,163 @@ from .extended_typing import (
     Union,
     no_type_check,
 )
-from .type_definitions import NOTHING, IntEnum, Str, StrEnum
+from .type_definitions import NOTHING, IntEnum, PositiveInt, StrEnum
+
+
+# import pydantic
+# import pydantic.generics
+
+
+
+class SourceLocation(datamodels.DataModel):
+    """Source code location (line, column, source)."""
+
+    line: datamodels.Coerced[PositiveInt]
+    column: datamodels.Coerced[PositiveInt]
+    source: str
+    end_line: Optional[PositiveInt]
+    end_column: Optional[PositiveInt]
+
+    @classmethod
+    def from_AST(cls, ast_node: ast.AST, source: Optional[str] = None) -> SourceLocation:
+        if (
+            not isinstance(ast_node, ast.AST)
+            or getattr(ast_node, "lineno", None) is None
+            or getattr(ast_node, "col_offset", None) is None
+        ):
+            raise ValueError(
+                f"Passed AST node '{ast_node}' does not contain a valid source location."
+            )
+        if source is None:
+            source = f"<ast.{type(ast_node).__name__} at 0x{id(ast_node):x}>"
+        return cls(
+            ast_node.lineno,
+            ast_node.col_offset + 1,
+            source,
+            end_line=ast_node.end_lineno,
+            end_column=ast_node.end_col_offset + 1 if ast_node.end_col_offset is not None else None,
+        )
+
+    def __init__(
+        self,
+        line: int,
+        column: int,
+        source: str,
+        *,
+        end_line: Optional[int] = None,
+        end_column: Optional[int] = None,
+    ) -> None:
+        assert end_column is None or end_line is not None
+        self.__auto_init__(
+            line=line, column=column, source=source, end_line=end_line, end_column=end_column
+        )
+
+    def __str__(self) -> str:
+        src = self.source or ""
+
+        end_part = ""
+        if self.end_line is not None:
+            end_part += f" to Line {self.end_line}"
+        if self.end_column is not None:
+            end_part += f", Col {self.end_column}"
+
+        return f"<'{src}': Line {self.line}, Col {self.column}{end_part}>"
+
+    class Config:
+        extra = "forbid"
+        allow_mutation = False
+
+
+class SourceLocationGroup(datamodels.DataModel):
+    """A group of merged source code locations (with optional info)."""
+
+    locations: Tuple[SourceLocation, ...]
+    context: Optional[Union[str, Tuple[str, ...]]]
+
+    def __init__(
+        self, *locations: SourceLocation, context: Optional[Union[str, Tuple[str, ...]]] = None
+    ) -> None:
+        self.__auto_init__(locations=locations, context=context)
+
+    def __str__(self) -> str:
+        locs = ", ".join(str(loc) for loc in self.locations)
+        context = f"#{self.context}#" if self.context else ""
+        return f"<{context}[{locs}]>"
+
+    @datamodels.validator("locations")
+    def non_empty_tuple(cls, v: Tuple[SourceLocation, ...]) -> Tuple[SourceLocation, ...]:
+        if not v:
+            raise ValueError("At least one location should be provided")
+        return v
 
 
 # -- Fields --
-class ImplFieldMetadataDict(TypedDict, total=False):
-    info: pydantic.fields.FieldInfo
+# class ImplFieldMetadataDict(TypedDict, total=False):
+#     info: pydantic.fields.FieldInfo
 
 
-NodeImplFieldMetadataDict = Dict[str, ImplFieldMetadataDict]
+# NodeImplFieldMetadataDict = Dict[str, ImplFieldMetadataDict]
 
 
-class FieldKind(StrEnum):
-    INPUT = "input"
-    OUTPUT = "output"
+# class FieldKind(StrEnum):
+#     INPUT = "input"
+#     OUTPUT = "output"
 
 
-class FieldConstraintsDict(TypedDict, total=False):
-    vtype: Union[VType, Tuple[VType, ...]]
+# class FieldConstraintsDict(TypedDict, total=False):
+#     vtype: Union[VType, Tuple[VType, ...]]
 
 
-class FieldMetadataDict(TypedDict, total=False):
-    constraints: FieldConstraintsDict
-    kind: FieldKind
-    definition: pydantic.fields.ModelField
+# class FieldMetadataDict(TypedDict, total=False):
+#     constraints: FieldConstraintsDict
+#     kind: FieldKind
+#     definition: pydantic.fields.ModelField
 
 
-NodeChildrenMetadataDict = Dict[str, FieldMetadataDict]
+# NodeChildrenMetadataDict = Dict[str, FieldMetadataDict]
 
 
 _EVE_METADATA_KEY = "_EVE_META_"
 
 
-def field(
-    default: Any = NOTHING,
-    *,
-    default_factory: Optional[NoArgsCallable] = None,
-    kind: Optional[FieldKind] = None,
-    constraints: Optional[FieldConstraintsDict] = None,
-    schema_config: Dict[str, Any] = None,
-) -> pydantic.fields.FieldInfo:
-    metadata = {}
-    for key in ["kind", "constraints"]:
-        value = locals()[key]
-        if value:
-            metadata[key] = value
-    kwargs = schema_config or {}
-    kwargs[_EVE_METADATA_KEY] = metadata
+# def field(
+#     default: Any = NOTHING,
+#     *,
+#     default_factory: Optional[NoArgsCallable] = None,
+#     kind: Optional[FieldKind] = None,
+#     constraints: Optional[FieldConstraintsDict] = None,
+#     schema_config: Dict[str, Any] = None,
+# ) -> pydantic.fields.FieldInfo:
+#     metadata = {}
+#     for key in ["kind", "constraints"]:
+#         value = locals()[key]
+#         if value:
+#             metadata[key] = value
+#     kwargs = schema_config or {}
+#     kwargs[_EVE_METADATA_KEY] = metadata
 
-    if default is NOTHING:
-        field_info = pydantic.Field(default_factory=default_factory, **kwargs)
-    else:
-        field_info = pydantic.Field(default, default_factory=default_factory, **kwargs)
-    assert isinstance(field_info, pydantic.fields.FieldInfo)
+#     if default is NOTHING:
+#         field_info = pydantic.Field(default_factory=default_factory, **kwargs)
+#     else:
+#         field_info = pydantic.Field(default, default_factory=default_factory, **kwargs)
+#     assert isinstance(field_info, pydantic.fields.FieldInfo)
 
-    return field_info
+#     return field_info
 
 
-in_field = functools.partial(field, kind=FieldKind.INPUT)
-out_field = functools.partial(field, kind=FieldKind.OUTPUT)
+# in_field = functools.partial(field, kind=FieldKind.INPUT)
+# out_field = functools.partial(field, kind=FieldKind.OUTPUT)
 
 
 # -- Models --
-class Model(pydantic.BaseModel):
-    class Config:
-        extra = "forbid"
+# class Model(pydantic.BaseModel):
+#     class Config:
+#         extra = "forbid"
 
 
-class FrozenModel(pydantic.BaseModel):
-    class Config:
-        allow_mutation = False
+# class FrozenModel(pydantic.BaseModel):
+#     class Config:
+#         allow_mutation = False
 
 
 # -- Nodes --
@@ -122,39 +207,39 @@ CollectionNode = Union[List[LeafNode], Dict[Any, LeafNode], Set[LeafNode]]
 TreeNode = Union[AnyNode, CollectionNode]
 
 
-class NodeMetaclass(pydantic.main.ModelMetaclass):
-    """Custom metaclass for Node classes.
+# class NodeMetaclass(pydantic.main.ModelMetaclass):
+#     """Custom metaclass for Node classes.
 
-    Customize the creation of Node classes adding Eve specific attributes.
+#     Customize the creation of Node classes adding Eve specific attributes.
 
-    """
+#     """
 
-    @no_type_check
-    def __new__(mcls, name, bases, namespace, **kwargs):
-        # Optional preprocessing of class namespace before creation:
-        cls = super().__new__(mcls, name, bases, namespace, **kwargs)
+#     @no_type_check
+#     def __new__(mcls, name, bases, namespace, **kwargs):
+#         # Optional preprocessing of class namespace before creation:
+#         cls = super().__new__(mcls, name, bases, namespace, **kwargs)
 
-        # Postprocess created class:
-        # Add metadata class members
-        impl_fields_metadata = {}
-        children_metadata = {}
-        for name, model_field in cls.__fields__.items():
-            if not name.endswith(_EVE_NODE_INTERNAL_SUFFIX):
-                if name.endswith(_EVE_NODE_IMPL_SUFFIX):
-                    impl_fields_metadata[name] = {"definition": model_field}
-                else:
-                    children_metadata[name] = {
-                        "definition": model_field,
-                        **model_field.field_info.extra.get(_EVE_METADATA_KEY, {}),
-                    }
+#         # Postprocess created class:
+#         # Add metadata class members
+#         impl_fields_metadata = {}
+#         children_metadata = {}
+#         for name, model_field in cls.__fields__.items():
+#             if not name.endswith(_EVE_NODE_INTERNAL_SUFFIX):
+#                 if name.endswith(_EVE_NODE_IMPL_SUFFIX):
+#                     impl_fields_metadata[name] = {"definition": model_field}
+#                 else:
+#                     children_metadata[name] = {
+#                         "definition": model_field,
+#                         **model_field.field_info.extra.get(_EVE_METADATA_KEY, {}),
+#                     }
 
-        cls.__node_impl_fields__ = impl_fields_metadata
-        cls.__node_children__ = children_metadata
+#         cls.__node_impl_fields__ = impl_fields_metadata
+#         cls.__node_children__ = children_metadata
 
-        return cls
+#         return cls
 
 
-class BaseNode(pydantic.BaseModel, metaclass=NodeMetaclass):
+class BaseNode(datamodels.DataModel):
     """Base class representing an IR node.
 
     It is currently implemented as a pydantic Model with some extra features.
@@ -205,12 +290,12 @@ class BaseNode(pydantic.BaseModel, metaclass=NodeMetaclass):
 
     iter_tree = iter_tree_pre
 
-    class Config(Model.Config):
-        pass
+    # class Config(Model.Config):
+    #     pass
 
 
-class GenericNode(BaseNode, pydantic.generics.GenericModel):
-    pass
+# class GenericNode(BaseNode, pydantic.generics.GenericModel):
+#     pass
 
 
 class Node(BaseNode):
@@ -219,19 +304,16 @@ class Node(BaseNode):
     pass
 
 
-class FrozenNode(Node):
+class FrozenNode(Node, frozen=True):
     """Default public name for an inmutable base node class."""
-
-    class Config(FrozenModel.Config):
-        pass
 
 
 # -- Misc --
-class VType(FrozenModel):
+class VType(datamodels.FrozenModel):
 
     # VType fields
     #: Unique name
-    name: Str
+    name: str
 
-    def __init__(self, name: str) -> None:
-        super().__init__(name=name)
+    # def __init__(self, name: str) -> None:
+    #     super().__auto_init__(name=name)

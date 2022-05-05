@@ -104,8 +104,9 @@ import types
 import typing
 import warnings
 
-import attr  # type: ignore[import]  # stubs not installed for attr (only attrs)
+import attr
 import attrs
+from attr import frozen  # type: ignore[import]  # stubs not installed for attr (only attrs)
 
 from . import (
     exceptions,
@@ -411,6 +412,8 @@ class DataModel:
     See :func:`datamodel` for the description of the parameters.
     """
 
+    __slots__ = ()
+
     @classmethod
     def __init_subclass__(
         cls,
@@ -423,7 +426,7 @@ class DataModel:
         frozen: bool | Literal["strict"] = _FROZEN_DEFAULT,
         match_args: bool = _MATCH_ARGS_DEFAULT,
         kw_only: bool = _KW_ONLY_DEFAULT,
-        slots: bool = _SLOTS_DEFAULT,
+        # slots: bool = _SLOTS_DEFAULT,
         coerce: bool = _COERCE_DEFAULT,
         type_validation_factory: Optional[
             FieldTypeValidatorFactory
@@ -432,7 +435,7 @@ class DataModel:
     ) -> None:
         super(DataModel, cls).__init_subclass__(
             **kwargs
-        )  # type: ignore[call-arg]  # superclass is guaranteed to accept kwargs
+        )  # type: ignore[call-arg]  # is not guaranteed that superclass is object / does not accept kwargs
         _make_datamodel(
             cls,
             repr=repr,
@@ -442,7 +445,7 @@ class DataModel:
             frozen=frozen,
             match_args=match_args,
             kw_only=kw_only,
-            slots=slots,
+            slots=False,
             coerce=coerce,
             type_validation_factory=type_validation_factory,
             stacklevel_offset=1,
@@ -1227,3 +1230,7 @@ def _make_concrete_with_cache(
         )
 
     return concrete_cls
+
+
+class FrozenModel(DataModel, frozen=True):
+    __slots__ = ()

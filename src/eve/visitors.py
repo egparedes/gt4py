@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import abc
 import collections.abc
 import contextlib
 import copy
@@ -37,15 +38,31 @@ from .extended_typing import (
     MutableSequence,
     MutableSet,
     Optional,
+    Protocol,
     Tuple,
+    TypeVar,
     Union,
 )
 
 
 ContextCallable = Callable[["NodeVisitor", concepts.TreeNode, Dict[str, Any]], ContextManager[None]]
 
+_InT = TypeVar("_InT", contravariant=True)
+_OutT = TypeVar("_OutT", covariant=True)
+_KwargsT = TypeVar("_KwargsT", contravariant=True)
 
-class NodeVisitor:
+
+class Visitor(Protocol[_InT, _OutT, _KwargsT]):
+    @abc.abstractmethod
+    def visit(self, __data: _InT, /, **kwargs: _KwargsT) -> _OutT:
+        return NotImplemented
+
+    @abc.abstractmethod
+    def generic_visit(self, __data: _InT, /, **kwargs: _KwargsT) -> _OutT:
+        return NotImplemented
+
+
+class NodeVisitor(Visitor[concepts.TreeNode, _OutT, _KwargsT]):
     """Simple node visitor class based on :class:`ast.NodeVisitor`.
 
     A NodeVisitor instance walks a node tree and calls a visitor

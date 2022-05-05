@@ -20,17 +20,29 @@
 from __future__ import annotations
 
 import ast
-import ast
-import enum
-from enum import IntEnum as IntEnum
 import functools
 import re
 import sys
+from enum import Enum as Enum, IntEnum as IntEnum
 
-import pydantic
-import xxhash
 from boltons.typeutils import classproperty as classproperty  # noqa: F401
 from frozendict import frozendict as _frozendict  # noqa: F401
+
+from .extended_typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Final,
+    Generator,
+    NamedTuple,
+    NoReturn,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+    final,
+)
+
 
 # from pydantic import validator  # noqa
 # from pydantic import (  # noqa: F401
@@ -45,20 +57,6 @@ from frozendict import frozendict as _frozendict  # noqa: F401
 # )
 # from pydantic.types import ConstrainedStr
 
-from . import extended_typing as xtyping
-from .extended_typing import (
-    Any,
-    Callable,
-    ClassVar,
-    Final,
-    Generator,
-    NoReturn,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-    final,
-)
 
 
 frozenlist: Final = tuple
@@ -81,12 +79,7 @@ class NOTHING(metaclass=NothingType):
         raise TypeError(f"{cls.__name__} is used as a sentinel value and cannot be instantiated.")
 
 
-# #: Typing definitions for `__get_validators__()` methods
-# # (defined but not exported in `pydantic.typing`)
-# PydanticCallableGenerator = Generator[Callable[..., Any], None, None]
-
-
-class StrEnum(str, enum.Enum):
+class StrEnum(str, Enum):
     """:class:`enum.Enum` subclass whose members are considered as real strings."""
 
     pass
@@ -101,10 +94,12 @@ class ConstrainedStr(str):
     Examples:
         >>> class OnlyLetters(ConstrainedStr, regex=re.compile(r"^[a-zA-Z]*$")): pass
         >>> OnlyLetters("aabbCC")
-        "aabbCC"
+        'aabbCC'
 
         >>> OnlyLetters("aabbCC33")
-        "aabbCC"
+        Traceback (most recent call last):
+            ...
+        ValueError: OnlyLetters('aabbCC33') does not satisfies RE constraint re.compile('^[a-zA-Z]*$').
 
     """
 
@@ -123,8 +118,12 @@ class ConstrainedStr(str):
 
         return instance
 
-    def __init_subclass__(cls, *, regex: re.Pattern, **kwargs) -> None:
+    def __init_subclass__(cls, *, regex: Optional[re.Pattern] = None, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
+        if regex is None and "regex" in cls.__dict__:
+            # regex has been defined as a class var either in this class or in the parents
+            assert isinstance(cls.regex, re.Pattern)
+            return
         if not isinstance(regex, re.Pattern):
             raise TypeError(
                 f"Invalid regex pattern ({regex}) for '{cls.__name__}' ConstrainedStr subclass."
@@ -132,108 +131,86 @@ class ConstrainedStr(str):
         cls.regex = regex
 
 
-class SymbolName(ConstrainedStr, regex=re.compile(r"^[a-zA-Z_]\w*$")):
-    """String value containing a typically valid symbol name."""
-
-    pass
+_SYMBOL_NAME_RE: Final = re.compile(r"^[a-zA-Z_]\w*$")
 
 
-class SymbolRef(ConstrainedStr):
-    """Reference to a symbol name.
+class SymbolName(ConstrainedStr, regex=_SYMBOL_NAME_RE):
+    """String value containing a valid symbol name for typical programming conventions."""
 
-    Instance validation only happens automatically within a Pydantic
-    model validation context.
+    __slots__ = ()
+
+
+class SymbolRef(ConstrainedStr, regex=_SYMBOL_NAME_RE):
+    """Reference to a symbol name."""
+
+    __slots__ = ()
+
+
+class IntRange(NamedTuple):
+    start: Optional[int] = None
+    stop: Optional[int] = None
+    step: Optional[int] = 1
+
+    def __contains__(self, item: int) -> bool:
+        if self.start and item < self.start:
+            return False
+        if self.stop and item >= self.stop:
+            return False
+        if self.step and (item - (self.start or 0)) % self.step:
+            return False
+
+        return True
+
+
+class ConstrainedInt(int):
+    """Base int subclass allowing to restrict values to specific ranges.
+
+    Subclasses should define the specific constraint pattern in the ``range``
+    class keyword argument.
+
+    Examples:
+        >>> class EvenIntNumber(ConstrainedInt, range=IntRange(None, None, 2)): pass
+        >>> EvenIntNumber(2)
+        2
+
+        >>> EvenIntNumber(3)
+        Traceback (most recent call last):
+            ...
+        ValueError: EvenIntNumber(3) does not satisfies range constraint IntRange(start=None, stop=None, step=2).
 
     """
 
-    regex = re.compile(r"^[a-zA-Z_]\w*$")
+    __slots__ = ()
 
-    @classmethod
-    def from_string(cls, name: str) -> SymbolRef:
-        name = cls.validate(name)
-        return cls(name)
+    range: ClassVar[IntRange]
 
-    def __repr__(self) -> str:
-        return f"{type(self).__name__}({super().__repr__()})"
-
-
-class SourceLocation(pydantic.BaseModel):
-    """Source code location (line, column, source)."""
-
-    line: PositiveInt
-    column: PositiveInt
-    source: Str
-    end_line: Optional[PositiveInt]
-    end_column: Optional[PositiveInt]
-
-    @classmethod
-    def from_AST(cls, ast_node: ast.AST, source: Optional[str] = None) -> SourceLocation:
-        if (
-            not isinstance(ast_node, ast.AST)
-            or getattr(ast_node, "lineno", None) is None
-            or getattr(ast_node, "col_offset", None) is None
-        ):
+    def __new__(cls, value: int) -> ConstrainedInt:
+        if cls is ConstrainedInt:
+            raise TypeError(f"{cls} cannot be directly instantiated, it should be subclassed.")
+        instance = super().__new__(cls, value)
+        if instance not in cls.range:
             raise ValueError(
-                f"Passed AST node '{ast_node}' does not contain a valid source location."
+                f"{cls.__name__}({instance}) does not satisfies range constraint {cls.range}."
             )
-        if source is None:
-            source = f"<ast.{type(ast_node).__name__} at 0x{id(ast_node):x}>"
-        return cls(
-            ast_node.lineno,
-            ast_node.col_offset + 1,
-            source,
-            end_line=ast_node.end_lineno,
-            end_column=ast_node.end_col_offset + 1 if ast_node.end_col_offset is not None else None,
-        )
 
-    def __init__(
-        self,
-        line: int,
-        column: int,
-        source: str,
-        *,
-        end_line: Optional[int] = None,
-        end_column: Optional[int] = None,
-    ) -> None:
-        assert end_column is None or end_line is not None
-        super().__init__(
-            line=line, column=column, source=source, end_line=end_line, end_column=end_column
-        )
+        return instance
 
-    def __str__(self) -> str:
-        src = self.source or ""
-
-        end_part = ""
-        if self.end_line is not None:
-            end_part += f" to Line {self.end_line}"
-        if self.end_column is not None:
-            end_part += f", Col {self.end_column}"
-
-        return f"<'{src}': Line {self.line}, Col {self.column}{end_part}>"
-
-    class Config:
-        extra = "forbid"
-        allow_mutation = False
+    def __init_subclass__(cls, *, range: IntRange, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        if not isinstance(range, IntRange):
+            raise TypeError(
+                f"Invalid range constraint ({range}) for '{cls.__name__}' ConstrainedInt subclass."
+            )
+        cls.range = range
 
 
-class SourceLocationGroup(pydantic.BaseModel):
-    """A group of merged source code locations (with optional info)."""
+class PositiveInt(ConstrainedInt, range=IntRange(0, None)):
+    """Int subclass constrained to positive values (x >= 0)."""
 
-    locations: Tuple[SourceLocation, ...]
-    context: Optional[Union[str, Tuple[str, ...]]]
+    __slots__ = ()
 
-    def __init__(
-        self, *locations: SourceLocation, context: Optional[Union[str, Tuple[str, ...]]] = None
-    ) -> None:
-        super().__init__(locations=locations, context=context)
 
-    def __str__(self) -> str:
-        locs = ", ".join(str(loc) for loc in self.locations)
-        context = f"#{self.context}#" if self.context else ""
-        return f"<{context}[{locs}]>"
+class NegativeInt(ConstrainedInt, range=IntRange(None, 0)):
+    """Int subclass constrained to strictly negative values (x < 0)."""
 
-    @validator("locations")
-    def non_empty_tuple(cls, v: Tuple[SourceLocation, ...]) -> Tuple[SourceLocation, ...]:
-        if not v:
-            raise ValueError("At least one location should be provided")
-        return v
+    __slots__ = ()
