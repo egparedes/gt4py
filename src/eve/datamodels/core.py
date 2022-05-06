@@ -100,13 +100,10 @@ from __future__ import annotations
 import dataclasses
 import functools
 import sys
-import types
-import typing
 import warnings
 
 import attr
 import attrs
-from attr import validate
 
 from .. import (
     exceptions,
@@ -142,7 +139,6 @@ from ..type_definitions import NOTHING, NothingType
 
 
 # from attr import frozen  # type: ignore[import]  # stubs not installed for attr (only attrs)
-
 
 
 # Typing
@@ -200,18 +196,18 @@ TypeConverter = Callable[[Any], _T]
 _DATAMODEL_TAG: Final = "__DATAMODEL_TAG"
 _FIELD_VALIDATOR_TAG: Final = "__DATAMODEL_FIELD_VALIDATOR_TAG"
 _ROOT_VALIDATOR_TAG: Final = "__DATAMODEL_ROOT_VALIDATOR_TAG"
-
-_MODEL_FIELD_NAMES: Final = "__fields__"
-_MODEL_FIELD_DEFINITIONS: Final = "__datamodel_fields__"
-_MODEL_PARAMS: Final = "__datamodel_params__"
-_ROOT_VALIDATORS: Final = "__datamodel_root_validators__"
-
 _COERCED_TYPE_TAG: Final = "__DATAMODEL_COERCED_TYPE_TAG"
+_UNCHECKED_TYPE_TAG: Final = "__DATAMODEL_UNCHECKED_TYPE_TAG"
+
+MODEL_FIELD_NAMES_ATTR: Final = "__fields__"
+MODEL_FIELD_DEFINITIONS_ATTR: Final = "__datamodel_fields__"
+MODEL_PARAM_DEFINITIONS_ATTR: Final = "__datamodel_params__"
+MODEL_ROOT_VALIDATORS_ATTR: Final = "__datamodel_root_validators__"
+
 
 #: Type hint marker to define fields that should be coerced at initialization
 Coerced = xtyping.Annotated[_T, _COERCED_TYPE_TAG]
 
-_UNCHECKED_TYPE_TAG: Final = "__DATAMODEL_UNCHECKED_TYPE_TAG"
 
 #: Type hint marker to define fields that should NOT be type-checked at initialization
 Unchecked = xtyping.Annotated[_T, _UNCHECKED_TYPE_TAG]
@@ -242,7 +238,7 @@ class ForwardRefValidator:
             model_cls = instance.__class__
             update_forward_refs(model_cls)
             self.validator = self.factory(
-                getattr(getattr(model_cls, _MODEL_FIELD_DEFINITIONS), attribute.name).type,
+                getattr(getattr(model_cls, MODEL_FIELD_DEFINITIONS_ATTR), attribute.name).type,
                 attribute.name,
             )
 
@@ -436,7 +432,7 @@ class DataModel:
         eq: bool = _EQ_DEFAULT,
         order: bool = _ORDER_DEFAULT,
         unsafe_hash: bool = _UNSAFE_HASH_DEFAULT,
-        frozen: bool | Literal["strict"] = _FROZEN_DEFAULT,
+        frozen: bool | Literal["strict", "inherited"] = "inherited",
         match_args: bool = _MATCH_ARGS_DEFAULT,
         kw_only: bool = _KW_ONLY_DEFAULT,
         coerce: bool = _COERCE_DEFAULT,
@@ -448,6 +444,11 @@ class DataModel:
         super(DataModel, cls).__init_subclass__(
             **kwargs
         )  # type: ignore[call-arg]  # is not guaranteed that superclass does not accept kwargs
+        cls_params = getattr(cls, MODEL_PARAM_DEFINITIONS_ATTR, None)
+        if frozen == "inherited":
+            frozen = cls_params.frozen if cls_params is not None else _FROZEN_DEFAULT
+        if cls_params is not None and cls_params.frozen and not frozen:
+            raise TypeError(f"Subclasses of a frozen DataModel cannot be unfrozen.")
         _make_datamodel(
             cls,
             repr=repr,
@@ -462,6 +463,19 @@ class DataModel:
             type_validation_factory=type_validation_factory,
             stacklevel_offset=1,
         )
+
+
+DataModelParamNames = Literal[
+    "repr",
+    "eq",
+    "order",
+    "unsafe_hash",
+    "frozen",
+    "match_args",
+    "kw_only",
+    "coerce",
+    "type_validation_factory",
+]
 
 
 def field(
@@ -581,7 +595,7 @@ def root_validator(func: RootValidator, /) -> classmethod:
 def is_datamodel(obj: Any) -> bool:
     """Return True if `obj` is a Data Model class or an instance of a Data Model."""
     cls = obj if isinstance(obj, type) else obj.__class__
-    return hasattr(cls, _MODEL_FIELD_DEFINITIONS)
+    return hasattr(cls, MODEL_FIELD_DEFINITIONS_ATTR)
 
 
 def is_generic(model: Union[DataModelTP, Type[DataModelTP]]) -> bool:
@@ -616,7 +630,7 @@ def get_fields(model: Union[DataModelTP, Type[DataModelTP]]) -> utils.FrozenName
     if not isinstance(model, type):
         model = model.__class__
 
-    ns = getattr(model, _MODEL_FIELD_DEFINITIONS)
+    ns = getattr(model, MODEL_FIELD_DEFINITIONS_ATTR)
     assert isinstance(ns, utils.FrozenNamespace)
     return ns
 
@@ -701,7 +715,7 @@ def update_forward_refs(
     # attrs.resolve_types() caches the exact class (in the MRO) whose types have been already resolved
     if getattr(model_cls, "__attrs_types_resolved__", None) != model_cls:
         fields = list(model_cls.__datamodel_fields__.keys())
-        current_datamodel_fields = getattr(model_cls, _MODEL_FIELD_DEFINITIONS)
+        current_datamodel_fields = getattr(model_cls, MODEL_FIELD_DEFINITIONS_ATTR)
 
         for field_name in fields:
             if not hasattr(current_datamodel_fields, field_name):
@@ -793,7 +807,7 @@ def _collect_field_validators(cls: Type) -> Dict[str, FieldValidator]:
 def _collect_root_validators(cls: Type) -> List[RootValidator]:
     result = []
     for base in reversed(cls.__mro__[1:]):
-        for validator in getattr(base, _ROOT_VALIDATORS, []):
+        for validator in getattr(base, MODEL_ROOT_VALIDATORS_ATTR, []):
             if validator not in result:
                 result.append(validator)
 
@@ -903,25 +917,17 @@ def _make_devtools_pretty() -> Callable[
     return __pretty__
 
 
-if sys.version_info >= (3, 9):
-    _GenericTypeAlias = types.GenericAlias
-    _GenericTypeAliasType: Final[Type] = types.GenericAlias
-else:
-    _GenericTypeAlias = typing._GenericAlias
-    _GenericTypeAliasType: Final[Type] = typing._GenericAlias
-
-
 def _make_data_model_class_getitem() -> classmethod:
     def __class_getitem__(
         cls: Type[GenericDataModelTP], args: Union[Type, Tuple[Type]]
-    ) -> _GenericTypeAlias:
+    ) -> xtyping.StdGenericAlias:
         """Return an instance compatible with aliases created by :class:`typing.Generic` classes.
 
         See :class:`GenericDataModelAlias` for further information.
         """
         type_args: Tuple[Type] = args if isinstance(args, tuple) else (args,)
         concrete_cls = concretize(cls, *type_args)
-        return _GenericTypeAliasType(concrete_cls, type_args)
+        return xtyping.StdGenericAliasType(concrete_cls, type_args)
 
     return classmethod(__class_getitem__)
 
@@ -1097,7 +1103,7 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
         assert isinstance(field_c_attr, attr._make._CountingAttr)  # type: ignore[attr-defined]  # attr._make is not visible for mypy
         field_c_attr.validator(field_validator)
 
-    setattr(cls, _ROOT_VALIDATORS, tuple(root_validators))
+    setattr(cls, MODEL_ROOT_VALIDATORS_ATTR, tuple(root_validators))
 
     # Apply attrs.define() to enhance the class once all datamodels features
     # have been converted into attrs options
@@ -1131,18 +1137,18 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
 
     # Final checks and postprocessing
     if strict_frozen:
-        unhashable_fields = []
+        unhashable_fields = set()
         for f_attr in new_cls.__attrs_attrs__:
             if is_datamodel(f_attr.type):
-                if getattr(f_attr.type, _MODEL_PARAMS).strict_frozen is True:
+                if getattr(f_attr.type, MODEL_PARAM_DEFINITIONS_ATTR).strict_frozen is True:
                     continue
             elif xtyping.is_hashable_type(f_attr.type):
                 continue
-            unhashable_fields.append(f_attr.name)
+            unhashable_fields.add(f_attr.name)
 
         if unhashable_fields:
             raise exceptions.EveTypeError(
-                f"Fields {unhashable_fields} are not considered strictly immutable."
+                f"Some fields ({unhashable_fields}) can not be considered strictly immutable."
             )
 
     if "__attrs_init__" in new_cls.__dict__:
@@ -1150,10 +1156,12 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
         new_cls.__auto_init__ = new_cls.__attrs_init__  # type: ignore[attr-defined]  # adding new attribute
 
     new_cls.__pretty__ = _make_devtools_pretty()  # type: ignore[attr-defined]  # adding new attribute
-    setattr(new_cls, _MODEL_FIELD_NAMES, tuple(f_attr.name for f_attr in new_cls.__attrs_attrs__))
+    setattr(
+        new_cls, MODEL_FIELD_NAMES_ATTR, tuple(f_attr.name for f_attr in new_cls.__attrs_attrs__)
+    )
     setattr(
         new_cls,
-        _MODEL_PARAMS,
+        MODEL_PARAM_DEFINITIONS_ATTR,
         utils.FrozenNamespace(
             init=True,
             repr=repr,
@@ -1171,7 +1179,7 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
     )
     setattr(
         new_cls,
-        _MODEL_FIELD_DEFINITIONS,
+        MODEL_FIELD_DEFINITIONS_ATTR,
         utils.FrozenNamespace(
             **{
                 f_attr.name: f_attr for f_attr in new_cls.__attrs_attrs__  # type: ignore[attr-defined]  # new_cls.__attrs_attrs__ is valid
@@ -1193,7 +1201,10 @@ def _make_concrete_with_cache(
     if not is_generic(datamodel_cls):
         raise TypeError(f"'{datamodel_cls.__name__}' is not a generic model class.")
     for t in type_args:
-        if not (isinstance(t, (type, type(None))) or getattr(t, "__module__", None) == "typing"):
+        if not (
+            isinstance(t, (type, type(None), xtyping.StdGenericAliasType))
+            or (getattr(type(t), "__module__", None) in ("typing", "typing_extensions"))
+        ):
             raise TypeError(
                 f"Only 'type' and 'typing' definitions can be passed as arguments "
                 f"to instantiate a generic model class (received: {type_args})."
@@ -1206,7 +1217,7 @@ def _make_concrete_with_cache(
 
     # Replace field definitions with the new actual types for generic fields
     type_params_map = dict(zip(datamodel_cls.__parameters__, type_args))
-    model_fields = getattr(datamodel_cls, _MODEL_FIELD_DEFINITIONS)
+    model_fields = getattr(datamodel_cls, MODEL_FIELD_DEFINITIONS_ATTR)
     new_annotations = {}
     new_field_c_attrs = {}
     for field_name, field_type in xtyping.get_type_hints(datamodel_cls).items():
@@ -1243,10 +1254,10 @@ def _make_concrete_with_cache(
     concrete_cls = type(class_name, (datamodel_cls,), namespace)
     assert concrete_cls.__module__ == module or not module
 
-    if _MODEL_FIELD_DEFINITIONS not in concrete_cls.__dict__:
+    if MODEL_FIELD_DEFINITIONS_ATTR not in concrete_cls.__dict__:
         # If original model does not inherit from GenericModel,
         # _make_datamodel() hasn't been called yet, so call it now
-        params = getattr(datamodel_cls, _MODEL_PARAMS)
+        params = getattr(datamodel_cls, MODEL_PARAM_DEFINITIONS_ATTR)
         concrete_cls = _make_datamodel(
             concrete_cls,
             **{

@@ -494,6 +494,11 @@ class Namespace(types.SimpleNamespace, Generic[T]):
 
     """
 
+    def as_dict(self) -> Dict[str, T]:
+        return {**self.__dict__}
+
+    asdict = as_dict
+
     def items(self) -> Iterable[Tuple[str, T]]:
         return self.__dict__.items()
 

@@ -35,7 +35,6 @@ from __future__ import annotations  # isort:skip
 from .version import __version__, __versioninfo__  # isort:skip
 
 from .concepts import (  # FieldKind,; FrozenModel,; GenericNode,; Model,
-    FrozenNode,
     Node,
     SymbolName,
     SymbolRef,

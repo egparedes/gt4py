@@ -129,35 +129,27 @@ class NodeVisitor(Visitor[concepts.TreeNode, _OutT, _KwargsT]):
 
     """
 
-    contexts: ClassVar[Optional[Tuple[ContextCallable, ...]]] = None
-
     def visit(self, node: concepts.TreeNode, **kwargs: Any) -> Any:
         visitor = self.generic_visit
 
         method_name = "visit_" + node.__class__.__name__
         if hasattr(self, method_name):
             visitor = getattr(self, method_name)
-        elif isinstance(node, concepts.BaseNode):
+        elif isinstance(node, concepts.Node):
             for node_class in node.__class__.__mro__[1:]:
                 method_name = "visit_" + node_class.__name__
                 if hasattr(self, method_name):
                     visitor = getattr(self, method_name)
                     break
-
-                if node_class is concepts.BaseNode:
+                if node_class is concepts.Node:
                     break
 
-        if ctxs := type(self).contexts:
-            with contextlib.ExitStack() as stack:
-                for ctx in ctxs:
-                    stack.enter_context(ctx(self, node, kwargs))
-                return visitor(node, **kwargs)
-        else:
-            return visitor(node, **kwargs)
+        return visitor(node, **kwargs)
 
     def generic_visit(self, node: concepts.TreeNode, **kwargs: Any) -> Any:
-        for child in node.iter_children_values():
-            self.visit(child, **kwargs)
+        if (iter_children_values := getattr(node, "iter_children_values", None)) is not None:
+            for child in iter_children_values():
+                self.visit(child, **kwargs)
 
 
 class NodeTranslator(NodeVisitor):
@@ -187,7 +179,7 @@ class NodeTranslator(NodeVisitor):
     _memo_dict_: Dict[int, Any]
 
     def generic_visit(self, node: concepts.TreeNode, **kwargs: Any) -> Any:
-        if isinstance(node, concepts.BaseNode):
+        if isinstance(node, concepts.Node):
             return node.__class__(  # type: ignore
                 **{key: value for key, value in node.iter_impl_fields()},
                 **{
@@ -254,9 +246,9 @@ class NodeMutator(NodeVisitor):
 
     def generic_visit(self, node: concepts.TreeNode, **kwargs: Any) -> Any:
         result: Any = node
-        if isinstance(
-            node, (concepts.BaseNode, collections.abc.Collection)
-        ) and utils.is_collection(node):
+        if isinstance(node, (concepts.Node, collections.abc.Collection)) and utils.is_collection(
+            node
+        ):
             items: Iterable[Tuple[Any, Any]] = []
             tmp_items: Collection[concepts.TreeNode] = []
             set_op: Union[Callable[[Any, str, Any], None], Callable[[Any, int, Any], None]]

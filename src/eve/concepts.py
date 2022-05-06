@@ -23,15 +23,20 @@ import abc
 import ast
 import re
 
+from attr import frozen
+
 from . import datamodels, trees, type_definitions, utils
 from .datamodels import validators as dm_validators
 from .extended_typing import (
     Any,
     Dict,
     Final,
+    FrozenDict,
+    FrozenList,
     Generator,
     Generic,
     List,
+    Mapping,
     NoArgsCallable,
     Optional,
     Protocol,
@@ -141,7 +146,7 @@ class SourceLocationGroup:
 AnySourceLocation = Union[SourceLocation, SourceLocationGroup]
 
 
-AnyNode = TypeVar("AnyNode", bound="BaseNode")
+AnyNode = TypeVar("AnyNode", bound="Node")
 ValueNode = Union[bool, bytes, int, float, str, IntEnum, StrEnum]
 LeafNode = Union[AnyNode, ValueNode]
 CollectionNode = Union[List[LeafNode], Dict[Any, LeafNode], Set[LeafNode]]
@@ -186,18 +191,37 @@ class Node(datamodels.DataModel, trees.Tree):
     iter_tree_values = trees.walk_tree_values
 
 
-# class GenericNode(BaseNode, pydantic.generics.GenericModel):
-#     pass
-
-
-class MutableNode(Node):
-    """Default public name for a base node class."""
-
+class FrozenNode(Node):
     pass
 
 
-class FrozenNode(Node, frozen=True):
-    """Default public name for an inmutable base node class."""
+_T = TypeVar("_T")
+
+
+class Block(Node, Generic[_T]):
+    items: List[_T]
+
+    def __getitem__(self, /, item: int) -> _T:
+        return self.items[item]
+
+
+class FrozenBlock(Block[_T]):
+    items: FrozenList[_T]
+
+
+_KeyT = TypeVar("_KeyT")
+_ValueT = TypeVar("_ValueT")
+
+
+class Table(Node, Generic[_KeyT, _ValueT]):
+    items: Dict[_KeyT, _ValueT]
+
+    def __getitem__(self, /, key: _KeyT) -> _ValueT:
+        return self.items[key]
+
+
+class FrozenTable(Table[_KeyT, _ValueT]):
+    items: FrozenDict[_KeyT, _ValueT]
 
 
 # -- Misc --

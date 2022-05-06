@@ -155,6 +155,9 @@ SourceTypeAnnotation = Union[str, TypeAnnotation]
 StdGenericAliasType: Final[Type] = (
     _types.GenericAlias if _sys.version_info >= (3, 9) else _typing._GenericAlias  # type: ignore[attr-defined]  # _GenericAlias is not exported in stub
 )
+StdGenericAlias: TypeAlias = (
+    _types.GenericAlias if _sys.version_info >= (3, 9) else _typing._GenericAlias  # type: ignore[attr-defined]  # _GenericAlias is not exported in stub
+)
 
 
 _TypingSpecialFormType: Final[Type] = _typing._SpecialForm

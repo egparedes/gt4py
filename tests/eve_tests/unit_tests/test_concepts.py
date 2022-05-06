@@ -133,7 +133,7 @@ class TestNode:
         sample_node.annex.a_str = "foo"
         assert sample_node.annex.a_str == "foo"
 
-        assert tuple(sample_node.annex.keys()) == ("an_int", "a_str")
+        assert set(sample_node.annex.keys()) >= {"an_int", "a_str"}
 
     def test_children(self, sample_node):
         children_names = set(name for name, _ in sample_node.iter_children_items())

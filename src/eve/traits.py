@@ -39,34 +39,30 @@ from .extended_typing import (
 
 class _CollectSymbols(visitors.NodeVisitor):
     def __init__(self) -> None:
-        self.collected: Dict[str, concepts.Node] = {}
+        self.collected_symbols: Dict[str, concepts.Node] = {}
 
     def visit_Node(self, node: concepts.Node) -> None:
-        for name, metadata in node.__node_children__.items():
-            if isinstance(metadata["definition"].type_, type) and issubclass(
-                metadata["definition"].type_, SymbolName
-            ):
-                symbol_name = getattr(node, name)
-                if symbol_name in self.collected:
+        for field_name, attribute in node.__datamodel_fields__.items():
+            if isinstance(attribute.type, type) and issubclass(attribute.type, SymbolName):
+                symbol_name = getattr(node, field_name)
+                if symbol_name in self.collected_symbols:
                     raise ValueError(f"Multiple definitions of symbol '{symbol_name}'")
-                self.collected[symbol_name] = node
+                self.collected_symbols[symbol_name] = node
         if not isinstance(node, SymbolTableTrait):
-            # don't recurse into a new scope (i.e. node with SymbolTableTrait)
+            # Recurse only if the node does not open a new scope (i.e. node with SymbolTableTrait)
             self.generic_visit(node)
 
     @classmethod
     def apply(cls, node: concepts.Node) -> Dict[str, concepts.Node]:
-        instance = cls()
-        instance.generic_visit(node)
-        return instance.collected
+        collector = cls()
+        collector.generic_visit(node)
+        return collector.collected_symbols
 
 
+@datamodels.datamodel
 class SymbolTableTrait:
-    def __post_init__(self):
-        super(SymbolTableTrait, self).__post_init__()
-        self.collect_symbols()
-
-    def collect_symbols(self: concepts.BaseNode) -> None:
+    @datamodels.root_validator
+    def collect_symbols(cls: Type[SymbolTableTrait], self: SymbolTableTrait) -> None:
         self.annex.symtable = _CollectSymbols.apply(self)
 
 
@@ -91,7 +87,7 @@ class SymbolTableVisitorTrait(Generic[_OutT, _KwargsT]):
     def visit(self, node: concepts.Node, /, **kwargs: _KwargsT) -> _OutT:
         kwargs.setdefault("symtable", collections.ChainMap())
         if new_scope := isinstance(node, SymbolTableTrait):
-            kwargs["symtable"] = kwargs["symtable"].new_child(node.annex.symtable_)
+            kwargs["symtable"] = kwargs["symtable"].new_child(node.annex.symtable)
 
         result = super(SymbolTableVisitorTrait, self).visit(node, **kwargs)
 
