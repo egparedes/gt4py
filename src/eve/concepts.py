@@ -19,20 +19,22 @@
 
 from __future__ import annotations
 
+import abc
 import ast
 import re
-import types
 
-from . import datamodels, iterators, type_definitions, utils
+from . import datamodels, trees, type_definitions, utils
 from .datamodels import validators as dm_validators
 from .extended_typing import (
     Any,
     Dict,
     Final,
     Generator,
+    Generic,
     List,
     NoArgsCallable,
     Optional,
+    Protocol,
     Set,
     Tuple,
     TypedDict,
@@ -139,8 +141,6 @@ class SourceLocationGroup:
 AnySourceLocation = Union[SourceLocation, SourceLocationGroup]
 
 
-_EVE_METADATA_KEY = "_EVE_META_"
-
 AnyNode = TypeVar("AnyNode", bound="BaseNode")
 ValueNode = Union[bool, bytes, int, float, str, IntEnum, StrEnum]
 LeafNode = Union[AnyNode, ValueNode]
@@ -148,8 +148,8 @@ CollectionNode = Union[List[LeafNode], Dict[Any, LeafNode], Set[LeafNode]]
 TreeNode = Union[AnyNode, CollectionNode]
 
 
-class BaseNode(datamodels.DataModel):
-    """Base class representing an IR node.
+class Node(datamodels.DataModel, trees.Tree):
+    """Base class representing a node in a syntax tree.
 
     Implemented as a :class:`eve.datamodels.DataModel` with some extra features.
 
@@ -164,50 +164,33 @@ class BaseNode(datamodels.DataModel):
 
     """
 
-    @type_definitions.classproperty
-    def __fields__(cls):
-        return cls.__datamodel_fields__
-
     @property
     def annex(self) -> utils.Namespace:
         return self.__dict__.setdefault("__annex__", utils.Namespace())
 
-    @property
-    def annex(self) -> utils.Namespace:
-        return self.__dict__.setdefault("__annex__", utils.Namespace())
-
-    def iter_annex(self) -> Generator[Tuple[str, Any], None, None]:
-        names = self.__annex__.__dict__.keys()
-        for name in names:
-            yield name, getattr(self, name)
-
-    def iter_children(self) -> Generator[Tuple[str, Any], None, None]:
-        field_names = self.__datamodel_fields__.keys()
-        for name in field_names:
+    def iter_children_items(self) -> Generator[Tuple[str, Any], None, None]:
+        for name in self.__fields__:
             yield name, getattr(self, name)
 
     def iter_children_values(self) -> Generator[Any, None, None]:
-        field_names = self.__datamodel_fields__.keys()
-        for name in field_names:
+        for name in self.__fields__:
             yield getattr(self, name)
 
-    def iter_tree_pre(self) -> utils.XIterable:
-        return iterators.iter_tree_pre(self)
+    pre_iter_tree_items = trees.pre_walk_tree_items
+    pre_iter_tree_values = trees.pre_walk_tree_values
 
-    def iter_tree_post(self) -> utils.XIterable:
-        return iterators.iter_tree_post(self)
+    post_iter_tree_items = trees.post_walk_tree_items
+    post_iter_tree_values = trees.post_walk_tree_values
 
-    def iter_tree_levels(self) -> utils.XIterable:
-        return iterators.iter_tree_levels(self)
-
-    iter_tree = iter_tree_pre
+    iter_tree_items = trees.walk_tree_items
+    iter_tree_values = trees.walk_tree_values
 
 
 # class GenericNode(BaseNode, pydantic.generics.GenericModel):
 #     pass
 
 
-class Node(BaseNode):
+class MutableNode(Node):
     """Default public name for a base node class."""
 
     pass

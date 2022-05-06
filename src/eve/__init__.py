@@ -41,7 +41,8 @@ from .concepts import (  # FieldKind,; FrozenModel,; GenericNode,; Model,
     SymbolRef,
     VType,
 )
-from .iterators import iter_tree
+
+# from .trees import iter_tree
 from .traits import SymbolTableTrait
 from .type_definitions import NOTHING, Enum, IntEnum, StrEnum
 from .visitors import NodeMutator, NodeTranslator, NodeVisitor

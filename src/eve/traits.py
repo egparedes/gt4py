@@ -61,7 +61,7 @@ class _CollectSymbols(visitors.NodeVisitor):
         return instance.collected
 
 
-class SymbolTableTrait(datamodels.DataModel):
+class SymbolTableTrait:
     def __post_init__(self):
         super(SymbolTableTrait, self).__post_init__()
         self.collect_symbols()

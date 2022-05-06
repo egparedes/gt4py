@@ -1,0 +1,188 @@
+# -*- coding: utf-8 -*-
+#
+# Eve Toolchain - GT4Py Project - GridTools Framework
+#
+# Copyright (c) 2014-2021, ETH Zurich
+# All rights reserved.
+#
+# This file is part of the GT4Py project and the GridTools framework.
+# GT4Py is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the
+# Free Software Foundation, either version 3 of the License, or any later
+# version. See the LICENSE.txt file at the top-level directory of this
+# distribution for a copy of the license or check <https://www.gnu.org/licenses/>.
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""Iterator utils."""
+
+
+from __future__ import annotations
+
+import abc
+
+from . import concepts, utils
+from .extended_typing import Any, Generator, Iterable, List, Optional, Tuple, Union
+from .type_definitions import Enum
+
+
+try:
+    # For perfomance reasons, try to use cytoolz when possible (using cython)
+    import cytoolz as toolz
+except ModuleNotFoundError:
+    # Fall back to pure Python toolz
+    import toolz  # noqa: F401  # imported but unused
+
+
+KeyValue = Tuple[Union[int, str], Any]
+TreeIterationItem = Union[Any, Tuple[KeyValue, Any]]
+
+
+class Tree(abc.ABC):
+    @abc.abstractmethod
+    def iter_children_items(self) -> Generator[Tuple[Union[int, str], Any], None, None]:
+        return
+
+    @abc.abstractmethod
+    def iter_children_values(self) -> Generator[Any, None, None]:
+        return
+
+
+# def generic_iter_children(
+#     node: concepts.TreeNode, *, with_keys: bool = False
+# ) -> Iterable[Union[Any, Tuple[KeyValue, Any]]]:
+#     """Create an iterator to traverse values as Eve tree nodes.
+
+#     Args:
+#         with_keys: Return tuples of (key, object) values where keys are
+#             the reference to the object node in the parent.
+#             Defaults to `False`.
+
+#     """
+#     if isinstance(node, concepts.BaseNode):
+#         return node.iter_children() if with_keys else node.iter_children_values()
+#     elif isinstance(node, (list, tuple)) or (
+#         isinstance(node, collections.abc.Sequence) and not isinstance(node, (str, bytes))
+#     ):
+#         return enumerate(node) if with_keys else iter(node)  # type: ignore  # the condition is too complex for mypy to recognize node is iterable at this point
+#     elif isinstance(node, (set, collections.abc.Set)):
+#         return zip(node, node) if with_keys else iter(node)  # type: ignore  # problems with iter(Set)
+#     elif isinstance(node, (dict, collections.abc.Mapping)):
+#         return node.items() if with_keys else node.values()
+
+#     return iter(())
+
+
+class TraversalOrder(Enum):
+    PRE_ORDER = "pre"
+    POST_ORDER = "post"
+    LEVELS_ORDER = "levels"
+
+
+Key = Union[int, str]
+
+
+def _pre_walk_tree_items(node: Any, *, __key__: Optional[Key] = None) -> Iterable[Tuple[Key, Any]]:
+    """Create a pre-order tree traversal iterator of (key, value) pairs."""
+    yield __key__, node
+    if (iter_children_items := getattr(node, "iter_children_items", None)) is not None:
+        for key, child in iter_children_items():
+            yield from _pre_walk_tree_items(child, __key__=key)
+
+
+def _pre_walk_tree_values(node: Any) -> Iterable[Tuple[Any]]:
+    """Create a pre-order tree traversal iterator of values."""
+    yield node
+    if (iter_children_values := getattr(node, "iter_children_values", None)) is not None:
+        for child in iter_children_values():
+            yield from _pre_walk_tree_values(child)
+
+
+pre_walk_tree_items = utils.as_xiter(_pre_walk_tree_items)
+pre_walk_tree_values = utils.as_xiter(_pre_walk_tree_values)
+
+
+def _post_walk_tree_items(node: Any, *, __key__: Optional[Key] = None) -> Iterable[Tuple[Key, Any]]:
+    """Create a post-order tree traversal iterator of (key, value) pairs."""
+    yield __key__, node
+    if (iter_children_items := getattr(node, "iter_children_items", None)) is not None:
+        for key, child in iter_children_items():
+            yield from _post_walk_tree_items(child, __key__=key)
+
+
+def _post_walk_tree_values(node: Any) -> Iterable[Tuple[Any]]:
+    """Create a post-order tree traversal iterator of values."""
+    if (iter_children_values := getattr(node, "iter_children_values", None)) is not None:
+        for child in iter_children_values():
+            yield from _post_walk_tree_values(child)
+    yield node
+
+
+post_walk_tree_items = utils.as_xiter(_post_walk_tree_items)
+post_walk_tree_values = utils.as_xiter(_post_walk_tree_values)
+
+
+def _bfs_walk_tree_items(
+    node: Any, *, __key__: Optional[Any] = None, __queue__: Optional[List] = None
+) -> Iterable[Tuple[Key, Any]]:
+    """Create a tree traversal iterator of (key, value) pairs by tree levels (Breadth-First Search)."""
+    __queue__ = __queue__ or []
+    yield __key__, node
+    if (iter_children_items := getattr(node, "iter_children_items", None)) is not None:
+        __queue__.extend(iter_children_items())
+    if __queue__:
+        key, child = __queue__.pop(0)
+        yield from _bfs_walk_tree_items(child, __key__=key, __queue__=__queue__)
+
+
+def _bfs_walk_tree_values(
+    node: Any, *, __queue__: Optional[List] = None
+) -> Iterable[Tuple[Key, Any]]:
+    """Create a tree traversal iterator of values by tree levels (Breadth-First Search)."""
+    __queue__ = __queue__ or []
+    yield node
+    if (iter_children_values := getattr(node, "iter_children_values", None)) is not None:
+        __queue__.extend(iter_children_values())
+    if __queue__:
+        child = __queue__.pop(0)
+        yield from _bfs_walk_tree_values(child, __queue__=__queue__)
+
+
+bfs_walk_tree_items = utils.as_xiter(_bfs_walk_tree_items)
+bfs_walk_tree_values = utils.as_xiter(_bfs_walk_tree_values)
+
+
+def walk_tree_items(
+    node: concepts.TreeNode, traversal_order: TraversalOrder = TraversalOrder.PRE_ORDER
+) -> utils.XIterable[Tuple[Key, Any]]:
+    """Create a tree traversal iterator of (key, value) pairs.
+
+    Args:
+        traversal_order: Tree nodes traversal order.
+    """
+    if traversal_order is traversal_order.PRE_ORDER:
+        return pre_walk_tree_items(node=node)
+    elif traversal_order is traversal_order.POST_ORDER:
+        return post_walk_tree_items(node=node)
+    elif traversal_order is traversal_order.LEVELS_ORDER:
+        return bfs_walk_tree_items(node=node)
+    else:
+        raise ValueError(f"Invalid '{traversal_order}' traversal order.")
+
+
+def walk_tree_values(
+    node: concepts.TreeNode, traversal_order: TraversalOrder = TraversalOrder.PRE_ORDER
+) -> utils.XIterable[Any]:
+    """Create a tree traversal iterator of values.
+
+    Args:
+        traversal_order: Tree nodes traversal order.
+    """
+    if traversal_order is traversal_order.PRE_ORDER:
+        return pre_walk_tree_values(node=node)
+    elif traversal_order is traversal_order.POST_ORDER:
+        return post_walk_tree_values(node=node)
+    elif traversal_order is traversal_order.LEVELS_ORDER:
+        return bfs_walk_tree_values(node=node)
+    else:
+        raise ValueError(f"Invalid '{traversal_order}' traversal order.")

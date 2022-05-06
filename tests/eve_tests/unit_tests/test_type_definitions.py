@@ -31,25 +31,3 @@ def test_sentinel():
 
     assert values.index(NOTHING) == 3
     assert values[values.index(NOTHING)] is NOTHING
-
-
-def test_symbol_types():
-    from eve.type_definitions import SymbolName
-
-    assert SymbolName("valid_name_01A") == "valid_name_01A"
-    assert SymbolName("valid_name_01A") == "valid_name_01A"
-    with pytest.raises(ValueError, match="does not satisfies RE constraint"):
-        SymbolName("$name_01A")
-    with pytest.raises(ValueError, match="does not satisfies RE constraint"):
-        SymbolName("0name_01A")
-    with pytest.raises(ValueError, match="does not satisfies RE constraint"):
-        SymbolName("name_01A ")
-
-    class LettersOnlySymbol(SymbolName, regex=re.compile(r"[a-zA-Z]+$")):
-        __slots__ = ()
-
-    assert LettersOnlySymbol("validNAME") == "validNAME"
-    with pytest.raises(ValueError, match="does not satisfies RE constraint"):
-        LettersOnlySymbol("name_a")
-    with pytest.raises(ValueError, match="does not satisfies RE constraint"):
-        LettersOnlySymbol("name01")

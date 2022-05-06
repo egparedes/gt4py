@@ -14,11 +14,33 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import re
 
-import pydantic
 import pytest
 
 import eve
+
+
+def test_symbol_types():
+    from eve.concepts import SymbolName
+
+    assert SymbolName("valid_name_01A") == "valid_name_01A"
+    assert SymbolName("valid_name_01A") == "valid_name_01A"
+    with pytest.raises(ValueError, match="does not satisfies RE constraint"):
+        SymbolName("$name_01A")
+    with pytest.raises(ValueError, match="does not satisfies RE constraint"):
+        SymbolName("0name_01A")
+    with pytest.raises(ValueError, match="does not satisfies RE constraint"):
+        SymbolName("name_01A ")
+
+    class LettersOnlySymbol(SymbolName, regex=re.compile(r"[a-zA-Z]+$")):
+        __slots__ = ()
+
+    assert LettersOnlySymbol("validNAME") == "validNAME"
+    with pytest.raises(ValueError, match="does not satisfies RE constraint"):
+        LettersOnlySymbol("name_a")
+    with pytest.raises(ValueError, match="does not satisfies RE constraint"):
+        LettersOnlySymbol("name01")
 
 
 class TestSourceLocation:
@@ -114,8 +136,7 @@ class TestNode:
         assert tuple(sample_node.annex.keys()) == ("an_int", "a_str")
 
     def test_children(self, sample_node):
-        children_names = set(name for name, _ in sample_node.iter_children())
-        field_names = set(sample_node.__fields__.keys())
+        children_names = set(name for name, _ in sample_node.iter_children_items())
 
         assert not any(name.endswith("__") for name in children_names)
         assert not any(name.endswith("_") for name in children_names)
@@ -123,6 +144,6 @@ class TestNode:
         assert all(
             node1 is node2
             for (name, node1), node2 in zip(
-                sample_node.iter_children(), sample_node.iter_children_values()
+                sample_node.iter_children_items(), sample_node.iter_children_values()
             )
         )

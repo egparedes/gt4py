@@ -25,7 +25,7 @@ import eve
 
 
 class Tree(eve.Node):
-    children: List[Union["Tree", int]]
+    children: List[Union[Tree, int]]
 
 
 def _make_tree(values_list):
@@ -64,7 +64,9 @@ def bfs_ordered_tree():
 
 def test_iter_tree_pre(dfs_ordered_tree):
     values = [
-        value for value in eve.iterators.iter_tree_pre(dfs_ordered_tree) if isinstance(value, int)
+        value
+        for value in eve.trees.pre_walk_tree_values(dfs_ordered_tree)
+        if isinstance(value, int)
     ]
     assert values == list(sorted(values))
 
@@ -79,7 +81,9 @@ def test_iter_tree_pre(dfs_ordered_tree):
 
 def test_iter_tree_post(dfs_ordered_tree):
     values = [
-        value for value in eve.iterators.iter_tree_post(dfs_ordered_tree) if isinstance(value, int)
+        value
+        for value in eve.trees.post_walk_tree_values(dfs_ordered_tree)
+        if isinstance(value, int)
     ]
     assert values == list(sorted(values))
 
@@ -95,7 +99,7 @@ def test_iter_tree_post(dfs_ordered_tree):
 def test_iter_tree_levels(bfs_ordered_tree):
     values = [
         value
-        for value in eve.iterators.iter_tree_levels(bfs_ordered_tree)
+        for value in eve.trees.bfs_walk_tree_values(bfs_ordered_tree)
         if isinstance(value, int)
     ]
     assert values == list(sorted(values))
@@ -104,10 +108,10 @@ def test_iter_tree_levels(bfs_ordered_tree):
 @pytest.mark.parametrize("tree", [bfs_ordered_tree, dfs_ordered_tree])
 def test_iter_tree(tree):
     traversals = []
-    for order in eve.iterators.TraversalOrder:
-        values = [value for value in eve.iter_tree(tree, order, with_keys=True)]
+    for order in eve.trees.TraversalOrder:
+        values = [value for value in eve.trees.walk_tree_items(tree, order)]
         assert all(isinstance(v, tuple) for v in values)
         traversals.append(values)
-        traversals.append([value for value in eve.iter_tree(tree, order)])
+        traversals.append([value for value in eve.trees.walk_tree_values(tree, order)])
 
     assert all(len(traversals[0]) == len(t) for t in traversals)

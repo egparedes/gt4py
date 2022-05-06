@@ -25,7 +25,7 @@ import contextlib
 import copy
 import operator
 
-from . import concepts, iterators, utils
+from . import concepts, utils
 from .concepts import NOTHING
 from .extended_typing import (
     Any,
@@ -156,7 +156,7 @@ class NodeVisitor(Visitor[concepts.TreeNode, _OutT, _KwargsT]):
             return visitor(node, **kwargs)
 
     def generic_visit(self, node: concepts.TreeNode, **kwargs: Any) -> Any:
-        for child in iterators.generic_iter_children(node):
+        for child in node.iter_children_values():
             self.visit(child, **kwargs)
 
 

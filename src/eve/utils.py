@@ -612,8 +612,10 @@ UIDs = UIDGenerator()
 S = TypeVar("S")
 K = TypeVar("K")
 
+P = ParamSpec("P")
 
-def as_xiter(iterator_func: Callable[..., Iterator[T]]) -> Callable[..., XIterable[T]]:
+
+def as_xiter(iterator_func: Callable[P, Iterable[T]]) -> Callable[P, XIterable[T]]:
     """Wrap the provided callable to convert its output in a :class:`XIterable`."""
 
     @functools.wraps(iterator_func)

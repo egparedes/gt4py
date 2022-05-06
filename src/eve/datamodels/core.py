@@ -106,7 +106,7 @@ import warnings
 
 import attr
 import attrs
-from attr import frozen  # type: ignore[import]  # stubs not installed for attr (only attrs)
+from attr import validate
 
 from .. import (
     exceptions,
@@ -141,6 +141,10 @@ from ..extended_typing import (
 from ..type_definitions import NOTHING, NothingType
 
 
+# from attr import frozen  # type: ignore[import]  # stubs not installed for attr (only attrs)
+
+
+
 # Typing
 _T = TypeVar("_T")
 
@@ -156,12 +160,13 @@ class DataModelTP(_AttrsClassTP, xtyping.DevToolsPrettyPrintable, Protocol):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         ...
 
-    # Optional: __auto_init__, __pre_init__, __post_init__
     __datamodel_fields__: ClassVar[utils.FrozenNamespace[Attribute]]
     __datamodel_params__: ClassVar[utils.FrozenNamespace[Any]]
     __datamodel_root_validators__: ClassVar[
         Tuple[xtyping.NonDataDescriptor[DataModelTP, BoundRootValidator], ...]
     ]
+    __fields__: ClassVar[Tuple[str, ...]]
+    # Optional: __auto_init__, __pre_init__, __post_init__
 
 
 class GenericDataModelTP(DataModelTP, Protocol):
@@ -196,7 +201,8 @@ _DATAMODEL_TAG: Final = "__DATAMODEL_TAG"
 _FIELD_VALIDATOR_TAG: Final = "__DATAMODEL_FIELD_VALIDATOR_TAG"
 _ROOT_VALIDATOR_TAG: Final = "__DATAMODEL_ROOT_VALIDATOR_TAG"
 
-_MODEL_FIELDS: Final = "__datamodel_fields__"
+_MODEL_FIELD_NAMES: Final = "__fields__"
+_MODEL_FIELD_DEFINITIONS: Final = "__datamodel_fields__"
 _MODEL_PARAMS: Final = "__datamodel_params__"
 _ROOT_VALIDATORS: Final = "__datamodel_root_validators__"
 
@@ -236,7 +242,7 @@ class ForwardRefValidator:
             model_cls = instance.__class__
             update_forward_refs(model_cls)
             self.validator = self.factory(
-                getattr(getattr(model_cls, _MODEL_FIELDS), attribute.name).type,
+                getattr(getattr(model_cls, _MODEL_FIELD_DEFINITIONS), attribute.name).type,
                 attribute.name,
             )
 
@@ -575,7 +581,7 @@ def root_validator(func: RootValidator, /) -> classmethod:
 def is_datamodel(obj: Any) -> bool:
     """Return True if `obj` is a Data Model class or an instance of a Data Model."""
     cls = obj if isinstance(obj, type) else obj.__class__
-    return hasattr(cls, _MODEL_FIELDS)
+    return hasattr(cls, _MODEL_FIELD_DEFINITIONS)
 
 
 def is_generic(model: Union[DataModelTP, Type[DataModelTP]]) -> bool:
@@ -610,7 +616,7 @@ def get_fields(model: Union[DataModelTP, Type[DataModelTP]]) -> utils.FrozenName
     if not isinstance(model, type):
         model = model.__class__
 
-    ns = getattr(model, _MODEL_FIELDS)
+    ns = getattr(model, _MODEL_FIELD_DEFINITIONS)
     assert isinstance(ns, utils.FrozenNamespace)
     return ns
 
@@ -621,8 +627,7 @@ fields = get_fields
 def asdict(
     instance: DataModelTP,
     *,
-    dict_factory: Type[Mapping[Any, Any]] = dict,
-    retain_collection_types: bool = False,
+    value_serializer: Optional[Callable[[DataModelTP, Attribute, Any], Any]] = None,
 ) -> Dict[str, Any]:
     """Return the contents of a Data Model instance as a new mapping from field names to values.
 
@@ -630,9 +635,8 @@ def asdict(
         instance: Data Model instance.
 
     Keyword Arguments:
-        dict_factory: A callable to produce ``dict`` instances from.
-        retain_collection_types: Do not convert to ``list`` when encountering an
-            attribute whose type is ``tuple`` or ``set``.
+        value_serializer: A hook that is called for every attribute or dict key/value and must
+            return the (updated) value.
 
     Examples:
         >>> @datamodel
@@ -644,30 +648,14 @@ def asdict(
     """  # noqa: RST301  # sphinx.napoleon conventions confuse RST validator
     if not is_datamodel(instance) or isinstance(instance, type):
         raise TypeError(f"Invalid datamodel instance: '{instance}'.")
-    return attr.asdict(
-        instance,
-        dict_factory=dict_factory,
-        recurse=True,
-        retain_collection_types=retain_collection_types,
-    )
+    return attrs.asdict(instance, value_serializer=value_serializer)
 
 
-def astuple(
-    instance: DataModelTP,
-    *,
-    tuple_factory: Type[Sequence[Any]] = tuple,
-    retain_collection_types: bool = False,
-) -> Tuple[Any, ...]:
+def astuple(instance: DataModelTP) -> Tuple[Any, ...]:
     """Return the contents of a Data Model instance as a new tuple of field values.
 
     Arguments:
         instance: Data Model instance.
-
-    Keyword Arguments:
-        tuple_factory: A callable to produce ``tuple`` instances from.
-        retain_collection_types: Do not convert to ``list`` or ``dict`` when
-            encountering an attribute which type is ``tuple``, ``dict``
-            or ``set``.
 
     Examples:
         >>> @datamodel
@@ -676,15 +664,18 @@ def astuple(
         ...     y: int
         >>> c = C(x=1, y=2)
         >>> assert astuple(c) == (1, 2)
-    """  # noqa: RST301  # sphinx.napoleon conventions confuse RST validator
+
+    """
     if not is_datamodel(instance) or isinstance(instance, type):
         raise TypeError(f"Invalid datamodel instance: '{instance}'.")
-    return attr.astuple(
-        instance,
-        tuple_factory=tuple_factory,
-        recurse=True,
-        retain_collection_types=retain_collection_types,
-    )
+    return attrs.astuple(instance, recurse=True)
+
+
+#: Create a new instance, based on inst with changes applied.
+evolve = attrs.evolve
+
+#: Validate all attributes on inst that have a validator.
+validate = attrs.validate
 
 
 _DataModelT = TypeVar("_DataModelT", bound=DataModelTP)
@@ -710,7 +701,7 @@ def update_forward_refs(
     # attrs.resolve_types() caches the exact class (in the MRO) whose types have been already resolved
     if getattr(model_cls, "__attrs_types_resolved__", None) != model_cls:
         fields = list(model_cls.__datamodel_fields__.keys())
-        current_datamodel_fields = getattr(model_cls, _MODEL_FIELDS)
+        current_datamodel_fields = getattr(model_cls, _MODEL_FIELD_DEFINITIONS)
 
         for field_name in fields:
             if not hasattr(current_datamodel_fields, field_name):
@@ -1159,6 +1150,7 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
         new_cls.__auto_init__ = new_cls.__attrs_init__  # type: ignore[attr-defined]  # adding new attribute
 
     new_cls.__pretty__ = _make_devtools_pretty()  # type: ignore[attr-defined]  # adding new attribute
+    setattr(new_cls, _MODEL_FIELD_NAMES, tuple(f_attr.name for f_attr in new_cls.__attrs_attrs__))
     setattr(
         new_cls,
         _MODEL_PARAMS,
@@ -1179,13 +1171,14 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
     )
     setattr(
         new_cls,
-        _MODEL_FIELDS,
+        _MODEL_FIELD_DEFINITIONS,
         utils.FrozenNamespace(
             **{
                 f_attr.name: f_attr for f_attr in new_cls.__attrs_attrs__  # type: ignore[attr-defined]  # new_cls.__attrs_attrs__ is valid
             }
         ),
     )
+    new_cls.update_forward_refs = classmethod(update_forward_refs)
 
     return new_cls
 
@@ -1213,7 +1206,7 @@ def _make_concrete_with_cache(
 
     # Replace field definitions with the new actual types for generic fields
     type_params_map = dict(zip(datamodel_cls.__parameters__, type_args))
-    model_fields = getattr(datamodel_cls, _MODEL_FIELDS)
+    model_fields = getattr(datamodel_cls, _MODEL_FIELD_DEFINITIONS)
     new_annotations = {}
     new_field_c_attrs = {}
     for field_name, field_type in xtyping.get_type_hints(datamodel_cls).items():
@@ -1250,7 +1243,7 @@ def _make_concrete_with_cache(
     concrete_cls = type(class_name, (datamodel_cls,), namespace)
     assert concrete_cls.__module__ == module or not module
 
-    if _MODEL_FIELDS not in concrete_cls.__dict__:
+    if _MODEL_FIELD_DEFINITIONS not in concrete_cls.__dict__:
         # If original model does not inherit from GenericModel,
         # _make_datamodel() hasn't been called yet, so call it now
         params = getattr(datamodel_cls, _MODEL_PARAMS)
