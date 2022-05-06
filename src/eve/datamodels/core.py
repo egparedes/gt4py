@@ -107,16 +107,15 @@ import warnings
 import attr
 import attrs
 from attr import frozen  # type: ignore[import]  # stubs not installed for attr (only attrs)
-from attrs import validators as validators
 
-from . import (
+from .. import (
     exceptions,
     extended_typing as xtyping,
     type_definitions,
     type_validation as type_val,
     utils,
 )
-from .extended_typing import (
+from ..extended_typing import (
     Any,
     Callable,
     ClassVar,
@@ -139,7 +138,7 @@ from .extended_typing import (
     cast,
     overload,
 )
-from .type_definitions import NOTHING, NothingType
+from ..type_definitions import NOTHING, NothingType
 
 
 # Typing

@@ -20,12 +20,14 @@
 from __future__ import annotations
 
 import ast
+import re
 
 from . import datamodels, iterators, utils
 from .datamodels import validators as dm_validators
 from .extended_typing import (
     Any,
     Dict,
+    Final,
     Generator,
     List,
     NoArgsCallable,
@@ -37,14 +39,11 @@ from .extended_typing import (
     Union,
     no_type_check,
 )
-from .type_definitions import NOTHING, IntEnum, PositiveInt, StrEnum
+from .type_definitions import NOTHING, IntEnum, StrEnum, ConstrainedStr
 
 
-# import pydantic
-# import pydantic.generics
-
-
-class SourceLocation(datamodels.DataModel):
+@datamodels.datamodel(slots=True, frozen=True)
+class SourceLocation:
     """Source code location (line, column, source)."""
 
     line: int = datamodels.field(validator=dm_validators.ge(1))
@@ -103,10 +102,11 @@ class SourceLocation(datamodels.DataModel):
         return f"<'{src}': Line {self.line}, Col {self.column}{end_part}>"
 
 
-class SourceLocationGroup(datamodels.DataModel):
+@datamodels.datamodel(slots=True, frozen=True)
+class SourceLocationGroup:
     """A group of merged source code locations (with optional info)."""
 
-    locations: Tuple[SourceLocation, ...]
+    locations: Tuple[SourceLocation, ...] = datamodels.field(validator=dm_validators.non_empty())
     context: Optional[Union[str, Tuple[str, ...]]]
 
     def __init__(
@@ -119,10 +119,23 @@ class SourceLocationGroup(datamodels.DataModel):
         context = f"#{self.context}#" if self.context else ""
         return f"<{context}[{locs}]>"
 
-    @datamodels.validator("locations")
-    def non_empty_tuple(self, attrib: datamodels.Attribute, v: Tuple[SourceLocation, ...]) -> None:
-        if not v:
-            raise ValueError(f"At least one location should be provided for field '{attrib.name}'")
+
+AnySourceLocation = Union[SourceLocation, SourceLocationGroup]
+
+
+_SYMBOL_NAME_RE: Final = re.compile(r"^[a-zA-Z_]\w*$")
+
+
+class SymbolName(ConstrainedStr, regex=_SYMBOL_NAME_RE):
+    """String value containing a valid symbol name for typical programming conventions."""
+
+    __slots__ = ()
+
+
+class SymbolRef(ConstrainedStr, regex=_SYMBOL_NAME_RE):
+    """Reference to a symbol name."""
+
+    __slots__ = ()
 
 
 # -- Fields --

@@ -24,6 +24,7 @@ import collections
 import contextlib
 
 from . import concepts, datamodels, visitors
+from .concepts import SymbolName
 from .extended_typing import (
     Any,
     Dict,
@@ -34,11 +35,9 @@ from .extended_typing import (
     TypeVar,
     runtime_checkable,
 )
-from .type_definitions import SymbolName
 
 
 # import pydantic
-
 
 
 class _CollectSymbols(visitors.NodeVisitor):

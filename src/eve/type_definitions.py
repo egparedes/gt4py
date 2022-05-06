@@ -128,95 +128,82 @@ class ConstrainedStr(str):
         cls.regex = regex
 
 
-_SYMBOL_NAME_RE: Final = re.compile(r"^[a-zA-Z_]\w*$")
 
 
-class SymbolName(ConstrainedStr, regex=_SYMBOL_NAME_RE):
-    """String value containing a valid symbol name for typical programming conventions."""
+# class IntRange(NamedTuple):
+#     start: Optional[int] = None
+#     stop: Optional[int] = None
+#     step: Optional[int] = 1
 
-    __slots__ = ()
+#     def __contains__(self, item: int) -> bool:
+#         if self.start is not None and item < self.start:
+#             return False
+#         if self.stop is not None and item >= self.stop:
+#             return False
+#         if self.step is not None and (item - (self.start or 0)) % self.step:
+#             return False
 
-
-class SymbolRef(ConstrainedStr, regex=_SYMBOL_NAME_RE):
-    """Reference to a symbol name."""
-
-    __slots__ = ()
-
-
-class IntRange(NamedTuple):
-    start: Optional[int] = None
-    stop: Optional[int] = None
-    step: Optional[int] = 1
-
-    def __contains__(self, item: int) -> bool:
-        if self.start is not None and item < self.start:
-            return False
-        if self.stop is not None and item >= self.stop:
-            return False
-        if self.step is not None and (item - (self.start or 0)) % self.step:
-            return False
-
-        return True
+#         return True
 
 
-class ConstrainedInt(int):
-    """Base int subclass allowing to restrict values to specific ranges.
+# class ConstrainedInt(int):
+#     """Base int subclass allowing to restrict values to specific ranges.
 
-    Subclasses should define the specific constraint pattern in the ``range``
-    class keyword argument.
+#     Subclasses should define the specific constraint pattern in the ``range``
+#     class keyword argument.
 
-    Examples:
-        >>> class EvenIntNumber(ConstrainedInt, range=IntRange(None, None, 2)): pass
-        >>> EvenIntNumber(2)
-        2
+#     Examples:
+#         >>> class EvenIntNumber(ConstrainedInt, range=IntRange(None, None, 2)): pass
+#         >>> EvenIntNumber(2)
+#         2
 
-        >>> EvenIntNumber(3)
-        Traceback (most recent call last):
-            ...
-        ValueError: EvenIntNumber(3) does not satisfies range constraint IntRange(start=None, stop=None, step=2).
+#         >>> EvenIntNumber(3)
+#         Traceback (most recent call last):
+#             ...
+#         ValueError: EvenIntNumber(3) does not satisfies range constraint IntRange(start=None, stop=None, step=2).
 
-    """
+#     """
 
-    __slots__ = ()
+#     __slots__ = ()
 
-    range: ClassVar[IntRange]
+#     range: ClassVar[IntRange]
 
-    def __new__(cls, value: int) -> ConstrainedInt:
-        if cls is ConstrainedInt:
-            raise TypeError(f"{cls} cannot be directly instantiated, it should be subclassed.")
-        if not isinstance(value, int) or value not in cls.range:
-            raise ValueError(
-                f"{cls.__name__}({value}) does not satisfies range constraint {cls.range}."
-            )
-        return super().__new__(cls, value)
+#     def __new__(cls, value: int) -> ConstrainedInt:
+#         if cls is ConstrainedInt:
+#             raise TypeError(f"{cls} cannot be directly instantiated, it should be subclassed.")
+#         if not isinstance(value, int) or value not in cls.range:
+#             raise ValueError(
+#                 f"{cls.__name__}({value}) does not satisfies range constraint {cls.range}."
+#             )
+#         return super().__new__(cls, value)
 
-    def __init_subclass__(cls, *, range: IntRange, **kwargs) -> None:
-        super().__init_subclass__(**kwargs)
-        if not isinstance(range, IntRange):
-            raise TypeError(
-                f"Invalid range constraint ({range}) for '{cls.__name__}' ConstrainedInt subclass."
-            )
-        cls.range = range
-
-
-class PositiveInt(ConstrainedInt, range=IntRange(0, None)):
-    """Int subclass constrained to positive values (x >= 0).
-
-    Examples:
-        >>> PositiveInt(2)
-        2
-
-        >>> PositiveInt(-3)
-        Traceback (most recent call last):
-            ...
-        ValueError: EvenIntNumber(3) does not satisfies range constraint IntRange(start=None, stop=None, step=2).
-
-    """
-
-    __slots__ = ()
+#     def __init_subclass__(cls, *, range: IntRange, **kwargs) -> None:
+#         super().__init_subclass__(**kwargs)
+#         if not isinstance(range, IntRange):
+#             raise TypeError(
+#                 f"Invalid range constraint ({range}) for '{cls.__name__}' ConstrainedInt subclass."
+#             )
+#         cls.range = range
 
 
-class NegativeInt(ConstrainedInt, range=IntRange(None, 0)):
-    """Int subclass constrained to strictly negative values (x < 0)."""
+# class PositiveInt(ConstrainedInt, range=IntRange(0, None)):
+#     """Int subclass constrained to positive values (x >= 0).
 
-    __slots__ = ()
+#     Examples:
+#         >>> PositiveInt(2)
+#         2
+
+#         >>> PositiveInt(-3)
+#         Traceback (most recent call last):
+#             ...
+#         ValueError: EvenIntNumber(3) does not satisfies range constraint IntRange(start=None, stop=None, step=2).
+
+#     """
+
+#     __slots__ = ()
+
+
+# class NegativeInt(ConstrainedInt, range=IntRange(None, 0)):
+#     """Int subclass constrained to strictly negative values (x < 0)."""
+
+#     __slots__ = ()
