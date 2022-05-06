@@ -171,7 +171,9 @@ class Node(datamodels.DataModel, trees.Tree):
 
     @property
     def annex(self) -> utils.Namespace:
-        return self.__dict__.setdefault("__annex__", utils.Namespace())
+        if "__annex__" not in self.__dict__:
+            self.__dict__["__annex__"] = utils.Namespace()
+        return self.__dict__["__annex__"]
 
     def iter_children_items(self) -> Generator[Tuple[str, Any], None, None]:
         for name in self.__fields__:

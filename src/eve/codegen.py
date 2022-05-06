@@ -29,7 +29,6 @@ import string
 import sys
 import textwrap
 import types
-import typing
 from subprocess import PIPE, Popen, run
 
 import black
@@ -54,6 +53,8 @@ from .extended_typing import (
     Tuple,
     TypeVar,
     Union,
+    overload,
+    runtime_checkable,
 )
 from .visitors import NodeVisitor
 
@@ -346,7 +347,7 @@ class TextBlock:
 TemplateT = TypeVar("TemplateT", bound="Template")
 
 
-@typing.runtime_checkable
+@runtime_checkable
 class Template(Protocol):
     """Protocol (abstract base class) defining the Template interface.
 
@@ -635,12 +636,12 @@ class TemplatedGenerator(NodeVisitor):
 
         cls.__templates__ = types.MappingProxyType(templates)
 
-    @typing.overload
+    @overload
     @classmethod
     def apply(cls, root: LeafNode, **kwargs: Any) -> str:
         ...
 
-    @typing.overload
+    @overload
     @classmethod
     def apply(cls, root: CollectionNode, **kwargs: Any) -> Collection[str]:
         ...
@@ -678,7 +679,7 @@ class TemplatedGenerator(NodeVisitor):
                         template,
                         node,
                         self.transform_children(node, **kwargs),
-                        self.transform_impl_fields(node, **kwargs),
+                        self.transform_annexed_items(node, **kwargs),
                         **kwargs,
                     )
                 except TemplateRenderingError as e:
@@ -717,15 +718,15 @@ class TemplatedGenerator(NodeVisitor):
         template: Template,
         node: Node,
         transformed_children: Mapping[str, Any],
-        transformed_impl_fields: Mapping[str, Any],
+        transformed_annexed_items: Mapping[str, Any],
         **kwargs: Any,
     ) -> str:
         """Render a template using node instance data (see class documentation)."""
         return template.render(
             **transformed_children,
-            **transformed_impl_fields,
+            **transformed_annexed_items,
             _children=transformed_children,
-            _impl=transformed_impl_fields,
+            _impl=transformed_annexed_items,
             _this_node=node,
             _this_generator=self,
             _this_module=sys.modules[type(self).__module__],
@@ -733,7 +734,7 @@ class TemplatedGenerator(NodeVisitor):
         )
 
     def transform_children(self, node: Node, **kwargs: Any) -> Dict[str, Any]:
-        return {key: self.visit(value, **kwargs) for key, value in node.iter_children()}
+        return {key: self.visit(value, **kwargs) for key, value in node.iter_children_items()}
 
-    def transform_impl_fields(self, node: Node, **kwargs: Any) -> Dict[str, Any]:
-        return {key: self.visit(value, **kwargs) for key, value in node.iter_impl_fields()}
+    def transform_annexed_items(self, node: Node, **kwargs: Any) -> Dict[str, Any]:
+        return {key: self.visit(value, **kwargs) for key, value in node.annex.items()}
