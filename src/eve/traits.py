@@ -37,9 +37,6 @@ from .extended_typing import (
 )
 
 
-# import pydantic
-
-
 class _CollectSymbols(visitors.NodeVisitor):
     def __init__(self) -> None:
         self.collected: Dict[str, concepts.Node] = {}
@@ -65,18 +62,12 @@ class _CollectSymbols(visitors.NodeVisitor):
 
 
 class SymbolTableTrait(datamodels.DataModel):
-    symtable_: Dict[str, concepts.Node] = datamodels.field(init=False)
-
     def __post_init__(self):
         super(SymbolTableTrait, self).__post_init__()
-        object.__setattr__(self, "symtable_", {})
+        self.collect_symbols()
 
-    def collect_symbols(self) -> None:
-        self.symtable_ = _CollectSymbols.apply(self)
-
-    @datamodels.root_validator
-    def _collect_symbols_validator(cls: Type[SymbolTableTrait], instance: SymbolTableTrait) -> None:
-        instance.collect_symbols()
+    def collect_symbols(self: concepts.BaseNode) -> None:
+        self.annex.symtable = _CollectSymbols.apply(self)
 
 
 # Visitors
@@ -99,12 +90,12 @@ class SymbolTableVisitorTrait(Generic[_OutT, _KwargsT]):
 
     def visit(self, node: concepts.Node, /, **kwargs: _KwargsT) -> _OutT:
         kwargs.setdefault("symtable", collections.ChainMap())
-        if node_has_table := isinstance(node, SymbolTableTrait):
-            kwargs["symtable"] = kwargs["symtable"].new_child(node.symtable_)
+        if new_scope := isinstance(node, SymbolTableTrait):
+            kwargs["symtable"] = kwargs["symtable"].new_child(node.annex.symtable_)
 
         result = super(SymbolTableVisitorTrait, self).visit(node, **kwargs)
 
-        if node_has_table:
+        if new_scope:
             kwargs["symtable"] = kwargs["symtable"].parents
 
         return result

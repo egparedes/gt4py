@@ -144,11 +144,6 @@ from ..type_definitions import NOTHING, NothingType
 # Typing
 _T = TypeVar("_T")
 
-_COERCED_TYPE_TAG: Final = "__DATAMODEL_COERCE_TYPE_TAG"
-
-#: Type hint marker to define fields that should be coerced at initization
-Coerced = xtyping.Annotated[_T, _COERCED_TYPE_TAG]
-
 
 class _AttrsClassTP(Protocol):
     __attrs_attrs__: ClassVar[Tuple[attr.Attribute, ...]]
@@ -204,6 +199,17 @@ _ROOT_VALIDATOR_TAG: Final = "__DATAMODEL_ROOT_VALIDATOR_TAG"
 _MODEL_FIELDS: Final = "__datamodel_fields__"
 _MODEL_PARAMS: Final = "__datamodel_params__"
 _ROOT_VALIDATORS: Final = "__datamodel_root_validators__"
+
+_COERCED_TYPE_TAG: Final = "__DATAMODEL_COERCED_TYPE_TAG"
+
+#: Type hint marker to define fields that should be coerced at initialization
+Coerced = xtyping.Annotated[_T, _COERCED_TYPE_TAG]
+
+_UNCHECKED_TYPE_TAG: Final = "__DATAMODEL_UNCHECKED_TYPE_TAG"
+
+#: Type hint marker to define fields that should NOT be type-checked at initialization
+Unchecked = xtyping.Annotated[_T, _UNCHECKED_TYPE_TAG]
+
 
 if sys.version_info >= (3, 10):
     _dataclass_opts: Final = {"slots": True}
@@ -405,7 +411,8 @@ class DataModel:
     """Base class to automatically convert any subclass into a Data Model.
 
     Inheriting from this class is equivalent to apply the :func:`datamodel`
-    decorator to a class, except that all descendants will be also converted
+    decorator to a class, except that the ``slots`` option is always ``False``
+    (since it generates a new class) and all descendants will be also converted
     automatically in Data Models (which does not happen when explicitly
     applying the decorator).
 
@@ -426,7 +433,6 @@ class DataModel:
         frozen: bool | Literal["strict"] = _FROZEN_DEFAULT,
         match_args: bool = _MATCH_ARGS_DEFAULT,
         kw_only: bool = _KW_ONLY_DEFAULT,
-        # slots: bool = _SLOTS_DEFAULT,
         coerce: bool = _COERCE_DEFAULT,
         type_validation_factory: Optional[
             FieldTypeValidatorFactory
@@ -435,7 +441,7 @@ class DataModel:
     ) -> None:
         super(DataModel, cls).__init_subclass__(
             **kwargs
-        )  # type: ignore[call-arg]  # is not guaranteed that superclass is object / does not accept kwargs
+        )  # type: ignore[call-arg]  # is not guaranteed that superclass does not accept kwargs
         _make_datamodel(
             cls,
             repr=repr,
@@ -1020,15 +1026,15 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
             type_hint, *type_extras = solved_hint, []
 
         if xtyping.get_origin(type_hint) is not ClassVar:
-            converter = (
-                _make_type_converter(type_hint, key)
-                if coerce or _COERCED_TYPE_TAG in type_extras
-                else None
-            )
+            if coerce or _COERCED_TYPE_TAG in type_extras:
+                converter = _make_type_converter(type_hint, key)
+            else:
+                converter = None
 
-            type_validator = (
-                type_validation_factory(type_hint, key) if type_validation_factory else None
-            )
+            if type_validation_factory and _UNCHECKED_TYPE_TAG not in type_extras:
+                type_validator = type_validation_factory(type_hint, key)
+            else:
+                type_validator = None
 
             cls_attr_value = cls.__dict__.get(key, NOTHING)
             if cls_attr_value is NOTHING:

@@ -128,8 +128,6 @@ class ConstrainedStr(str):
         cls.regex = regex
 
 
-
-
 # class IntRange(NamedTuple):
 #     start: Optional[int] = None
 #     stop: Optional[int] = None

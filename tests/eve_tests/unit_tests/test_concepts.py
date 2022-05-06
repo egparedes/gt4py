@@ -99,51 +99,30 @@ class TestNode:
 
         assert id(node_a) != id(node_b) != id(node_c)
 
-    def test_impl_fields(self, sample_node):
-        impl_names = set(name for name, _ in sample_node.iter_impl_fields())
+    def test_annex(self, sample_node):
+        assert isinstance(sample_node.annex, eve.utils.Namespace)
 
-        assert all(name.endswith("_") and not name.endswith("__") for name in impl_names)
-        assert (
-            set(
-                name
-                for name in sample_node.__fields__.keys()
-                if name.endswith("_") and not name.endswith("__")
-            )
-            == impl_names
-        )
+        sample_node.annex.an_int = 32
+        assert sample_node.annex.an_int == 32
+
+        sample_node.annex.an_int = -32
+        assert sample_node.annex.an_int == -32
+
+        sample_node.annex.a_str = "foo"
+        assert sample_node.annex.a_str == "foo"
+
+        assert tuple(sample_node.annex.keys()) == ("an_int", "a_str")
 
     def test_children(self, sample_node):
-        impl_field_names = set(name for name, _ in sample_node.iter_impl_fields())
         children_names = set(name for name, _ in sample_node.iter_children())
-        public_names = impl_field_names | children_names
         field_names = set(sample_node.__fields__.keys())
 
         assert not any(name.endswith("__") for name in children_names)
         assert not any(name.endswith("_") for name in children_names)
-
-        assert public_names <= field_names
-        assert all(name.endswith("_") for name in field_names - public_names)
 
         assert all(
             node1 is node2
             for (name, node1), node2 in zip(
                 sample_node.iter_children(), sample_node.iter_children_values()
             )
-        )
-
-    def test_node_metadata(self, sample_node):
-        assert all(
-            name in sample_node.__node_impl_fields__ for name, _ in sample_node.iter_impl_fields()
-        )
-        assert all(
-            isinstance(metadata, dict)
-            and isinstance(metadata["definition"], pydantic.fields.ModelField)
-            for metadata in sample_node.__node_impl_fields__.values()
-        )
-
-        assert all(name in sample_node.__node_children__ for name, _ in sample_node.iter_children())
-        assert all(
-            isinstance(metadata, dict)
-            and isinstance(metadata["definition"], pydantic.fields.ModelField)
-            for metadata in sample_node.__node_children__.values()
         )

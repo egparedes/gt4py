@@ -21,8 +21,9 @@ from __future__ import annotations
 
 import ast
 import re
+import types
 
-from . import datamodels, iterators, utils
+from . import datamodels, iterators, type_definitions, utils
 from .datamodels import validators as dm_validators
 from .extended_typing import (
     Any,
@@ -39,7 +40,22 @@ from .extended_typing import (
     Union,
     no_type_check,
 )
-from .type_definitions import NOTHING, IntEnum, StrEnum, ConstrainedStr
+from .type_definitions import NOTHING, ConstrainedStr, IntEnum, StrEnum
+
+
+_SYMBOL_NAME_RE: Final = re.compile(r"^[a-zA-Z_]\w*$")
+
+
+class SymbolName(ConstrainedStr, regex=_SYMBOL_NAME_RE):
+    """String value containing a valid symbol name for typical programming conventions."""
+
+    __slots__ = ()
+
+
+class SymbolRef(ConstrainedStr, regex=_SYMBOL_NAME_RE):
+    """Reference to a symbol name."""
+
+    __slots__ = ()
 
 
 @datamodels.datamodel(slots=True, frozen=True)
@@ -123,93 +139,7 @@ class SourceLocationGroup:
 AnySourceLocation = Union[SourceLocation, SourceLocationGroup]
 
 
-_SYMBOL_NAME_RE: Final = re.compile(r"^[a-zA-Z_]\w*$")
-
-
-class SymbolName(ConstrainedStr, regex=_SYMBOL_NAME_RE):
-    """String value containing a valid symbol name for typical programming conventions."""
-
-    __slots__ = ()
-
-
-class SymbolRef(ConstrainedStr, regex=_SYMBOL_NAME_RE):
-    """Reference to a symbol name."""
-
-    __slots__ = ()
-
-
-# -- Fields --
-# class ImplFieldMetadataDict(TypedDict, total=False):
-#     info: pydantic.fields.FieldInfo
-
-
-# NodeImplFieldMetadataDict = Dict[str, ImplFieldMetadataDict]
-
-
-# class FieldKind(StrEnum):
-#     INPUT = "input"
-#     OUTPUT = "output"
-
-
-# class FieldConstraintsDict(TypedDict, total=False):
-#     vtype: Union[VType, Tuple[VType, ...]]
-
-
-# class FieldMetadataDict(TypedDict, total=False):
-#     constraints: FieldConstraintsDict
-#     kind: FieldKind
-#     definition: pydantic.fields.ModelField
-
-
-# NodeChildrenMetadataDict = Dict[str, FieldMetadataDict]
-
-
 _EVE_METADATA_KEY = "_EVE_META_"
-
-
-# def field(
-#     default: Any = NOTHING,
-#     *,
-#     default_factory: Optional[NoArgsCallable] = None,
-#     kind: Optional[FieldKind] = None,
-#     constraints: Optional[FieldConstraintsDict] = None,
-#     schema_config: Dict[str, Any] = None,
-# ) -> pydantic.fields.FieldInfo:
-#     metadata = {}
-#     for key in ["kind", "constraints"]:
-#         value = locals()[key]
-#         if value:
-#             metadata[key] = value
-#     kwargs = schema_config or {}
-#     kwargs[_EVE_METADATA_KEY] = metadata
-
-#     if default is NOTHING:
-#         field_info = pydantic.Field(default_factory=default_factory, **kwargs)
-#     else:
-#         field_info = pydantic.Field(default, default_factory=default_factory, **kwargs)
-#     assert isinstance(field_info, pydantic.fields.FieldInfo)
-
-#     return field_info
-
-
-# in_field = functools.partial(field, kind=FieldKind.INPUT)
-# out_field = functools.partial(field, kind=FieldKind.OUTPUT)
-
-
-# -- Models --
-# class Model(pydantic.BaseModel):
-#     class Config:
-#         extra = "forbid"
-
-
-# class FrozenModel(pydantic.BaseModel):
-#     class Config:
-#         allow_mutation = False
-
-
-# -- Nodes --
-_EVE_NODE_INTERNAL_SUFFIX = "__"
-_EVE_NODE_IMPL_SUFFIX = "_"
 
 AnyNode = TypeVar("AnyNode", bound="BaseNode")
 ValueNode = Union[bool, bytes, int, float, str, IntEnum, StrEnum]
@@ -218,76 +148,47 @@ CollectionNode = Union[List[LeafNode], Dict[Any, LeafNode], Set[LeafNode]]
 TreeNode = Union[AnyNode, CollectionNode]
 
 
-# class NodeMetaclass(pydantic.main.ModelMetaclass):
-#     """Custom metaclass for Node classes.
-
-#     Customize the creation of Node classes adding Eve specific attributes.
-
-#     """
-
-#     @no_type_check
-#     def __new__(mcls, name, bases, namespace, **kwargs):
-#         # Optional preprocessing of class namespace before creation:
-#         cls = super().__new__(mcls, name, bases, namespace, **kwargs)
-
-#         # Postprocess created class:
-#         # Add metadata class members
-#         impl_fields_metadata = {}
-#         children_metadata = {}
-#         for name, model_field in cls.__fields__.items():
-#             if not name.endswith(_EVE_NODE_INTERNAL_SUFFIX):
-#                 if name.endswith(_EVE_NODE_IMPL_SUFFIX):
-#                     impl_fields_metadata[name] = {"definition": model_field}
-#                 else:
-#                     children_metadata[name] = {
-#                         "definition": model_field,
-#                         **model_field.field_info.extra.get(_EVE_METADATA_KEY, {}),
-#                     }
-
-#         cls.__node_impl_fields__ = impl_fields_metadata
-#         cls.__node_children__ = children_metadata
-
-#         return cls
-
-
 class BaseNode(datamodels.DataModel):
     """Base class representing an IR node.
 
-    It is currently implemented as a pydantic Model with some extra features.
+    Implemented as a :class:`eve.datamodels.DataModel` with some extra features.
 
     Field values should be either:
 
         * builtin types: `bool`, `bytes`, `int`, `float`, `str`
         * enum.Enum types
         * other :class:`Node` subclasses
-        * other :class:`pydantic.BaseModel` subclasses
+        * other :class:`eve.datamodels.DataModel` subclasses
         * supported collections (:class:`List`, :class:`Dict`, :class:`Set`)
             of any of the previous items
 
-    Field naming scheme:
-
-        * Field names starting with "_" are ignored by pydantic and Eve. They
-            will not be considered as `fields` and thus none of the pydantic
-            features will work (type coercion, validators, etc.).
-        * Field names ending with "__" are reserved for internal Eve use and
-            should NOT be defined by regular users. All pydantic features will
-            work on these fields anyway but they will be invisible for Eve users.
-        * Field names ending with "_" are considered implementation fields
-            not children nodes. They are intended to be defined by users when needed,
-            typically to cache derived, non-essential information on the node.
-
     """
 
-    def iter_impl_fields(self) -> Generator[Tuple[str, Any], None, None]:
-        for name in self.__node_impl_fields__.keys():
+    @type_definitions.classproperty
+    def __fields__(cls):
+        return cls.__datamodel_fields__
+
+    @property
+    def annex(self) -> utils.Namespace:
+        return self.__dict__.setdefault("__annex__", utils.Namespace())
+
+    @property
+    def annex(self) -> utils.Namespace:
+        return self.__dict__.setdefault("__annex__", utils.Namespace())
+
+    def iter_annex(self) -> Generator[Tuple[str, Any], None, None]:
+        names = self.__annex__.__dict__.keys()
+        for name in names:
             yield name, getattr(self, name)
 
     def iter_children(self) -> Generator[Tuple[str, Any], None, None]:
-        for name in self.__node_children__.keys():
+        field_names = self.__datamodel_fields__.keys()
+        for name in field_names:
             yield name, getattr(self, name)
 
     def iter_children_values(self) -> Generator[Any, None, None]:
-        for name in self.__node_children__.keys():
+        field_names = self.__datamodel_fields__.keys()
+        for name in field_names:
             yield getattr(self, name)
 
     def iter_tree_pre(self) -> utils.XIterable:
@@ -300,9 +201,6 @@ class BaseNode(datamodels.DataModel):
         return iterators.iter_tree_levels(self)
 
     iter_tree = iter_tree_pre
-
-    # class Config(Model.Config):
-    #     pass
 
 
 # class GenericNode(BaseNode, pydantic.generics.GenericModel):

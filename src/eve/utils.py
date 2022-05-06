@@ -471,8 +471,41 @@ class CaseStyleConverter:
         return name.split("-")
 
 
-class FrozenNamespace(types.SimpleNamespace, Generic[T]):
-    """An immutable `types.SimpleNamespace`-like class.
+class Namespace(types.SimpleNamespace, Generic[T]):
+    """A `types.SimpleNamespace`-like class with additional dict-like interface.
+
+    Examples:
+        >>> ns = Namespace(a=10, b="hello")
+        >>> ns.a
+        10
+        >>> ns.b = 20
+        >>> ns.b
+        20
+
+        >>> ns = Namespace(a=10, b="hello")
+        >>> list(ns.keys())
+        ['a', 'b']
+
+        >>> list(ns.values())
+        [10, 'hello']
+
+        >>> list(ns.items())
+        [('a', 10), ('b', 'hello')]
+
+    """
+
+    def items(self) -> Iterable[Tuple[str, T]]:
+        return self.__dict__.items()
+
+    def keys(self) -> Iterable[str]:
+        return self.__dict__.keys()
+
+    def values(self) -> Iterable[T]:
+        return self.__dict__.values()
+
+
+class FrozenNamespace(Namespace[T]):
+    """An immutable version of :class:`Namespace`.
 
     Examples:
         >>> ns = FrozenNamespace(a=10, b="hello")
