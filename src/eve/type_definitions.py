@@ -58,7 +58,6 @@ from .extended_typing import (
 # from pydantic.types import ConstrainedStr
 
 
-
 frozenlist: Final = tuple
 frozendict: Final = _frozendict if sys.version_info >= (3, 9) else xtyping.FrozenDict
 
@@ -110,13 +109,11 @@ class ConstrainedStr(str):
     def __new__(cls, value: str) -> ConstrainedStr:
         if cls is ConstrainedStr:
             raise TypeError(f"{cls} cannot be directly instantiated, it should be subclassed.")
-        instance = super().__new__(cls, value)
-        if not cls.regex.fullmatch(instance):
+        if not isinstance(value, str) or not cls.regex.fullmatch(value):
             raise ValueError(
-                f"{cls.__name__}('{instance}') does not satisfies RE constraint {cls.regex}."
+                f"{cls.__name__}('{value}') does not satisfies RE constraint {cls.regex}."
             )
-
-        return instance
+        return super().__new__(cls, value)
 
     def __init_subclass__(cls, *, regex: Optional[re.Pattern] = None, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
@@ -152,11 +149,11 @@ class IntRange(NamedTuple):
     step: Optional[int] = 1
 
     def __contains__(self, item: int) -> bool:
-        if self.start and item < self.start:
+        if self.start is not None and item < self.start:
             return False
-        if self.stop and item >= self.stop:
+        if self.stop is not None and item >= self.stop:
             return False
-        if self.step and (item - (self.start or 0)) % self.step:
+        if self.step is not None and (item - (self.start or 0)) % self.step:
             return False
 
         return True
@@ -187,13 +184,11 @@ class ConstrainedInt(int):
     def __new__(cls, value: int) -> ConstrainedInt:
         if cls is ConstrainedInt:
             raise TypeError(f"{cls} cannot be directly instantiated, it should be subclassed.")
-        instance = super().__new__(cls, value)
-        if instance not in cls.range:
+        if not isinstance(value, int) or value not in cls.range:
             raise ValueError(
-                f"{cls.__name__}({instance}) does not satisfies range constraint {cls.range}."
+                f"{cls.__name__}({value}) does not satisfies range constraint {cls.range}."
             )
-
-        return instance
+        return super().__new__(cls, value)
 
     def __init_subclass__(cls, *, range: IntRange, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
@@ -205,7 +200,18 @@ class ConstrainedInt(int):
 
 
 class PositiveInt(ConstrainedInt, range=IntRange(0, None)):
-    """Int subclass constrained to positive values (x >= 0)."""
+    """Int subclass constrained to positive values (x >= 0).
+
+    Examples:
+        >>> PositiveInt(2)
+        2
+
+        >>> PositiveInt(-3)
+        Traceback (most recent call last):
+            ...
+        ValueError: EvenIntNumber(3) does not satisfies range constraint IntRange(start=None, stop=None, step=2).
+
+    """
 
     __slots__ = ()
 

@@ -107,6 +107,7 @@ import warnings
 import attr
 import attrs
 from attr import frozen  # type: ignore[import]  # stubs not installed for attr (only attrs)
+from attrs import validators as validators
 
 from . import (
     exceptions,
@@ -181,11 +182,11 @@ class GenericDataModelTP(DataModelTP, Protocol):
 
 
 if xtyping.TYPE_CHECKING:
-    _AttrsValidator = Callable[[Any, attr.Attribute[_T], _T], Any]
+    AttrsValidator = Callable[[Any, attr.Attribute[_T], _T], Any]
     FieldValidator = Callable[[DataModelTP, attr.Attribute[_T], _T], None]
     BoundFieldValidator = Callable[[attr.Attribute[_T], _T], None]
 else:
-    _AttrsValidator = Callable[[Any, attr.Attribute, _T], Any]
+    AttrsValidator = Callable[[Any, attr.Attribute, _T], Any]
     FieldValidator = Callable[[DataModelTP, Attribute, _T], None]
     BoundFieldValidator = Callable[[Attribute, _T], None]
 
@@ -462,6 +463,9 @@ def field(
     compare: bool = True,
     metadata: Optional[Mapping[Any, Any]] = None,
     kw_only: bool = _KW_ONLY_DEFAULT,
+    validator: Union[
+        None, AttrsValidator, FieldValidator, Sequence[Union[AttrsValidator, FieldValidator]]
+    ] = None,
 ) -> Any:  # attr.s lies in some typings
     """Define a new attribute on a class with advanced options.
 
@@ -489,6 +493,9 @@ def field(
             have their own key, to use as a namespace in the metadata.
         kw_only: If ``True`` (default is ``False``), make this field keyword-only in the
             generated ``__init__`` (if ``init`` is ``False``, this parameter is ignored).
+        validator: FieldValidator or list of FieldValidators to be used with this field.
+            (Note that validators can also be set using decorator notation).
+
 
     Examples:
         >>> from typing import List
@@ -519,6 +526,7 @@ def field(
         order=compare,
         metadata=metadata,
         kw_only=kw_only,
+        validator=validator,
     )
 
 
@@ -538,7 +546,8 @@ def validator(name: str) -> Callable[[FieldValidator], FieldValidator]:
     assert isinstance(name, str)
 
     def _field_validator_maker(func: FieldValidator) -> FieldValidator:
-        setattr(func, _FIELD_VALIDATOR_TAG, name)
+        names = getattr(func, _FIELD_VALIDATOR_TAG, ())
+        setattr(func, _FIELD_VALIDATOR_TAG, tuple([*names, name]))
         return func
 
     return _field_validator_maker
@@ -778,8 +787,8 @@ def _collect_field_validators(cls: Type) -> Dict[str, FieldValidator]:
     result = {}
     for member in cls.__dict__.values():
         if hasattr(member, _FIELD_VALIDATOR_TAG):
-            field_name = getattr(member, _FIELD_VALIDATOR_TAG)
-            result[field_name] = member
+            for field_name in getattr(member, _FIELD_VALIDATOR_TAG):
+                result[field_name] = member
             delattr(member, _FIELD_VALIDATOR_TAG)
 
     return result
@@ -921,20 +930,39 @@ def _make_data_model_class_getitem() -> classmethod:
     return classmethod(__class_getitem__)
 
 
-def _make_type_converter(type_annotation: Type[_T]) -> TypeConverter[_T]:
+def _make_type_converter(type_annotation: Type[_T], name: str) -> TypeConverter[_T]:
     if xtyping.is_actual_type(type_annotation) and not isinstance(
         None, type_annotation  # NoneType is a different case
     ):
         assert not xtyping.get_args(type_annotation)
         assert callable(type_annotation)
-        return lambda x: x if isinstance(x, type_annotation) else type_annotation(x)
+
+        def _type_converter(value):
+            try:
+                return value if isinstance(value, type_annotation) else type_annotation(value)
+            except Exception as error:
+                raise TypeError(
+                    f"Error during coertion of given value {value} for field '{name}'."
+                ) from error
+
+        return _type_converter
 
     if isinstance(type_annotation, TypeVar):
         return (
-            _make_type_converter(type_annotation.__bound__)
+            _make_type_converter(type_annotation.__bound__, name)
             if type_annotation.__bound__
             else lambda x: x
         )
+
+    # Optional type
+    if (
+        xtyping.get_origin(type_annotation) is xtyping.Union
+        and type(None) in (args := xtyping.get_args(type_annotation))
+        and len(args) == 2
+    ):
+        _type_converter = _make_type_converter(args[0], name)
+
+        return lambda x: x if x is None else _type_converter(x)
 
     if type_annotation is Any:
         return lambda x: x
@@ -994,7 +1022,7 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
 
         if xtyping.get_origin(type_hint) is not ClassVar:
             converter = (
-                _make_type_converter(type_hint)
+                _make_type_converter(type_hint, key)
                 if coerce or _COERCED_TYPE_TAG in type_extras
                 else None
             )

@@ -21,6 +21,7 @@ import string
 from typing import Collection, Dict, List, Mapping, Optional, Sequence, Set, Type, TypeVar
 
 from eve.concepts import FrozenNode, Node, SourceLocation, VType
+from eve.datamodels import Coerced
 from eve.traits import SymbolTableTrait
 from eve.type_definitions import IntEnum, StrEnum, SymbolName
 from eve.utils import CaseStyleConverter
@@ -74,7 +75,7 @@ class SimpleNode(Node):
 class SimpleNodeWithOptionals(Node):
     int_value: int
     float_value: Optional[float]
-    str_value: Optional[str]
+    str_value: Optional[str] = None
 
 
 class SimpleNodeWithLoc(Node):
@@ -97,12 +98,12 @@ class SimpleNodeWithAbstractCollections(Node):
     int_sequence: Sequence[int]
     str_set: Set[str]
     str_to_int_mapping: Mapping[str, int]
-    loc: Optional[SourceLocation]
+    loc: Optional[SourceLocation] = None
 
 
 class SimpleNodeWithSymbolName(Node):
     int_value: int
-    name: SymbolName
+    name: Coerced[SymbolName]
 
 
 class SimpleNodeWithDefaultSymbolName(Node):

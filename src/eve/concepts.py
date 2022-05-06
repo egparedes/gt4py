@@ -20,9 +20,9 @@
 from __future__ import annotations
 
 import ast
-import functools
 
 from . import datamodels, iterators, utils
+from .datamodels import validators as dm_validators
 from .extended_typing import (
     Any,
     Dict,
@@ -44,15 +44,18 @@ from .type_definitions import NOTHING, IntEnum, PositiveInt, StrEnum
 # import pydantic.generics
 
 
-
 class SourceLocation(datamodels.DataModel):
     """Source code location (line, column, source)."""
 
-    line: datamodels.Coerced[PositiveInt]
-    column: datamodels.Coerced[PositiveInt]
+    line: int = datamodels.field(validator=dm_validators.ge(1))
+    column: int = datamodels.field(validator=dm_validators.ge(1))
     source: str
-    end_line: Optional[PositiveInt]
-    end_column: Optional[PositiveInt]
+    end_line: Optional[int] = datamodels.field(
+        validator=dm_validators.optional(dm_validators.ge(1))
+    )
+    end_column: Optional[int] = datamodels.field(
+        validator=dm_validators.optional(dm_validators.ge(1))
+    )
 
     @classmethod
     def from_AST(cls, ast_node: ast.AST, source: Optional[str] = None) -> SourceLocation:
@@ -99,10 +102,6 @@ class SourceLocation(datamodels.DataModel):
 
         return f"<'{src}': Line {self.line}, Col {self.column}{end_part}>"
 
-    class Config:
-        extra = "forbid"
-        allow_mutation = False
-
 
 class SourceLocationGroup(datamodels.DataModel):
     """A group of merged source code locations (with optional info)."""
@@ -121,10 +120,9 @@ class SourceLocationGroup(datamodels.DataModel):
         return f"<{context}[{locs}]>"
 
     @datamodels.validator("locations")
-    def non_empty_tuple(cls, v: Tuple[SourceLocation, ...]) -> Tuple[SourceLocation, ...]:
+    def non_empty_tuple(self, attrib: datamodels.Attribute, v: Tuple[SourceLocation, ...]) -> None:
         if not v:
-            raise ValueError("At least one location should be provided")
-        return v
+            raise ValueError(f"At least one location should be provided for field '{attrib.name}'")
 
 
 # -- Fields --
