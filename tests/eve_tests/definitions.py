@@ -20,7 +20,7 @@ import random
 import string
 from typing import Collection, Dict, List, Mapping, Optional, Sequence, Set, Type, TypeVar
 
-from eve.concepts import FrozenNode, Node, SourceLocation, SymbolName, VType
+from eve.concepts import Block, FrozenNode, Node, SourceLocation, SymbolName, VType
 from eve.datamodels import Coerced
 from eve.traits import SymbolTableTrait
 from eve.type_definitions import IntEnum, StrEnum
@@ -132,7 +132,7 @@ class CompoundNodeWithSymbols(Node):
 
 class NodeWithSymbolTable(Node, SymbolTableTrait):
     node_with_name: SimpleNodeWithSymbolName
-    list_with_name: List[SimpleNodeWithSymbolName]
+    block_with_name: Block[SimpleNodeWithSymbolName]
     node_with_default_name: SimpleNodeWithDefaultSymbolName
     compound_with_name: CompoundNodeWithSymbols
 
@@ -410,8 +410,8 @@ def make_node_with_symbol_table(*, fixed: bool = False) -> NodeWithSymbolTable:
     return NodeWithSymbolTable(
         node_with_name=make_simple_node_with_symbol_name(fixed=fixed),
         node_with_default_name=make_simple_node_with_default_symbol_name(fixed=fixed),
-        list_with_name=make_multinode_collection_value(
-            SimpleNodeWithSymbolName, length=4, fixed=fixed
+        block_with_name=make_multinode_collection_value(
+            SimpleNodeWithSymbolName, collection_type=Block, length=4, fixed=fixed
         ),
         compound_with_name=make_compound_node_with_symbols(fixed=fixed),
     )

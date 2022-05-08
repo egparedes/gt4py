@@ -26,53 +26,6 @@ from .extended_typing import Any, Generator, Iterable, List, Optional, Tuple, Un
 from .type_definitions import Enum
 
 
-try:
-    # For perfomance reasons, try to use cytoolz when possible (using cython)
-    import cytoolz as toolz
-except ModuleNotFoundError:
-    # Fall back to pure Python toolz
-    import toolz  # noqa: F401  # imported but unused
-
-
-KeyValue = Tuple[Union[int, str], Any]
-TreeIterationItem = Union[Any, Tuple[KeyValue, Any]]
-
-
-class Tree(abc.ABC):
-    @abc.abstractmethod
-    def iter_children_items(self) -> Generator[Tuple[Union[int, str], Any], None, None]:
-        return
-
-    @abc.abstractmethod
-    def iter_children_values(self) -> Generator[Any, None, None]:
-        return
-
-
-# def generic_iter_children(
-#     node: concepts.TreeNode, *, with_keys: bool = False
-# ) -> Iterable[Union[Any, Tuple[KeyValue, Any]]]:
-#     """Create an iterator to traverse values as Eve tree nodes.
-
-#     Args:
-#         with_keys: Return tuples of (key, object) values where keys are
-#             the reference to the object node in the parent.
-#             Defaults to `False`.
-
-#     """
-#     if isinstance(node, concepts.BaseNode):
-#         return node.iter_children() if with_keys else node.iter_children_values()
-#     elif isinstance(node, (list, tuple)) or (
-#         isinstance(node, collections.abc.Sequence) and not isinstance(node, (str, bytes))
-#     ):
-#         return enumerate(node) if with_keys else iter(node)  # type: ignore  # the condition is too complex for mypy to recognize node is iterable at this point
-#     elif isinstance(node, (set, collections.abc.Set)):
-#         return zip(node, node) if with_keys else iter(node)  # type: ignore  # problems with iter(Set)
-#     elif isinstance(node, (dict, collections.abc.Mapping)):
-#         return node.items() if with_keys else node.values()
-
-#     return iter(())
-
-
 class TraversalOrder(Enum):
     PRE_ORDER = "pre"
     POST_ORDER = "post"
@@ -186,3 +139,25 @@ def walk_tree_values(
         return bfs_walk_tree_values(node=node)
     else:
         raise ValueError(f"Invalid '{traversal_order}' traversal order.")
+
+
+class TreeNode(abc.ABC):
+    @abc.abstractmethod
+    def iter_children_items(self) -> Generator[Tuple[Union[int, str], Any], None, None]:
+        return
+
+    @abc.abstractmethod
+    def iter_children_values(self) -> Generator[Any, None, None]:
+        return
+
+    pre_iter_tree_items = pre_walk_tree_items
+    pre_iter_tree_values = pre_walk_tree_values
+
+    post_iter_tree_items = post_walk_tree_items
+    post_iter_tree_values = post_walk_tree_values
+
+    bfs_iter_tree_items = bfs_walk_tree_items
+    bfs_iter_tree_values = bfs_walk_tree_values
+
+    iter_tree_items = walk_tree_items
+    iter_tree_values = walk_tree_values

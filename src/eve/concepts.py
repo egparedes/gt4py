@@ -19,7 +19,6 @@
 
 from __future__ import annotations
 
-import abc
 import ast
 import re
 
@@ -153,21 +152,10 @@ CollectionNode = Union[List[LeafNode], Dict[Any, LeafNode], Set[LeafNode]]
 TreeNode = Union[AnyNode, CollectionNode]
 
 
-class Node(datamodels.DataModel, trees.Tree):
-    """Base class representing a node in a syntax tree.
+class BaseNode(trees.TreeNode):
+    """Base class representing a node in a syntax tree."""
 
-    Implemented as a :class:`eve.datamodels.DataModel` with some extra features.
-
-    Field values should be either:
-
-        * builtin types: `bool`, `bytes`, `int`, `float`, `str`
-        * enum.Enum types
-        * other :class:`Node` subclasses
-        * other :class:`eve.datamodels.DataModel` subclasses
-        * supported collections (:class:`List`, :class:`Dict`, :class:`Set`)
-            of any of the previous items
-
-    """
+    __slots__ = ()
 
     @property
     def annex(self) -> utils.Namespace:
@@ -183,47 +171,68 @@ class Node(datamodels.DataModel, trees.Tree):
         for name in self.__fields__:
             yield getattr(self, name)
 
-    pre_iter_tree_items = trees.pre_walk_tree_items
-    pre_iter_tree_values = trees.pre_walk_tree_values
-
-    post_iter_tree_items = trees.post_walk_tree_items
-    post_iter_tree_values = trees.post_walk_tree_values
-
-    iter_tree_items = trees.walk_tree_items
-    iter_tree_values = trees.walk_tree_values
-
-
-class FrozenNode(Node):
-    pass
-
 
 _T = TypeVar("_T")
 
 
-class Block(Node, Generic[_T]):
-    items: List[_T]
+class BaseBlockNode(BaseNode, Generic[_T]):
+    __slots__ = ()
 
-    def __getitem__(self, /, item: int) -> _T:
-        return self.items[item]
+    def iter_children_items(self) -> Generator[Tuple[int, _T], None, None]:
+        yield from enumerate(self)
+
+    def iter_children_values(self) -> Generator[_T, None, None]:
+        yield from iter(self)
 
 
-class FrozenBlock(Block[_T]):
-    items: FrozenList[_T]
+class Block(BaseBlockNode, List[_T]):
+    __slots__ = ("__annex__",)
+
+
+class FrozenBlock(BaseBlockNode, FrozenList[_T]):
+    __slots__ = ("__annex__",)
 
 
 _KeyT = TypeVar("_KeyT")
-_ValueT = TypeVar("_ValueT")
 
 
-class Table(Node, Generic[_KeyT, _ValueT]):
-    items: Dict[_KeyT, _ValueT]
+class BaseTableNode(BaseNode, Generic[_KeyT, _T]):
+    __slots__ = ()
 
-    def __getitem__(self, /, key: _KeyT) -> _ValueT:
-        return self.items[key]
+    def iter_children_items(self) -> Generator[Tuple[_KeyT, _T], None, None]:
+        yield from self.items()
+
+    def iter_children_values(self) -> Generator[_T, None, None]:
+        yield from self.values()
 
 
-class FrozenTable(Table[_KeyT, _ValueT]):
-    items: FrozenDict[_KeyT, _ValueT]
+class Table(BaseTableNode, Dict[_KeyT, _T]):
+    __slots__ = ("__annex__",)
+
+
+class FrozenTable(BaseTableNode, FrozenDict[_KeyT, _T]):
+    __slots__ = ("__annex__",)
+
+
+class Node(datamodels.DataModel, BaseNode):
+    """Base class representing a node in a syntax tree.
+
+    Implemented as a :class:`eve.datamodels.DataModel` with some extra features.
+
+    Field values should be either:
+
+        * builtin types: `bool`, `bytes`, `int`, `float`, `str`
+        * enum.Enum types
+        * other :class:`Node` subclasses
+        * other :class:`eve.datamodels.DataModel` subclasses
+        * supported collections (:class:`List`, :class:`Dict`, :class:`Set`)
+            of any of the previous items
+
+    """
+
+
+class FrozenNode(Node, frozen=True):
+    ...
 
 
 # -- Misc --

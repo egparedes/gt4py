@@ -33,6 +33,8 @@ from .extended_typing import (
     Callable,
     ClassVar,
     Final,
+    FrozenDict,
+    FrozenList,
     Generator,
     NamedTuple,
     NoReturn,
@@ -58,8 +60,8 @@ from .extended_typing import (
 # from pydantic.types import ConstrainedStr
 
 
-frozenlist: Final = tuple
-frozendict: Final = _frozendict if sys.version_info >= (3, 9) else xtyping.FrozenDict
+frozenlist: Final = FrozenList
+frozendict: Final = _frozendict if sys.version_info >= (3, 9) else FrozenDict
 
 
 @final

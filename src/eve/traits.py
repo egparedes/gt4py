@@ -37,7 +37,7 @@ from .extended_typing import (
 )
 
 
-class _CollectSymbols(visitors.NodeVisitor):
+class _CollectSymbols(visitors.TreeVisitor):
     def __init__(self) -> None:
         self.collected_symbols: Dict[str, concepts.Node] = {}
 

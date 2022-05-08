@@ -62,7 +62,7 @@ class Visitor(Protocol[_InT, _OutT, _KwargsT]):
         return NotImplemented
 
 
-class NodeVisitor(Visitor[concepts.TreeNode, _OutT, _KwargsT]):
+class TreeVisitor(Visitor[concepts.TreeNode, _OutT, _KwargsT]):
     """Simple node visitor class based on :class:`ast.NodeVisitor`.
 
     A NodeVisitor instance walks a node tree and calls a visitor
@@ -152,7 +152,7 @@ class NodeVisitor(Visitor[concepts.TreeNode, _OutT, _KwargsT]):
                 self.visit(child, **kwargs)
 
 
-class NodeTranslator(NodeVisitor):
+class NodeTranslator(TreeVisitor):
     """Special `NodeVisitor` to translate nodes and trees.
 
     A NodeTranslator instance will walk the tree exactly as a regular
@@ -217,7 +217,7 @@ class NodeTranslator(NodeVisitor):
         return result
 
 
-class NodeMutator(NodeVisitor):
+class NodeMutator(TreeVisitor):
     """Special `NodeVisitor` to modify nodes in place.
 
     A NodeMutator instance will walk the tree exactly as a regular

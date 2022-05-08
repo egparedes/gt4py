@@ -35,7 +35,7 @@ def symtable_node_and_expected_symbols():
         node.node_with_default_name.name: node.node_with_default_name,
         node.compound_with_name.node_with_name.name: node.compound_with_name.node_with_name,
     }
-    symbols.update({n.name: n for n in node.list_with_name})
+    symbols.update({n.name: n for n in node.block_with_name})
 
     yield node, symbols
 

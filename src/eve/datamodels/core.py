@@ -927,7 +927,8 @@ def _make_data_model_class_getitem() -> classmethod:
         """
         type_args: Tuple[Type] = args if isinstance(args, tuple) else (args,)
         concrete_cls = concretize(cls, *type_args)
-        return xtyping.StdGenericAliasType(concrete_cls, type_args)
+        return concrete_cls
+        # return xtyping.StdGenericAliasType(concrete_cls, type_args)
 
     return classmethod(__class_getitem__)
 
