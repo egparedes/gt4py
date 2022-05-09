@@ -145,7 +145,7 @@ class SourceLocationGroup:
 AnySourceLocation = Union[SourceLocation, SourceLocationGroup]
 
 
-class IRNode(trees.TreeNode):
+class Node(trees.TreeNode):
     """Base class representing a node in a syntax tree."""
 
     __slots__ = ()
@@ -157,7 +157,7 @@ class IRNode(trees.TreeNode):
         return self.__annex__
 
 
-class OpNode(datamodels.DataModel, IRNode):
+class OpNode(datamodels.DataModel, Node):
     """Base class representing a node in a syntax tree.
 
     Implemented as a :class:`eve.datamodels.DataModel` with some extra features.
@@ -193,7 +193,7 @@ class FrozenOpNode(OpNode, frozen=True):
 _T = TypeVar("_T")
 
 
-class _BaseBlockNode(IRNode, Generic[_T]):
+class _BaseBlockNode(Node, Generic[_T]):
     """Non-instantiable base class for sequence-like IR node classes."""
 
     __slots__ = ()
@@ -231,7 +231,7 @@ frozenblock = frozen_block
 _KeyT = TypeVar("_KeyT")
 
 
-class _BaseTableNode(IRNode, Generic[_KeyT, _T]):
+class _BaseTableNode(Node, Generic[_KeyT, _T]):
     """Non-instantiable base class for mapping-like IR node classes."""
 
     __slots__ = ()

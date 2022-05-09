@@ -41,20 +41,20 @@ from .extended_typing import (
 # ---- Symbol Tables ----
 class _CollectSymbols(visitors.IRVisitor):
     def __init__(self) -> None:
-        self.collected_symbols: Dict[str, concepts.IRNode] = {}
+        self.collected_symbols: Dict[str, concepts.Node] = {}
 
-    def visit_Node(self, node: concepts.IRNode) -> None:
-        for name, value in node.iter_children_items:
+    def visit_Node(self, node: concepts.Node) -> None:
+        for value in node.iter_children_values():
             if isinstance(value, SymbolName):
-                if name in self.collected_symbols:
-                    raise ValueError(f"Multiple definitions of symbol '{name}'")
-                self.collected_symbols[name] = node
+                if value in self.collected_symbols:
+                    raise ValueError(f"Multiple definitions of symbol '{value}'")
+                self.collected_symbols[value] = node
         if not isinstance(node, SymbolTableTrait):
             # Stop recursion if the node opens a new scope (i.e. node with SymbolTableTrait)
             self.generic_visit(node)
 
     @classmethod
-    def apply(cls, node: concepts.IRNode) -> Dict[str, concepts.IRNode]:
+    def apply(cls, node: concepts.Node) -> Dict[str, concepts.Node]:
         collector = cls()
         collector.generic_visit(node)
         return collector.collected_symbols
@@ -73,7 +73,7 @@ _KwargsT = TypeVar("_KwargsT", contravariant=True)
 
 @runtime_checkable
 class NodeVisitorTrait(Protocol[_OutT, _KwargsT]):
-    def visit(self, node: concepts.IRNode, /, **kwargs: _KwargsT) -> _OutT:
+    def visit(self, node: concepts.Node, /, **kwargs: _KwargsT) -> _OutT:
         ...
 
 
@@ -84,7 +84,7 @@ class SymbolTableVisitorTrait(Generic[_OutT, _KwargsT]):
     automatically pass 'symtable' as a keyword argument to visitor methods.
     """
 
-    def visit(self, node: concepts.IRNode, /, **kwargs: _KwargsT) -> _OutT:
+    def visit(self, node: concepts.Node, /, **kwargs: _KwargsT) -> _OutT:
         kwargs.setdefault("symtable", collections.ChainMap())
         if new_scope := isinstance(node, SymbolTableTrait):
             kwargs["symtable"] = kwargs["symtable"].new_child(node.annex.symtable)

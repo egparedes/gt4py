@@ -60,7 +60,7 @@ class Visitor(Protocol[_InT, _OutT, _KwargsT]):
         return NotImplemented
 
 
-class IRVisitor(Visitor[concepts.IRNode, _OutT, _KwargsT]):
+class IRVisitor(Visitor[concepts.Node, _OutT, _KwargsT]):
     """Simple node visitor class based on :class:`ast.NodeVisitor`.
 
     A NodeVisitor instance walks a node tree and calls a visitor
@@ -133,13 +133,13 @@ class IRVisitor(Visitor[concepts.IRNode, _OutT, _KwargsT]):
         method_name = "visit_" + node.__class__.__name__
         if hasattr(self, method_name):
             visitor = getattr(self, method_name)
-        elif isinstance(node, concepts.IRNode):
+        elif isinstance(node, concepts.Node):
             for node_class in node.__class__.__mro__[1:]:
                 method_name = "visit_" + node_class.__name__
                 if hasattr(self, method_name):
                     visitor = getattr(self, method_name)
                     break
-                if node_class is concepts.IRNode:
+                if node_class is concepts.Node:
                     break
 
         return visitor(node, **kwargs)
@@ -177,7 +177,7 @@ class NodeTranslator(IRVisitor):
     _memo_dict_: Dict[int, Any]
 
     def generic_visit(self, node: concepts.TreeNode, **kwargs: Any) -> Any:
-        if isinstance(node, concepts.IRNode):
+        if isinstance(node, concepts.Node):
             return node.__class__(  # type: ignore
                 **{key: value for key, value in node.iter_impl_fields()},
                 **{
@@ -244,7 +244,7 @@ class NodeMutator(IRVisitor):
 
     def generic_visit(self, node: concepts.TreeNode, **kwargs: Any) -> Any:
         result: Any = node
-        if isinstance(node, (concepts.IRNode, collections.abc.Collection)) and utils.is_collection(
+        if isinstance(node, (concepts.Node, collections.abc.Collection)) and utils.is_collection(
             node
         ):
             items: Iterable[Tuple[Any, Any]] = []
@@ -252,7 +252,7 @@ class NodeMutator(IRVisitor):
             set_op: Union[Callable[[Any, str, Any], None], Callable[[Any, int, Any], None]]
             del_op: Union[Callable[[Any, str], None], Callable[[Any, int], None]]
 
-            if isinstance(node, concepts.IRNode):
+            if isinstance(node, concepts.Node):
                 items = list(node.iter_children())
                 set_op = setattr
                 del_op = delattr

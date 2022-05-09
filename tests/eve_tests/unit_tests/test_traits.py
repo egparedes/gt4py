@@ -76,13 +76,13 @@ class TestSymbolTable:
             for symbol_name, symbol_node in expected_symbols.items()
         )
 
-    def test_symtable_ctx(self):
-        node = _NodeWithSymbolTable(symbols=block(_NodeWithSymbolName()))
-        kwargs = dict(symtable=ChainMap({"a": True}))
+    # def test_symtable_ctx(self):
+    #     node = _NodeWithSymbolTable(symbols=block(_NodeWithSymbolName()))
+    #     kwargs = dict(symtable=ChainMap({"a": True}))
 
-        with eve.SymbolTableTrait.symtable_merger(None, node, kwargs):
-            assert "symtable" in kwargs
-            assert "symbol_name" in kwargs["symtable"]
+    #     with eve.SymbolTableTrait.symtable_merger(None, node, kwargs):
+    #         assert "symtable" in kwargs
+    #         assert "symbol_name" in kwargs["symtable"]
 
-        assert "symtable" in kwargs
-        assert "symbol_name" not in kwargs["symtable"]
+    #     assert "symtable" in kwargs
+    #     assert "symbol_name" not in kwargs["symtable"]

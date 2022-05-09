@@ -20,16 +20,16 @@ from typing import Any
 
 import pytest
 
-from eve import Node
+from eve.concepts import OpNode
 from eve.pattern_matching import ObjectPattern, get_differences
 
 
-class SampleNode(Node):
+class SampleNode(OpNode):
     foo: str
     bar: str
 
 
-class NestedSampleNode(Node):
+class NestedSampleNode(OpNode):
     foo: str
     bar: SampleNode
 

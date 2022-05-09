@@ -22,7 +22,7 @@ from typing import Any
 
 import pytest
 
-import eve.utils
+import eve
 from eve.utils import XIterable
 
 
@@ -81,7 +81,7 @@ def test_register_subclasses():
     )
 
 
-class ModelClass(pydantic.BaseModel):
+class ModelClass(eve.datamodels.DataModel):
     data: Any
 
 
@@ -141,7 +141,7 @@ def unique_data_items(request):
 
 def test_noninstantiable_class():
     @eve.utils.noninstantiable
-    class NonInstantiableClass(pydantic.BaseModel):
+    class NonInstantiableClass(eve.datamodels.DataModel):
         param: int
 
     with pytest.raises(
