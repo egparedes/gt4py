@@ -17,9 +17,9 @@ from __future__ import annotations
 import ast
 import builtins
 import collections
-from typing import Any, Callable, Iterable, Mapping, Type, cast
 
 import eve
+from eve.extended_typing import Any, Callable, Iterable, Mapping, Type, cast
 from functional.ffront import (
     common_types as ct,
     fbuiltins,

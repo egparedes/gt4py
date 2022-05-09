@@ -14,11 +14,11 @@
 
 
 import re
-from typing import Generic, Optional, TypeVar, Union
 
 import eve
 from eve import Node
-from eve.traits import SymbolTableTrait
+from eve.extended_typing import Generic, Optional, TypeVar, Union
+from eve.traits import SymbolTableCreatorTrait
 from eve.type_definitions import SourceLocation, StrEnum, SymbolRef
 from functional.ffront import common_types as common_types
 
@@ -159,7 +159,7 @@ class Return(Stmt):
     value: Expr
 
 
-class FieldOperator(LocatedNode, SymbolTableTrait):
+class FieldOperator(LocatedNode, SymbolTableCreatorTrait):
     id: SymbolName  # noqa: A003
     params: list[DataSymbol]
     body: list[Stmt]

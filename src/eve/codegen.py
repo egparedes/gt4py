@@ -56,7 +56,7 @@ from .extended_typing import (
     overload,
     runtime_checkable,
 )
-from .visitors import IRVisitor
+from .visitors import NodeVisitor
 
 
 SourceFormatter = Callable[[str], str]
@@ -560,7 +560,7 @@ class MakoTemplate(BaseTemplate):
             raise TemplateRenderingError(message, template=self) from e
 
 
-class TemplatedGenerator(IRVisitor):
+class TemplatedGenerator(NodeVisitor):
     """A code generator visitor using :class:`TextTemplate`.
 
     The order followed to choose a `dump()` function for node values is the following:

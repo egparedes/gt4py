@@ -11,9 +11,8 @@
 # distribution for a copy of the license or check <https://www.gnu.org/licenses/>.
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
-from typing import Union
-
-from eve import NodeTranslator, SymbolTableTrait
+from eve import NodeTranslator, SymbolTableCreatorTrait
+from eve.extended_typing import Union
 from functional.common import GTTypeError
 from functional.ffront import common_types, program_ast as past
 from functional.iterator import ir as itir
@@ -58,7 +57,7 @@ class ProgramLowering(NodeTranslator):
     [Sym(id='inp'), Sym(id='out'), Sym(id='__inp_size_0'), Sym(id='__out_size_0')]
     """
 
-    contexts = (SymbolTableTrait.symtable_merger,)
+    contexts = (SymbolTableCreatorTrait.symtable_merger,)
 
     @classmethod
     def apply(

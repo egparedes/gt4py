@@ -19,8 +19,8 @@ import dataclasses
 import functools
 import types
 import typing
-from typing import Any, Optional, Protocol
 
+from eve.extended_typing import Any, Optional, Protocol
 from eve.utils import UIDs
 from functional.common import GTTypeError
 from functional.ffront import (

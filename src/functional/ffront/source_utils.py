@@ -21,9 +21,9 @@ import symtable
 import textwrap
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Any, Union, cast
 
 from eve import extended_typing as xtyping
+from eve.extended_typing import Any, Union, cast
 from functional import common
 from functional.ffront import fbuiltins
 

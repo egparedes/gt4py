@@ -21,10 +21,11 @@ from __future__ import annotations
 
 import ast
 import re
+from typing import Callable
 
 from attr import frozen
 
-from . import datamodels, trees, type_definitions, utils
+from . import datamodels, exceptions, trees, type_definitions, utils
 from .datamodels import validators as dm_validators
 from .extended_typing import (
     Any,
@@ -41,6 +42,7 @@ from .extended_typing import (
     Protocol,
     Set,
     Tuple,
+    Type,
     TypedDict,
     TypeVar,
     Union,
@@ -145,6 +147,21 @@ class SourceLocationGroup:
 AnySourceLocation = Union[SourceLocation, SourceLocationGroup]
 
 
+class AnnexRegister:
+    register: Dict[str, Any]
+
+    @classmethod
+    def register_key(cls: Type[AnnexRegister], key: str, owner: Any) -> List[str]:
+        assert isinstance(key, str)
+        if key in cls.register:
+            raise exceptions.EveRuntimeError(
+                f"'{key}' has been already registered by {cls.register[key]}"
+            )
+        cls.register[key] = owner
+
+        return list(cls.register.keys())
+
+
 class Node(trees.TreeNode):
     """Base class representing a node in a syntax tree."""
 
@@ -221,11 +238,11 @@ def block(*items: _T) -> Block[_T]:
     return Block(items)
 
 
-def frozen_block(*items: _T) -> FrozenBlock[_T]:
+def frozenblock(*items: _T) -> FrozenBlock[_T]:
     return FrozenBlock(items)
 
 
-frozenblock = frozen_block
+frozen_block = frozenblock
 
 
 _KeyT = TypeVar("_KeyT")
@@ -259,11 +276,11 @@ def table(*items: _T) -> Table[_KeyT, _T]:
     return Table(items)
 
 
-def frozen_table(*items: _T) -> FrozenTable[_KeyT, _T]:
+def frozentable(*items: _T) -> FrozenTable[_KeyT, _T]:
     return FrozenTable(items)
 
 
-frozentable = frozen_table
+frozen_table = frozentable
 
 
 class VType(datamodels.FrozenModel):

@@ -17,7 +17,8 @@ from __future__ import annotations
 import abc
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+
+from eve.extended_typing import Any, Generic, TypeVar
 
 
 DimT = TypeVar("DimT", bound="Dimension")

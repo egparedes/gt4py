@@ -13,7 +13,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import ast
-from typing import Any, Optional
+
+from eve.extended_typing import Any, Optional
 
 
 class StringifyAnnotationsPass(ast.NodeTransformer):

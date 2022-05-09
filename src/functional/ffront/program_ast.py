@@ -13,11 +13,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import re
-from typing import Any, Generic, Literal, Optional, TypeVar, Union
 
 import eve
 from eve import Node
-from eve.traits import SymbolTableTrait
+from eve.extended_typing import Any, Generic, Literal, Optional, TypeVar, Union
+from eve.traits import SymbolTableCreatorTrait
 from eve.type_definitions import SourceLocation, SymbolRef
 from functional.ffront import common_types
 
@@ -89,7 +89,7 @@ class Stmt(LocatedNode):
     ...
 
 
-class Program(LocatedNode, SymbolTableTrait):
+class Program(LocatedNode, SymbolTableCreatorTrait):
     id: SymbolName  # noqa: A003
     params: list[Symbol[common_types.DataType]]
     body: list[Call]

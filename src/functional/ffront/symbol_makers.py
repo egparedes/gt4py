@@ -17,12 +17,12 @@ import collections.abc
 import functools
 import types
 import typing
-from typing import Any, ForwardRef, Optional, Union
 
 import numpy as np
 import numpy.typing as npt
 
 from eve import extended_typing as xtyping
+from eve.extended_typing import Any, ForwardRef, Optional, Union
 from functional import common
 from functional.ffront import common_types as ct
 

@@ -22,7 +22,7 @@ from typing import Collection, Dict, List, Mapping, Optional, Sequence, Set, Typ
 
 from eve.concepts import Block, FrozenOpNode, OpNode, SourceLocation, SymbolName, VType
 from eve.datamodels import Coerced
-from eve.traits import SymbolTableTrait
+from eve.traits import SymbolTableCreatorTrait
 from eve.type_definitions import IntEnum, StrEnum
 from eve.utils import CaseStyleConverter
 
@@ -130,7 +130,7 @@ class CompoundNodeWithSymbols(OpNode):
     node_with_name: SimpleNodeWithSymbolName
 
 
-class NodeWithSymbolTable(OpNode, SymbolTableTrait):
+class NodeWithSymbolTable(OpNode, SymbolTableCreatorTrait):
     node_with_name: SimpleNodeWithSymbolName
     block_with_name: Block[SimpleNodeWithSymbolName]
     node_with_default_name: SimpleNodeWithDefaultSymbolName

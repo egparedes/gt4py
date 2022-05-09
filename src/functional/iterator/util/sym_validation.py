@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Type
 
-import pydantic
-
 from eve import Node, extended_typing as xtyping
-from eve.traits import SymbolTableTrait
-from eve.type_definitions import SymbolRef
-from eve.visitors import IRVisitor
+from eve.concepts import SymbolRef
+from eve.traits import SymbolTableCreatorTrait
+from eve.visitors import NodeVisitor
 
 
 if xtyping.TYPE_CHECKING:
@@ -20,7 +18,7 @@ def validate_symbol_refs() -> RootValidatorType:
     def _impl(
         cls: Type[pydantic.BaseModel], values: RootValidatorValuesType
     ) -> RootValidatorValuesType:
-        class SymtableValidator(IRVisitor):
+        class SymtableValidator(NodeVisitor):
             def __init__(self) -> None:
                 self.missing_symbols: List[str] = []
 
@@ -32,7 +30,7 @@ def validate_symbol_refs() -> RootValidatorType:
                         if getattr(node, name) and getattr(node, name) not in symtable:
                             self.missing_symbols.append(getattr(node, name))
 
-                if isinstance(node, SymbolTableTrait):
+                if isinstance(node, SymbolTableCreatorTrait):
                     symtable = {**symtable, **node.symtable_}
                 self.generic_visit(node, symtable=symtable, **kwargs)
 

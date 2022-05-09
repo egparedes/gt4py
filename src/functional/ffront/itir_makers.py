@@ -12,8 +12,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from typing import Union
-
+from eve.extended_typing import Union
 from functional.iterator import ir as itir
 
 

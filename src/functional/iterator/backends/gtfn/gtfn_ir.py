@@ -2,7 +2,7 @@ import enum
 from typing import List, Union
 
 from eve import Node
-from eve.traits import SymbolName, SymbolTableTrait
+from eve.traits import SymbolName, SymbolTableCreatorTrait
 from eve.type_definitions import StrEnum, SymbolRef
 from functional.iterator.util.sym_validation import validate_symbol_refs
 
@@ -51,7 +51,7 @@ class SymRef(Expr):
     id: SymbolRef  # noqa: A003
 
 
-class Lambda(Expr, SymbolTableTrait):
+class Lambda(Expr, SymbolTableCreatorTrait):
     params: List[Sym]
     expr: Expr
 
@@ -67,7 +67,7 @@ class TemplatedFunCall(Expr):
     args: List[Expr]
 
 
-class FunctionDefinition(Node, SymbolTableTrait):
+class FunctionDefinition(Node, SymbolTableCreatorTrait):
     id: SymbolName  # noqa: A003
     params: List[Sym]
     expr: Expr
@@ -84,7 +84,7 @@ class StencilExecution(Node):
     inputs: List[SymRef]
 
 
-class FencilDefinition(Node, SymbolTableTrait):
+class FencilDefinition(Node, SymbolTableCreatorTrait):
     id: SymbolName  # noqa: A003
     params: List[Sym]
     function_definitions: List[FunctionDefinition]

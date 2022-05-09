@@ -22,7 +22,7 @@ from typing import ChainMap
 import pytest
 
 import eve
-from eve.concepts import block, Block
+from eve.concepts import Block, block
 
 from .. import definitions
 
@@ -44,7 +44,7 @@ class _NodeWithSymbolName(eve.concepts.OpNode):
     name: eve.concepts.SymbolName = eve.concepts.SymbolName("symbol_name")
 
 
-class _NodeWithSymbolTable(eve.concepts.OpNode, eve.SymbolTableTrait):
+class _NodeWithSymbolTable(eve.concepts.OpNode, eve.SymbolTableCreatorTrait):
     symbols: Block[_NodeWithSymbolName]
 
 

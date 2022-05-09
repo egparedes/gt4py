@@ -11,10 +11,9 @@
 # distribution for a copy of the license or check <https://www.gnu.org/licenses/>.
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
-from typing import Any, Optional
-
 import functional.ffront.field_operator_ast as foast
-from eve import NodeTranslator, SymbolTableTrait
+from eve import NodeTranslator, SymbolTableCreatorTrait
+from eve.extended_typing import Any, Optional
 from functional.common import GTSyntaxError
 from functional.ffront import common_types as ct
 from functional.ffront.type_info import GenericDimensions, TypeInfo, is_complete_symbol_type
@@ -134,7 +133,7 @@ class FieldOperatorTypeDeduction(NodeTranslator):
     ...     kind=ct.ScalarKind.FLOAT64), dims=Ellipsis)
     """
 
-    contexts = (SymbolTableTrait.symtable_merger,)  # type: ignore  # TODO(ricoh): check if the SymbolTableTrait.symtable_merger annotation is correct.
+    contexts = (SymbolTableCreatorTrait.symtable_merger,)  # type: ignore  # TODO(ricoh): check if the SymbolTableTrait.symtable_merger annotation is correct.
 
     @classmethod
     def apply(cls, node: foast.FieldOperator) -> foast.FieldOperator:

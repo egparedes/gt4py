@@ -46,20 +46,6 @@ from .extended_typing import (
 )
 
 
-# from pydantic import validator  # noqa
-# from pydantic import (  # noqa: F401
-#     NegativeFloat,
-#     NegativeInt,
-#     PositiveFloat,
-#     PositiveInt,
-#     StrictBool as Bool,
-#     StrictFloat as Float,
-#     StrictInt as Int,
-#     StrictStr as Str,
-# )
-# from pydantic.types import ConstrainedStr
-
-
 frozenlist: Final = FrozenList
 frozendict: Final = _frozendict if sys.version_info >= (3, 9) else FrozenDict
 

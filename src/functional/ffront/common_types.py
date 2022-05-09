@@ -1,9 +1,9 @@
 import typing
 from dataclasses import dataclass
-from typing import Literal, Optional, Union
 
 import numpy as np
 
+from eve.extended_typing import Literal, Optional, Union
 from eve.type_definitions import IntEnum, StrEnum
 from functional import common as func_common
 

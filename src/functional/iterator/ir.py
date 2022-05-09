@@ -1,14 +1,15 @@
 from typing import List, Union
 
 import eve
-from eve.traits import SymbolName, SymbolTableTrait
-from eve.type_definitions import SymbolRef
+from eve.datamodels import Coerced
+from eve.concepts import SymbolName, SymbolRef
+from eve.traits import SymbolTableCreatorTrait
 from eve.utils import noninstantiable
 from functional.iterator.util.sym_validation import validate_symbol_refs
 
 
 @noninstantiable
-class Node(eve.Node):
+class Node(eve.OpNode):
     def __str__(self) -> str:
         from functional.iterator.pretty_printer import pformat
 
@@ -16,7 +17,7 @@ class Node(eve.Node):
 
 
 class Sym(Node):  # helper
-    id: SymbolName  # noqa: A003
+    id: Coerced[SymbolName]  # noqa: A003
 
 
 @noninstantiable
@@ -45,7 +46,7 @@ class SymRef(Expr):
     id: SymbolRef  # noqa: A003
 
 
-class Lambda(Expr, SymbolTableTrait):
+class Lambda(Expr, SymbolTableCreatorTrait):
     params: List[Sym]
     expr: Expr
 
@@ -55,7 +56,7 @@ class FunCall(Expr):
     args: List[Expr]
 
 
-class FunctionDefinition(Node, SymbolTableTrait):
+class FunctionDefinition(Node, SymbolTableCreatorTrait):
     id: SymbolName  # noqa: A003
     params: List[Sym]
     expr: Expr
@@ -93,7 +94,7 @@ BUILTINS = {
 }
 
 
-class FencilDefinition(Node, SymbolTableTrait):
+class FencilDefinition(Node, SymbolTableCreatorTrait):
     id: SymbolName  # noqa: A003
     function_definitions: List[FunctionDefinition]
     params: List[Sym]

@@ -44,7 +44,6 @@ from .extended_typing import (
 )
 
 
-
 _InT = TypeVar("_InT", contravariant=True)
 _OutT = TypeVar("_OutT", covariant=True)
 _KwargsT = TypeVar("_KwargsT", contravariant=True)
@@ -60,7 +59,7 @@ class Visitor(Protocol[_InT, _OutT, _KwargsT]):
         return NotImplemented
 
 
-class IRVisitor(Visitor[concepts.Node, _OutT, _KwargsT]):
+class NodeVisitor(Visitor[concepts.Node, _OutT, _KwargsT]):
     """Simple node visitor class based on :class:`ast.NodeVisitor`.
 
     A NodeVisitor instance walks a node tree and calls a visitor
@@ -150,7 +149,7 @@ class IRVisitor(Visitor[concepts.Node, _OutT, _KwargsT]):
                 self.visit(child, **kwargs)
 
 
-class NodeTranslator(IRVisitor):
+class NodeTranslator(NodeVisitor):
     """Special `NodeVisitor` to translate nodes and trees.
 
     A NodeTranslator instance will walk the tree exactly as a regular
@@ -215,7 +214,7 @@ class NodeTranslator(IRVisitor):
         return result
 
 
-class NodeMutator(IRVisitor):
+class NodeMutator(NodeVisitor):
     """Special `NodeVisitor` to modify nodes in place.
 
     A NodeMutator instance will walk the tree exactly as a regular

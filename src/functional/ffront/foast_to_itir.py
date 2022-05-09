@@ -14,9 +14,9 @@
 
 import itertools
 from dataclasses import dataclass, field
-from typing import Callable, Optional, cast
 
 from eve import NodeTranslator
+from eve.extended_typing import Callable, Optional, cast
 from functional.ffront import (
     common_types as ct,
     fbuiltins,

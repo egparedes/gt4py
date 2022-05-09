@@ -14,10 +14,10 @@
 
 from builtins import bool, float, int
 from dataclasses import dataclass
-from typing import Optional
 
 from numpy import float32, float64, int32, int64
 
+from eve.extended_typing import Optional
 from functional.common import Dimension, Field
 from functional.ffront import common_types as ct
 from functional.iterator import runtime

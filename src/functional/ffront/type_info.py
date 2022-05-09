@@ -1,6 +1,6 @@
 from dataclasses import dataclass
-from typing import Iterator, Optional, Type, TypeGuard, cast
 
+from eve.extended_typing import Iterator, Optional, Type, TypeGuard, cast
 from functional.common import GTTypeError
 from functional.ffront.common_types import (
     DataType,
