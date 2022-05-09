@@ -1,10 +1,10 @@
 from typing import Dict, List
 
-from eve import TreeVisitor
+from eve import IRVisitor
 from functional.iterator import ir
 
 
-class CollectShifts(TreeVisitor):
+class CollectShifts(IRVisitor):
     def visit_FunCall(self, node: ir.FunCall, *, shifts: Dict[str, List[tuple]]):
         if isinstance(node.fun, ir.SymRef) and node.fun.id == "deref":
             assert len(node.args) == 1

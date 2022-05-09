@@ -32,7 +32,6 @@ from .extended_typing import (
     Callable,
     ClassVar,
     Collection,
-    ContextManager,
     Dict,
     Iterable,
     MutableSequence,
@@ -45,7 +44,6 @@ from .extended_typing import (
 )
 
 
-ContextCallable = Callable[["NodeVisitor", concepts.TreeNode, Dict[str, Any]], ContextManager[None]]
 
 _InT = TypeVar("_InT", contravariant=True)
 _OutT = TypeVar("_OutT", covariant=True)
@@ -62,7 +60,7 @@ class Visitor(Protocol[_InT, _OutT, _KwargsT]):
         return NotImplemented
 
 
-class TreeVisitor(Visitor[concepts.TreeNode, _OutT, _KwargsT]):
+class IRVisitor(Visitor[concepts.IRNode, _OutT, _KwargsT]):
     """Simple node visitor class based on :class:`ast.NodeVisitor`.
 
     A NodeVisitor instance walks a node tree and calls a visitor
@@ -135,13 +133,13 @@ class TreeVisitor(Visitor[concepts.TreeNode, _OutT, _KwargsT]):
         method_name = "visit_" + node.__class__.__name__
         if hasattr(self, method_name):
             visitor = getattr(self, method_name)
-        elif isinstance(node, concepts.Node):
+        elif isinstance(node, concepts.IRNode):
             for node_class in node.__class__.__mro__[1:]:
                 method_name = "visit_" + node_class.__name__
                 if hasattr(self, method_name):
                     visitor = getattr(self, method_name)
                     break
-                if node_class is concepts.Node:
+                if node_class is concepts.IRNode:
                     break
 
         return visitor(node, **kwargs)
@@ -152,7 +150,7 @@ class TreeVisitor(Visitor[concepts.TreeNode, _OutT, _KwargsT]):
                 self.visit(child, **kwargs)
 
 
-class NodeTranslator(TreeVisitor):
+class NodeTranslator(IRVisitor):
     """Special `NodeVisitor` to translate nodes and trees.
 
     A NodeTranslator instance will walk the tree exactly as a regular
@@ -179,7 +177,7 @@ class NodeTranslator(TreeVisitor):
     _memo_dict_: Dict[int, Any]
 
     def generic_visit(self, node: concepts.TreeNode, **kwargs: Any) -> Any:
-        if isinstance(node, concepts.Node):
+        if isinstance(node, concepts.IRNode):
             return node.__class__(  # type: ignore
                 **{key: value for key, value in node.iter_impl_fields()},
                 **{
@@ -217,7 +215,7 @@ class NodeTranslator(TreeVisitor):
         return result
 
 
-class NodeMutator(TreeVisitor):
+class NodeMutator(IRVisitor):
     """Special `NodeVisitor` to modify nodes in place.
 
     A NodeMutator instance will walk the tree exactly as a regular
@@ -246,7 +244,7 @@ class NodeMutator(TreeVisitor):
 
     def generic_visit(self, node: concepts.TreeNode, **kwargs: Any) -> Any:
         result: Any = node
-        if isinstance(node, (concepts.Node, collections.abc.Collection)) and utils.is_collection(
+        if isinstance(node, (concepts.IRNode, collections.abc.Collection)) and utils.is_collection(
             node
         ):
             items: Iterable[Tuple[Any, Any]] = []
@@ -254,7 +252,7 @@ class NodeMutator(TreeVisitor):
             set_op: Union[Callable[[Any, str, Any], None], Callable[[Any, int, Any], None]]
             del_op: Union[Callable[[Any, str], None], Callable[[Any, int], None]]
 
-            if isinstance(node, concepts.Node):
+            if isinstance(node, concepts.IRNode):
                 items = list(node.iter_children())
                 set_op = setattr
                 del_op = delattr

@@ -142,6 +142,13 @@ def walk_tree_values(
 
 
 class TreeNode(abc.ABC):
+    __slots__ = ()
+
+    @property
+    @abc.abstractmethod
+    def num_children(self) -> int:
+        return len(self.iter_children_values)
+
     @abc.abstractmethod
     def iter_children_items(self) -> Generator[Tuple[Union[int, str], Any], None, None]:
         return

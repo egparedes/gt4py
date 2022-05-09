@@ -145,76 +145,19 @@ class SourceLocationGroup:
 AnySourceLocation = Union[SourceLocation, SourceLocationGroup]
 
 
-AnyNode = TypeVar("AnyNode", bound="Node")
-ValueNode = Union[bool, bytes, int, float, str, IntEnum, StrEnum]
-LeafNode = Union[AnyNode, ValueNode]
-CollectionNode = Union[List[LeafNode], Dict[Any, LeafNode], Set[LeafNode]]
-TreeNode = Union[AnyNode, CollectionNode]
-
-
-class BaseNode(trees.TreeNode):
+class IRNode(trees.TreeNode):
     """Base class representing a node in a syntax tree."""
 
     __slots__ = ()
 
     @property
     def annex(self) -> utils.Namespace:
-        if "__annex__" not in self.__dict__:
-            self.__dict__["__annex__"] = utils.Namespace()
-        return self.__dict__["__annex__"]
-
-    def iter_children_items(self) -> Generator[Tuple[str, Any], None, None]:
-        for name in self.__fields__:
-            yield name, getattr(self, name)
-
-    def iter_children_values(self) -> Generator[Any, None, None]:
-        for name in self.__fields__:
-            yield getattr(self, name)
+        if not hasattr(self, "__annex__"):
+            object.__setattr__(self, "__annex__", utils.Namespace())
+        return self.__annex__
 
 
-_T = TypeVar("_T")
-
-
-class BaseBlockNode(BaseNode, Generic[_T]):
-    __slots__ = ()
-
-    def iter_children_items(self) -> Generator[Tuple[int, _T], None, None]:
-        yield from enumerate(self)
-
-    def iter_children_values(self) -> Generator[_T, None, None]:
-        yield from iter(self)
-
-
-class Block(BaseBlockNode, List[_T]):
-    __slots__ = ("__annex__",)
-
-
-class FrozenBlock(BaseBlockNode, FrozenList[_T]):
-    __slots__ = ("__annex__",)
-
-
-_KeyT = TypeVar("_KeyT")
-
-
-class BaseTableNode(BaseNode, Generic[_KeyT, _T]):
-    __slots__ = ()
-
-    def iter_children_items(self) -> Generator[Tuple[_KeyT, _T], None, None]:
-        yield from self.items()
-
-    def iter_children_values(self) -> Generator[_T, None, None]:
-        yield from self.values()
-
-
-class Table(BaseTableNode, Dict[_KeyT, _T]):
-    __slots__ = ("__annex__",)
-
-
-class FrozenTable(BaseTableNode, FrozenDict[_KeyT, _T]):
-    __slots__ = ("__annex__",)
-
-
-class Node(datamodels.DataModel, BaseNode):
+class OpNode(datamodels.DataModel, IRNode):
     """Base class representing a node in a syntax tree.
 
     Implemented as a :class:`eve.datamodels.DataModel` with some extra features.
@@ -230,17 +173,100 @@ class Node(datamodels.DataModel, BaseNode):
 
     """
 
+    @property
+    def num_children(self) -> int:
+        return len(self.__datamodel_fields__)
 
-class FrozenNode(Node, frozen=True):
+    def iter_children_items(self) -> Generator[Tuple[str, Any], None, None]:
+        for name in self.__datamodel_fields__.keys():
+            yield name, getattr(self, name)
+
+    def iter_children_values(self) -> Generator[Any, None, None]:
+        for name in self.__datamodel_fields__.keys():
+            yield getattr(self, name)
+
+
+class FrozenOpNode(OpNode, frozen=True):
     ...
 
 
-# -- Misc --
+_T = TypeVar("_T")
+
+
+class _BaseBlockNode(IRNode, Generic[_T]):
+    """Non-instantiable base class for sequence-like IR node classes."""
+
+    __slots__ = ()
+
+    @property
+    def num_children(self) -> int:
+        return len(self)
+
+    def iter_children_items(self) -> Generator[Tuple[int, _T], None, None]:
+        yield from enumerate(self)
+
+    def iter_children_values(self) -> Generator[_T, None, None]:
+        yield from iter(self)
+
+
+class Block(_BaseBlockNode, List[_T]):
+    __slots__ = ("__annex__",)
+
+
+class FrozenBlock(_BaseBlockNode, FrozenList[_T]):
+    __slots__ = ("__annex__",)
+
+
+def block(*items: _T) -> Block[_T]:
+    return Block(items)
+
+
+def frozen_block(*items: _T) -> FrozenBlock[_T]:
+    return FrozenBlock(items)
+
+
+frozenblock = frozen_block
+
+
+_KeyT = TypeVar("_KeyT")
+
+
+class _BaseTableNode(IRNode, Generic[_KeyT, _T]):
+    """Non-instantiable base class for mapping-like IR node classes."""
+
+    __slots__ = ()
+
+    @property
+    def num_children(self) -> int:
+        return len(self)
+
+    def iter_children_items(self) -> Generator[Tuple[_KeyT, _T], None, None]:
+        yield from self.items()
+
+    def iter_children_values(self) -> Generator[_T, None, None]:
+        yield from self.values()
+
+
+class Table(_BaseTableNode, Dict[_KeyT, _T]):
+    __slots__ = ("__annex__",)
+
+
+class FrozenTable(_BaseTableNode, FrozenDict[_KeyT, _T]):
+    __slots__ = ("__annex__",)
+
+
+def table(*items: _T) -> Table[_KeyT, _T]:
+    return Table(items)
+
+
+def frozen_table(*items: _T) -> FrozenTable[_KeyT, _T]:
+    return FrozenTable(items)
+
+
+frozentable = frozen_table
+
+
 class VType(datamodels.FrozenModel):
 
-    # VType fields
     #: Unique name
     name: str
-
-    # def __init__(self, name: str) -> None:
-    #     super().__auto_init__(name=name)

@@ -20,7 +20,6 @@ import hashlib
 import string
 from typing import Any
 
-import pydantic
 import pytest
 
 import eve.utils

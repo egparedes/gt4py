@@ -7,7 +7,7 @@ import pydantic
 from eve import Node, extended_typing as xtyping
 from eve.traits import SymbolTableTrait
 from eve.type_definitions import SymbolRef
-from eve.visitors import TreeVisitor
+from eve.visitors import IRVisitor
 
 
 if xtyping.TYPE_CHECKING:
@@ -20,7 +20,7 @@ def validate_symbol_refs() -> RootValidatorType:
     def _impl(
         cls: Type[pydantic.BaseModel], values: RootValidatorValuesType
     ) -> RootValidatorValuesType:
-        class SymtableValidator(TreeVisitor):
+        class SymtableValidator(IRVisitor):
             def __init__(self) -> None:
                 self.missing_symbols: List[str] = []
 

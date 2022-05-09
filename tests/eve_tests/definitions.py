@@ -20,7 +20,7 @@ import random
 import string
 from typing import Collection, Dict, List, Mapping, Optional, Sequence, Set, Type, TypeVar
 
-from eve.concepts import Block, FrozenNode, Node, SourceLocation, SymbolName, VType
+from eve.concepts import Block, FrozenOpNode, OpNode, SourceLocation, SymbolName, VType
 from eve.datamodels import Coerced
 from eve.traits import SymbolTableTrait
 from eve.type_definitions import IntEnum, StrEnum
@@ -54,15 +54,15 @@ class StrKind(StrEnum):
 SimpleVType = VType("simple")
 
 
-class EmptyNode(Node):
+class EmptyNode(OpNode):
     pass
 
 
-class LocationNode(Node):
+class LocationNode(OpNode):
     loc: SourceLocation
 
 
-class SimpleNode(Node):
+class SimpleNode(OpNode):
     int_value: int
     bool_value: bool
     float_value: float
@@ -72,20 +72,20 @@ class SimpleNode(Node):
     str_kind: StrKind
 
 
-class SimpleNodeWithOptionals(Node):
+class SimpleNodeWithOptionals(OpNode):
     int_value: int
     float_value: Optional[float]
     str_value: Optional[str] = None
 
 
-class SimpleNodeWithLoc(Node):
+class SimpleNodeWithLoc(OpNode):
     int_value: int
     float_value: float
     str_value: str
     loc: Optional[SourceLocation]
 
 
-class SimpleNodeWithCollections(Node):
+class SimpleNodeWithCollections(OpNode):
     int_value: int
     int_list: List[int]
     str_set: Set[str]
@@ -93,7 +93,7 @@ class SimpleNodeWithCollections(Node):
     loc: Optional[SourceLocation]
 
 
-class SimpleNodeWithAbstractCollections(Node):
+class SimpleNodeWithAbstractCollections(OpNode):
     int_value: int
     int_sequence: Sequence[int]
     str_set: Set[str]
@@ -101,17 +101,17 @@ class SimpleNodeWithAbstractCollections(Node):
     loc: Optional[SourceLocation] = None
 
 
-class SimpleNodeWithSymbolName(Node):
+class SimpleNodeWithSymbolName(OpNode):
     int_value: int
     name: Coerced[SymbolName]
 
 
-class SimpleNodeWithDefaultSymbolName(Node):
+class SimpleNodeWithDefaultSymbolName(OpNode):
     int_value: int
     name: SymbolName = SymbolName("symbol_name")
 
 
-class CompoundNode(Node):
+class CompoundNode(OpNode):
     int_value: int
     location: LocationNode
     simple: SimpleNode
@@ -120,7 +120,7 @@ class CompoundNode(Node):
     other_simple_opt: Optional[SimpleNodeWithOptionals]
 
 
-class CompoundNodeWithSymbols(Node):
+class CompoundNodeWithSymbols(OpNode):
     int_value: int
     location: LocationNode
     simple: SimpleNode
@@ -130,14 +130,14 @@ class CompoundNodeWithSymbols(Node):
     node_with_name: SimpleNodeWithSymbolName
 
 
-class NodeWithSymbolTable(Node, SymbolTableTrait):
+class NodeWithSymbolTable(OpNode, SymbolTableTrait):
     node_with_name: SimpleNodeWithSymbolName
     block_with_name: Block[SimpleNodeWithSymbolName]
     node_with_default_name: SimpleNodeWithDefaultSymbolName
     compound_with_name: CompoundNodeWithSymbols
 
 
-class FrozenSimpleNode(FrozenNode):
+class FrozenSimpleNode(FrozenOpNode):
     int_value: int
     bool_value: bool
     float_value: float
@@ -262,7 +262,7 @@ def make_mapping_value(
 
 
 def make_multinode_collection_value(
-    node_class: Type[Node],
+    node_class: Type[OpNode],
     collection_type: Type[Collection[T]] = list,
     length: Optional[int] = None,
     *,

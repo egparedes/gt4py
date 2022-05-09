@@ -22,7 +22,7 @@ from typing import ChainMap
 import pytest
 
 import eve
-from eve.extended_typing import List
+from eve.concepts import block, Block
 
 from .. import definitions
 
@@ -40,18 +40,18 @@ def symtable_node_and_expected_symbols():
     yield node, symbols
 
 
-class _NodeWithSymbolName(eve.Node):
-    name: eve.SymbolName = eve.SymbolName("symbol_name")
+class _NodeWithSymbolName(eve.concepts.OpNode):
+    name: eve.concepts.SymbolName = eve.concepts.SymbolName("symbol_name")
 
 
-class _NodeWithSymbolTable(eve.Node, eve.SymbolTableTrait):
-    symbols: List[_NodeWithSymbolName]
+class _NodeWithSymbolTable(eve.concepts.OpNode, eve.SymbolTableTrait):
+    symbols: Block[_NodeWithSymbolName]
 
 
 @pytest.fixture
 def node_with_duplicated_names_maker():
     def _maker():
-        return _NodeWithSymbolTable(symbols=[_NodeWithSymbolName(), _NodeWithSymbolName()])
+        return _NodeWithSymbolTable(symbols=block(_NodeWithSymbolName(), _NodeWithSymbolName()))
 
     yield _maker
 
@@ -77,7 +77,7 @@ class TestSymbolTable:
         )
 
     def test_symtable_ctx(self):
-        node = _NodeWithSymbolTable(symbols=[_NodeWithSymbolName()])
+        node = _NodeWithSymbolTable(symbols=block(_NodeWithSymbolName()))
         kwargs = dict(symtable=ChainMap({"a": True}))
 
         with eve.SymbolTableTrait.symtable_merger(None, node, kwargs):

@@ -24,7 +24,7 @@ import pytest
 import eve
 
 
-class Tree(eve.Node):
+class Tree(eve.concepts.OpNode):
     children: List[Union[Tree, int]]
 
 

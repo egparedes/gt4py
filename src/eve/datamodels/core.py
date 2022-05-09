@@ -161,7 +161,6 @@ class DataModelTP(_AttrsClassTP, xtyping.DevToolsPrettyPrintable, Protocol):
     __datamodel_root_validators__: ClassVar[
         Tuple[xtyping.NonDataDescriptor[DataModelTP, BoundRootValidator], ...]
     ]
-    __fields__: ClassVar[Tuple[str, ...]]
     # Optional: __auto_init__, __pre_init__, __post_init__
 
 
@@ -199,7 +198,7 @@ _ROOT_VALIDATOR_TAG: Final = "__DATAMODEL_ROOT_VALIDATOR_TAG"
 _COERCED_TYPE_TAG: Final = "__DATAMODEL_COERCED_TYPE_TAG"
 _UNCHECKED_TYPE_TAG: Final = "__DATAMODEL_UNCHECKED_TYPE_TAG"
 
-MODEL_FIELD_NAMES_ATTR: Final = "__fields__"
+
 MODEL_FIELD_DEFINITIONS_ATTR: Final = "__datamodel_fields__"
 MODEL_PARAM_DEFINITIONS_ATTR: Final = "__datamodel_params__"
 MODEL_ROOT_VALIDATORS_ATTR: Final = "__datamodel_root_validators__"
@@ -1157,9 +1156,6 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
         new_cls.__auto_init__ = new_cls.__attrs_init__  # type: ignore[attr-defined]  # adding new attribute
 
     new_cls.__pretty__ = _make_devtools_pretty()  # type: ignore[attr-defined]  # adding new attribute
-    setattr(
-        new_cls, MODEL_FIELD_NAMES_ATTR, tuple(f_attr.name for f_attr in new_cls.__attrs_attrs__)
-    )
     setattr(
         new_cls,
         MODEL_PARAM_DEFINITIONS_ATTR,

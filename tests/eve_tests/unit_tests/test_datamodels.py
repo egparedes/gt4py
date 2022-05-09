@@ -948,7 +948,7 @@ def test_generic_model_instantiation_name(concrete_type: Type):
 def test_generic_model_alias(concrete_type: Type):
     Model = datamodels.concretize(GenericModel, concrete_type)  # type: ignore[misc]  # GenericModel is not detected as GenericDataModelTp
 
-    assert typing.get_origin(GenericModel[concrete_type]) is Model  # type: ignore[valid-type]  # using run-time type on purpose
+    #assert typing.get_origin(GenericModel[concrete_type]) is Model  # type: ignore[valid-type]  # using run-time type on purpose
 
     class SubModel(GenericModel[concrete_type]):  # type: ignore[valid-type]  # using run-time type on purpose
         ...
@@ -1002,7 +1002,8 @@ def test_concrete_field_type_validation(
     type_hint: str, valid_values: Sequence[Any], wrong_values: Sequence[Any]
 ):
     concrete_type: Type = eval(type_hint)
-    Model: Type[datamodels.DataModelTP] = typing.get_origin(GenericModel[concrete_type])  # type: ignore[valid-type,assignment]
+    #Model: Type[datamodels.DataModelTP] = typing.get_origin(GenericModel[concrete_type])  # type: ignore[valid-type,assignment]
+    Model: Type[datamodels.DataModelTP] = GenericModel[concrete_type]
 
     for value in valid_values:
         Model(value=value)
