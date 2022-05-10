@@ -157,14 +157,14 @@ class TreeNode(abc.ABC):
     def iter_children_values(self) -> Generator[Any, None, None]:
         return
 
-    pre_iter_tree_items = pre_walk_tree_items
-    pre_iter_tree_values = pre_walk_tree_values
+    pre_walk_tree_items = pre_walk_tree_items
+    pre_walk_tree_values = pre_walk_tree_values
 
-    post_iter_tree_items = post_walk_tree_items
-    post_iter_tree_values = post_walk_tree_values
+    post_walk_tree_items = post_walk_tree_items
+    post_walk_tree_values = post_walk_tree_values
 
-    bfs_iter_tree_items = bfs_walk_tree_items
-    bfs_iter_tree_values = bfs_walk_tree_values
+    bfs_walk_tree_items = bfs_walk_tree_items
+    bfs_walk_tree_values = bfs_walk_tree_values
 
-    iter_tree_items = walk_tree_items
-    iter_tree_values = walk_tree_values
+    iter_walk_items = walk_tree_items
+    iter_walk_values = walk_tree_values

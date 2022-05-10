@@ -147,20 +147,29 @@ class SourceLocationGroup:
 
 AnySourceLocation = Union[SourceLocation, SourceLocationGroup]
 
+_T = TypeVar("_T")
+
 
 class AnnexRegister:
     register: ClassVar[Dict[str, Any]] = {}
 
     @classmethod
-    def add(cls: Type[AnnexRegister], key: str, owner: Any) -> str:
+    def register_key(cls: Type[AnnexRegister], key: str) -> Callable[[_T], _T]:
         assert isinstance(key, str)
-        if key in cls.register:
-            raise exceptions.EveRuntimeError(
-                f"'{key}' has been already registered by {cls.register[key]}"
-            )
-        cls.register[key] = owner
 
-        return key
+        def _decorator(owner: _T) -> _T:
+            if key in cls.register:
+                raise exceptions.EveRuntimeError(
+                    f"'{key}' has been already registered by {cls.register[key]}"
+                )
+            cls.register[key] = owner
+
+            return owner
+
+        return _decorator
+
+
+register_annex_key = AnnexRegister.register_key
 
 
 class Node(trees.TreeNode):
@@ -206,9 +215,6 @@ class OpNode(datamodels.DataModel, Node):
 
 class FrozenOpNode(OpNode, frozen=True):
     ...
-
-
-_T = TypeVar("_T")
 
 
 class _BaseBlockNode(Node, Generic[_T]):

@@ -24,7 +24,9 @@ import collections
 from . import concepts, datamodels, exceptions, visitors
 from .extended_typing import (
     Any,
+    ClassVar,
     Dict,
+    Final,
     Generic,
     Iterator,
     Set,
@@ -58,6 +60,7 @@ class SymbolNamesCollector(visitors.NodeVisitor):
         return collector.collected_symbols
 
 
+@concepts.register_annex_key("symtable")
 @datamodels.datamodel
 class SymbolTableCreatorTrait:
     __slots__ = ()
@@ -111,7 +114,7 @@ class SymbolRefsValidatorTrait:
 
 
 @datamodels.datamodel
-class SymbolTableCreatorTrait(SymbolRefsValidatorTrait, SymbolTableCreatorTrait):
+class SymbolTableTrait(SymbolRefsValidatorTrait, SymbolTableCreatorTrait):
     __slots__ = ()
 
 
