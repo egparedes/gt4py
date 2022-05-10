@@ -263,6 +263,12 @@ class _BaseBlockNode(Node, Generic[_T]):
     def iter_child_values(self) -> Generator[_T, None, None]:
         yield from iter(self)
 
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({super(_BaseBlockNode, self).__repr__()})"
+
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}({super(_BaseBlockNode, self).__str__()})"
+
 
 class Block(_BaseBlockNode, List[_T]):
     __slots__ = ("__annex__",)

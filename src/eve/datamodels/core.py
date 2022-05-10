@@ -953,18 +953,23 @@ def _make_type_converter(type_annotation: Type[_T], name: str) -> TypeConverter[
             else lambda x: x
         )
 
-    # Optional type
+    if type_annotation is Any:
+        return lambda x: x
+
+    origin_type = xtyping.get_origin(type_annotation)
+
     if (
-        xtyping.get_origin(type_annotation) is xtyping.Union
+        origin_type is xtyping.Union
         and type(None) in (args := xtyping.get_args(type_annotation))
         and len(args) == 2
     ):
+        # Optional type
         _type_converter = _make_type_converter(args[0], name)
 
         return lambda x: x if x is None else _type_converter(x)
 
-    if type_annotation is Any:
-        return lambda x: x
+    if xtyping.is_actual_type(origin_type):
+        return _make_type_converter(origin_type, name)
 
     raise exceptions.EveTypeError(
         f"Automatic type coertion for {type_annotation} types is not supported."

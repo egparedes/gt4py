@@ -130,7 +130,11 @@ class NodeVisitor(Visitor[concepts.Node, _OutT, _KwargsT]):
     def visit(self, node: concepts.Node, **kwargs: Any) -> Any:
         visitor = self.generic_visit
 
-        method_name = "visit_" + node.__class__.__name__
+        suffix = node.__class__.__name__
+        if "__" in suffix:
+            suffix = suffix[: suffix.find("__")]
+        method_name = "visit_" + suffix
+
         if hasattr(self, method_name):
             visitor = getattr(self, method_name)
         elif isinstance(node, concepts.Node):

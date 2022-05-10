@@ -136,8 +136,10 @@ class VisitorWithSymbolTableTrait(Generic[_OutT, _KwargsT]):
 
     def visit(self, node: concepts.Node, /, **kwargs: _KwargsT) -> _OutT:
         kwargs.setdefault("symtable", collections.ChainMap())
-        if new_scope := isinstance(node, SymbolTableCreatorTrait):
-            kwargs["symtable"] = kwargs["symtable"].new_child(node.annex.symtable)
+        new_scope = False
+        if isinstance(node, concepts.Node):
+            if new_scope := ("symtable" in node.annex):
+                kwargs["symtable"] = kwargs["symtable"].new_child(node.annex.symtable)
 
         result = super(VisitorWithSymbolTableTrait, self).visit(node, **kwargs)
 

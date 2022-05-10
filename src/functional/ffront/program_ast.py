@@ -14,8 +14,8 @@
 
 import re
 
-from eve import OpNode, datamodels
-from eve.concepts import SourceLocation, SymbolName, SymbolRef
+from eve import datamodels
+from eve.concepts import Block, OpNode, SourceLocation, SymbolName, SymbolRef, Table
 from eve.extended_typing import Any, Generic, Literal, Optional, TypeVar, Union
 from eve.traits import SymbolTableCreatorTrait
 from functional.ffront import common_types
@@ -61,8 +61,8 @@ class Name(Expr):
 
 class Call(Expr):
     func: Name
-    args: list[Expr]
-    kwargs: dict[str, Expr]
+    args: Block[Expr] = datamodels.field(converter=True)
+    kwargs: Table[str, Expr] = datamodels.field(converter=True)
 
 
 class Subscript(Expr):
@@ -71,7 +71,7 @@ class Subscript(Expr):
 
 
 class TupleExpr(Expr):
-    elts: list[Expr]
+    elts: Block[Expr] = datamodels.field(converter=True)
 
 
 class Constant(Expr):
@@ -90,6 +90,6 @@ class Stmt(LocatedNode):
 
 class Program(LocatedNode, SymbolTableCreatorTrait):
     id: SymbolName = datamodels.field(converter=True)  # noqa: A003
-    params: list[DataSymbol]
-    body: list[Call]
-    captured_vars: list[Symbol]
+    params: Block[DataSymbol] = datamodels.field(converter=True)
+    body: Block[Call] = datamodels.field(converter=True)
+    captured_vars: Block[Symbol] = datamodels.field(converter=True)

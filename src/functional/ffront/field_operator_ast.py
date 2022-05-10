@@ -16,8 +16,8 @@
 import re
 
 import eve
-from eve import OpNode, datamodels
-from eve.concepts import SourceLocation, SymbolRef
+from eve import datamodels
+from eve.concepts import Block, OpNode, SourceLocation, SymbolRef
 from eve.extended_typing import Generic, Optional, TypeVar, Union
 from eve.traits import SymbolTableCreatorTrait
 from eve.type_definitions import StrEnum
@@ -73,7 +73,7 @@ class Subscript(Expr):
 
 
 class TupleExpr(Expr):
-    elts: list[Expr]
+    elts: Block[Expr] = datamodels.field(converter=True)
 
 
 class UnaryOperator(StrEnum):
@@ -140,7 +140,7 @@ class Compare(Expr):
 
 class Call(Expr):
     func: Name
-    args: list[Expr]
+    args: Block[Expr] = datamodels.field(converter=True)
 
 
 class Stmt(LocatedNode):
@@ -148,7 +148,7 @@ class Stmt(LocatedNode):
 
 
 class ExternalImport(Stmt):
-    symbols: list[Symbol]
+    symbols: Block[Symbol] = datamodels.field(converter=True)
 
 
 class Assign(Stmt):
@@ -162,6 +162,6 @@ class Return(Stmt):
 
 class FieldOperator(LocatedNode, SymbolTableCreatorTrait):
     id: SymbolName = datamodels.field(converter=True)  # noqa: A003
-    params: list[DataSymbol]
-    body: list[Stmt]
-    captured_vars: list[Symbol]
+    params: Block[DataSymbol] = datamodels.field(converter=True)
+    body: Block[Stmt] = datamodels.field(converter=True)
+    captured_vars: Block[Symbol] = datamodels.field(converter=True)

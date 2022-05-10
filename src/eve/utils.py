@@ -494,15 +494,8 @@ class Namespace(types.SimpleNamespace, Generic[T]):
 
     """
 
-    def reset(self, data: Optional[Dict[str, Any]] = None) -> None:
-        self.__dict__.clear()
-        if data:
-            self.__dict__.update(data)
-
-    def as_dict(self) -> Dict[str, T]:
-        return {**self.__dict__}
-
-    asdict = as_dict
+    def __contains__(self, key: str) -> bool:
+        return key in self.__dict__
 
     def items(self) -> Iterable[Tuple[str, T]]:
         return self.__dict__.items()
@@ -512,6 +505,16 @@ class Namespace(types.SimpleNamespace, Generic[T]):
 
     def values(self) -> Iterable[T]:
         return self.__dict__.values()
+
+    def reset(self, data: Optional[Dict[str, Any]] = None) -> None:
+        self.__dict__.clear()
+        if data:
+            self.__dict__.update(data)
+
+    def as_dict(self) -> Dict[str, T]:
+        return {**self.__dict__}
+
+    asdict = as_dict
 
 
 class FrozenNamespace(Namespace[T]):
