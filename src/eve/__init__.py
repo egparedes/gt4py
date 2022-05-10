@@ -57,7 +57,7 @@ from .datamodels import DataModel, datamodel, field, concretize
 from .exceptions import EveError, EveRuntimeError, EveTypeError, EveValueError
 from .traits import SymbolTableCreatorTrait, VisitorWithSymbolTableTrait
 from .type_definitions import NOTHING, ConstrainedStr, IntEnum, NothingType, StrEnum
-from .visitors import NodeMutator, NodeTranslator, NodeVisitor
+from .visitors import NodeTranslator, NodeVisitor
 
 
 # __all__ = [

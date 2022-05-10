@@ -14,14 +14,14 @@
 
 import re
 
-from eve import datamodels, Node
+from eve import OpNode, datamodels
+from eve.concepts import SourceLocation, SymbolName, SymbolRef
 from eve.extended_typing import Any, Generic, Literal, Optional, TypeVar, Union
 from eve.traits import SymbolTableCreatorTrait
-from eve.concepts import SourceLocation, SymbolRef, SymbolName
 from functional.ffront import common_types
 
 
-class LocatedNode(Node):
+class LocatedNode(OpNode, kw_only=True):
     location: SourceLocation
 
 
@@ -33,7 +33,7 @@ SymbolT = TypeVar("SymbolT", bound=common_types.SymbolType)
 
 
 class Symbol(LocatedNode, Generic[SymbolT]):
-    id: SymbolName = datamodels.field(converter=True) # noqa: A003
+    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
     type: Union[SymbolT, common_types.DeferredSymbolType]  # noqa A003
     namespace: common_types.Namespace = common_types.Namespace(common_types.Namespace.LOCAL)
 
@@ -56,7 +56,7 @@ class Expr(LocatedNode):
 
 
 class Name(Expr):
-    id: SymbolRef = datamodels.field(converter=True) # noqa: A003
+    id: SymbolRef = datamodels.field(converter=True)  # noqa: A003
 
 
 class Call(Expr):
@@ -89,7 +89,7 @@ class Stmt(LocatedNode):
 
 
 class Program(LocatedNode, SymbolTableCreatorTrait):
-    id: SymbolName = datamodels.field(converter=True) # noqa: A003
-    params: list[Symbol[common_types.DataType]]
+    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
+    params: list[DataSymbol]
     body: list[Call]
     captured_vars: list[Symbol]

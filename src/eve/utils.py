@@ -494,6 +494,11 @@ class Namespace(types.SimpleNamespace, Generic[T]):
 
     """
 
+    def reset(self, data: Optional[Dict[str, Any]] = None) -> None:
+        self.__dict__.clear()
+        if data:
+            self.__dict__.update(data)
+
     def as_dict(self) -> Dict[str, T]:
         return {**self.__dict__}
 

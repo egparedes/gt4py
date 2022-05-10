@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import ast
+import abc
 import re
 
 from attr import frozen
@@ -36,6 +37,7 @@ from .extended_typing import (
     FrozenList,
     Generator,
     Generic,
+    Iterable,
     List,
     Mapping,
     NoArgsCallable,
@@ -172,6 +174,12 @@ class AnnexRegister:
 register_annex_key = AnnexRegister.register_key
 
 
+NodeKey = trees.TreeNodeKey
+NodeValue = trees.TreeNodeValue
+NodeItem = trees.TreeNodeItem
+NodeT = TypeVar("NodeT", bound="Node")
+
+
 class Node(trees.TreeNode):
     """Base class representing a node in a syntax tree."""
 
@@ -182,6 +190,9 @@ class Node(trees.TreeNode):
         if not hasattr(self, "__annex__"):
             object.__setattr__(self, "__annex__", utils.Namespace())
         return self.__annex__
+
+
+OpNodeT = TypeVar("OpNodeT", bound="OpNode")
 
 
 class OpNode(datamodels.DataModel, Node):
@@ -200,15 +211,23 @@ class OpNode(datamodels.DataModel, Node):
 
     """
 
+    @classmethod
+    def from_child_items(cls: Type[OpNodeT], items: Dict[NodeKey, NodeValue]) -> OpNodeT:
+        return cls(**items)
+
+    @classmethod
+    def from_child_values(cls: Type[OpNodeT], values: Iterable[NodeValue]) -> OpNodeT:
+        return cls(*values)
+
     @property
     def num_children(self) -> int:
         return len(self.__datamodel_fields__)
 
-    def iter_children_items(self) -> Generator[Tuple[str, Any], None, None]:
+    def iter_child_items(self) -> Generator[trees.TreeNodeItem, None, None]:
         for name in self.__datamodel_fields__.keys():
             yield name, getattr(self, name)
 
-    def iter_children_values(self) -> Generator[Any, None, None]:
+    def iter_child_values(self) -> Generator[trees.TreeNodeValue, None, None]:
         for name in self.__datamodel_fields__.keys():
             yield getattr(self, name)
 
@@ -217,19 +236,31 @@ class FrozenOpNode(OpNode, frozen=True):
     ...
 
 
+BlockNodeT = TypeVar("BlockNodeT", bound="_BaseBlockNode")
+
+
 class _BaseBlockNode(Node, Generic[_T]):
     """Non-instantiable base class for sequence-like IR node classes."""
 
     __slots__ = ()
 
+    @classmethod
+    def from_child_items(cls: Type[BlockNodeT], items: Dict[NodeKey, NodeValue]) -> BlockNodeT:
+        # Heavily discouraged!!
+        return cls.from_child_values([items[i] for i in range(items)])
+
+    @classmethod
+    def from_child_values(cls: Type[BlockNodeT], values: Iterable[NodeValue]) -> BlockNodeT:
+        return cls(values)
+
     @property
     def num_children(self) -> int:
         return len(self)
 
-    def iter_children_items(self) -> Generator[Tuple[int, _T], None, None]:
+    def iter_child_items(self) -> Generator[Tuple[int, _T], None, None]:
         yield from enumerate(self)
 
-    def iter_children_values(self) -> Generator[_T, None, None]:
+    def iter_child_values(self) -> Generator[_T, None, None]:
         yield from iter(self)
 
 
@@ -252,6 +283,7 @@ def frozenblock(*items: _T) -> FrozenBlock[_T]:
 frozen_block = frozenblock
 
 
+TableNodeT = TypeVar("TableNodeT", bound="_BaseTableNode")
 _KeyT = TypeVar("_KeyT")
 
 
@@ -260,14 +292,23 @@ class _BaseTableNode(Node, Generic[_KeyT, _T]):
 
     __slots__ = ()
 
+    @classmethod
+    def from_child_items(cls: Type[TableNodeT], items: Dict[NodeKey, NodeValue]) -> TableNodeT:
+        return cls(items)
+
+    @classmethod
+    def from_child_values(cls: Type[TableNodeT], values: Iterable[NodeValue]) -> TableNodeT:
+        # Heavily discouraged!!
+        return cls.from_child_items({key: value for key, value in enumerate(values)})
+
     @property
     def num_children(self) -> int:
         return len(self)
 
-    def iter_children_items(self) -> Generator[Tuple[_KeyT, _T], None, None]:
+    def iter_child_items(self) -> Generator[Tuple[str, _T], None, None]:
         yield from self.items()
 
-    def iter_children_values(self) -> Generator[_T, None, None]:
+    def iter_child_values(self) -> Generator[_T, None, None]:
         yield from self.values()
 
 

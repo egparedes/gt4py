@@ -20,10 +20,21 @@
 from __future__ import annotations
 
 import abc
+from enum import Enum
 
 from . import concepts, utils
-from .extended_typing import Any, Generator, Iterable, List, Optional, Tuple, Union
-from .type_definitions import Enum
+from .extended_typing import (
+    Any,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    TypeVar,
+    Type,
+)
 
 
 class TraversalOrder(Enum):
@@ -38,16 +49,16 @@ Key = Union[int, str]
 def _pre_walk_tree_items(node: Any, *, __key__: Optional[Key] = None) -> Iterable[Tuple[Key, Any]]:
     """Create a pre-order tree traversal iterator of (key, value) pairs."""
     yield __key__, node
-    if (iter_children_items := getattr(node, "iter_children_items", None)) is not None:
-        for key, child in iter_children_items():
+    if (iter_child_items := getattr(node, "iter_child_items", None)) is not None:
+        for key, child in iter_child_items():
             yield from _pre_walk_tree_items(child, __key__=key)
 
 
 def _pre_walk_tree_values(node: Any) -> Iterable[Tuple[Any]]:
     """Create a pre-order tree traversal iterator of values."""
     yield node
-    if (iter_children_values := getattr(node, "iter_children_values", None)) is not None:
-        for child in iter_children_values():
+    if (iter_child_values := getattr(node, "iter_child_values", None)) is not None:
+        for child in iter_child_values():
             yield from _pre_walk_tree_values(child)
 
 
@@ -58,15 +69,15 @@ pre_walk_tree_values = utils.as_xiter(_pre_walk_tree_values)
 def _post_walk_tree_items(node: Any, *, __key__: Optional[Key] = None) -> Iterable[Tuple[Key, Any]]:
     """Create a post-order tree traversal iterator of (key, value) pairs."""
     yield __key__, node
-    if (iter_children_items := getattr(node, "iter_children_items", None)) is not None:
-        for key, child in iter_children_items():
+    if (iter_child_items := getattr(node, "iter_child_items", None)) is not None:
+        for key, child in iter_child_items():
             yield from _post_walk_tree_items(child, __key__=key)
 
 
 def _post_walk_tree_values(node: Any) -> Iterable[Tuple[Any]]:
     """Create a post-order tree traversal iterator of values."""
-    if (iter_children_values := getattr(node, "iter_children_values", None)) is not None:
-        for child in iter_children_values():
+    if (iter_child_values := getattr(node, "iter_child_values", None)) is not None:
+        for child in iter_child_values():
             yield from _post_walk_tree_values(child)
     yield node
 
@@ -81,8 +92,8 @@ def _bfs_walk_tree_items(
     """Create a tree traversal iterator of (key, value) pairs by tree levels (Breadth-First Search)."""
     __queue__ = __queue__ or []
     yield __key__, node
-    if (iter_children_items := getattr(node, "iter_children_items", None)) is not None:
-        __queue__.extend(iter_children_items())
+    if (iter_child_items := getattr(node, "iter_child_items", None)) is not None:
+        __queue__.extend(iter_child_items())
     if __queue__:
         key, child = __queue__.pop(0)
         yield from _bfs_walk_tree_items(child, __key__=key, __queue__=__queue__)
@@ -94,8 +105,8 @@ def _bfs_walk_tree_values(
     """Create a tree traversal iterator of values by tree levels (Breadth-First Search)."""
     __queue__ = __queue__ or []
     yield node
-    if (iter_children_values := getattr(node, "iter_children_values", None)) is not None:
-        __queue__.extend(iter_children_values())
+    if (iter_child_values := getattr(node, "iter_child_values", None)) is not None:
+        __queue__.extend(iter_child_values())
     if __queue__:
         child = __queue__.pop(0)
         yield from _bfs_walk_tree_values(child, __queue__=__queue__)
@@ -141,21 +152,39 @@ def walk_tree_values(
         raise ValueError(f"Invalid '{traversal_order}' traversal order.")
 
 
+TreeNodeT = TypeVar("TreeNodeT", bound="TreeNode")
+
+TreeNodeKey = Union[int, str]
+TreeNodeValue = Any
+TreeNodeItem = Tuple[TreeNodeKey, TreeNodeValue]
+
+
 class TreeNode(abc.ABC):
     __slots__ = ()
+
+    @classmethod
+    @abc.abstractmethod
+    def from_child_items(
+        cls: Type[TreeNodeT], items: Dict[TreeNodeKey, TreeNodeValue]
+    ) -> TreeNodeT:
+        return NotImplemented
+
+    @classmethod
+    def from_child_values(cls: Type[TreeNodeT], values: Iterable[TreeNodeValue]) -> TreeNodeT:
+        return cls.from_child_items({key: value for key, value in enumerate(values)})
 
     @property
     @abc.abstractmethod
     def num_children(self) -> int:
-        return len(self.iter_children_values)
+        return len(self.iter_child_values)
 
     @abc.abstractmethod
-    def iter_children_items(self) -> Generator[Tuple[Union[int, str], Any], None, None]:
-        return
+    def iter_child_items(self) -> Generator[TreeNodeItem, None, None]:
+        return None
 
     @abc.abstractmethod
-    def iter_children_values(self) -> Generator[Any, None, None]:
-        return
+    def iter_child_values(self) -> Generator[TreeNodeValue, None, None]:
+        return None
 
     pre_walk_tree_items = pre_walk_tree_items
     pre_walk_tree_values = pre_walk_tree_values
@@ -166,5 +195,5 @@ class TreeNode(abc.ABC):
     bfs_walk_tree_items = bfs_walk_tree_items
     bfs_walk_tree_values = bfs_walk_tree_values
 
-    iter_walk_items = walk_tree_items
-    iter_walk_values = walk_tree_values
+    walk_tree_items = walk_tree_items
+    walk_tree_values = walk_tree_values

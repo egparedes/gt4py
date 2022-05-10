@@ -44,7 +44,7 @@ class SymbolNamesCollector(visitors.NodeVisitor):
         self.collected_symbols: Dict[str, concepts.Node] = {}
 
     def visit_Node(self, node: concepts.Node) -> None:
-        for value in node.iter_children_values():
+        for value in node.iter_child_values():
             if isinstance(value, concepts.SymbolName):
                 if value in self.collected_symbols:
                     raise exceptions.EveValueError(f"Multiple definitions of symbol '{value}'")
@@ -79,7 +79,7 @@ class SymbolRefsValidator(visitors.NodeVisitor):
         self.missing_symbols: Set[str] = set()
 
     def visit_Node(self, node: concepts.Node, *, symtable: Dict[str, Any], **kwargs: Any) -> None:
-        for value in node.iter_children_values():
+        for value in node.iter_child_values():
             if isinstance(value, concepts.SymbolRef):
                 if value not in symtable:
                     self.missing_symbols.add(value)
@@ -104,7 +104,7 @@ class SymbolRefsValidatorTrait:
     def _validate_symbol_refs(cls: Type[SymbolRefsValidatorTrait], node: concepts.Node) -> None:
         validator = SymbolRefsValidator()
         symtable = node.annex.symtable
-        for child_node in node.iter_children_values():
+        for child_node in node.iter_child_values():
             validator.visit(child_node, symtable=symtable)
 
         if validator.missing_symbols:
