@@ -31,9 +31,9 @@ from .extended_typing import (
     List,
     Optional,
     Tuple,
-    Union,
-    TypeVar,
     Type,
+    TypeVar,
+    Union,
 )
 
 

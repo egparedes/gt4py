@@ -19,8 +19,8 @@
 
 from __future__ import annotations
 
-import ast
 import abc
+import ast
 import re
 
 from attr import frozen

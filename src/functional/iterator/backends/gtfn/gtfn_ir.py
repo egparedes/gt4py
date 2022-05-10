@@ -2,9 +2,10 @@ import enum
 from typing import List, Union
 
 import eve
-from eve import SymbolName, OpNode, SymbolRef, datamodels
+from eve import OpNode, SymbolName, SymbolRef, datamodels
 from eve.traits import SymbolTableCreatorTrait
 from eve.type_definitions import StrEnum
+
 
 # from functional.iterator.util.sym_validation import validate_symbol_refs
 

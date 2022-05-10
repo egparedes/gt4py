@@ -6,6 +6,7 @@ from eve.concepts import SymbolName, SymbolRef
 from eve.traits import SymbolTableCreatorTrait
 from eve.utils import noninstantiable
 
+
 # from functional.iterator.util.sym_validation import validate_symbol_refs
 
 
@@ -58,7 +59,7 @@ class FunCall(Expr):
 
 
 class FunctionDefinition(Node, SymbolTableCreatorTrait):
-    id: SymbolName = datamodels.field(converter=True) # noqa: A003
+    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
     params: List[Sym]
     expr: Expr
 
@@ -96,7 +97,7 @@ BUILTINS = {
 
 
 class FencilDefinition(Node, eve.traits.SymbolTableTrait):
-    id: SymbolName = datamodels.field(converter=True) # noqa: A003
+    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
 
     function_definitions: List[FunctionDefinition]
     params: List[Sym]

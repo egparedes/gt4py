@@ -17,9 +17,9 @@ import re
 
 import eve
 from eve import OpNode, datamodels
+from eve.concepts import SourceLocation, SymbolRef
 from eve.extended_typing import Generic, Optional, TypeVar, Union
 from eve.traits import SymbolTableCreatorTrait
-from eve.concepts import SourceLocation, SymbolRef
 from eve.type_definitions import StrEnum
 from functional.ffront import common_types as common_types
 
@@ -36,7 +36,7 @@ SymbolT = TypeVar("SymbolT", bound=common_types.SymbolType)
 
 
 class Symbol(LocatedNode, Generic[SymbolT]):
-    id: SymbolName = datamodels.field(converter=True) # noqa: A003
+    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
     type: Union[SymbolT, common_types.DeferredSymbolType]  # noqa A003
     namespace: common_types.Namespace = common_types.Namespace(common_types.Namespace.LOCAL)
 
@@ -59,7 +59,7 @@ class Expr(LocatedNode):
 
 
 class Name(Expr):
-    id: SymbolRef = datamodels.field(converter=True) # noqa: A003
+    id: SymbolRef = datamodels.field(converter=True)  # noqa: A003
 
 
 class Constant(Expr):
@@ -161,7 +161,7 @@ class Return(Stmt):
 
 
 class FieldOperator(LocatedNode, SymbolTableCreatorTrait):
-    id: SymbolName = datamodels.field(converter=True) # noqa: A003
+    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
     params: list[DataSymbol]
     body: list[Stmt]
     captured_vars: list[Symbol]
