@@ -1,10 +1,12 @@
 import enum
 from typing import List, Union
 
-from eve import Node
-from eve.traits import SymbolName, SymbolTableCreatorTrait
-from eve.type_definitions import StrEnum, SymbolRef
-from functional.iterator.util.sym_validation import validate_symbol_refs
+import eve
+from eve import SymbolName, OpNode, SymbolRef, datamodels
+from eve.traits import SymbolTableCreatorTrait
+from eve.type_definitions import StrEnum
+
+# from functional.iterator.util.sym_validation import validate_symbol_refs
 
 
 @enum.unique
@@ -13,11 +15,11 @@ class GridType(StrEnum):
     UNSTRUCTURED = "unstructured"
 
 
-class Sym(Node):  # helper
-    id: SymbolName  # noqa: A003
+class Sym(OpNode):  # helper
+    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
 
 
-class Expr(Node):
+class Expr(OpNode):
     ...
 
 
@@ -48,7 +50,7 @@ class OffsetLiteral(Expr):
 
 
 class SymRef(Expr):
-    id: SymbolRef  # noqa: A003
+    id: SymbolRef = datamodels.field(converter=True)  # noqa: A003
 
 
 class Lambda(Expr, SymbolTableCreatorTrait):
@@ -67,25 +69,25 @@ class TemplatedFunCall(Expr):
     args: List[Expr]
 
 
-class FunctionDefinition(Node, SymbolTableCreatorTrait):
-    id: SymbolName  # noqa: A003
+class FunctionDefinition(OpNode, SymbolTableCreatorTrait):
+    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
     params: List[Sym]
     expr: Expr
 
 
-class Backend(Node):
+class Backend(OpNode):
     domain: Union[SymRef, FunCall]  # TODO(havogt) `FunCall` only if domain will be part of the IR
 
 
-class StencilExecution(Node):
+class StencilExecution(OpNode):
     backend: Backend
     stencil: SymRef  # TODO should be list of assigns for canonical `scan`
     output: SymRef
     inputs: List[SymRef]
 
 
-class FencilDefinition(Node, SymbolTableCreatorTrait):
-    id: SymbolName  # noqa: A003
+class FencilDefinition(OpNode, eve.traits.SymbolTableTrait):
+    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
     params: List[Sym]
     function_definitions: List[FunctionDefinition]
     executions: List[StencilExecution]
@@ -105,4 +107,4 @@ class FencilDefinition(Node, SymbolTableCreatorTrait):
         ]
     )
 
-    _validate_symbol_refs = validate_symbol_refs()
+    # _validate_symbol_refs = validate_symbol_refs()

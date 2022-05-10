@@ -11,6 +11,7 @@
 # distribution for a copy of the license or check <https://www.gnu.org/licenses/>.
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
+import eve
 from eve import NodeTranslator, SymbolTableCreatorTrait
 from eve.extended_typing import Union
 from functional.common import GTTypeError
@@ -22,7 +23,7 @@ def _size_arg_from_field(field_name: str, dim: int) -> str:
     return f"__{field_name}_size_{dim}"
 
 
-class ProgramLowering(NodeTranslator):
+class ProgramLowering(eve.traits.VisitorWithSymbolTableTrait, NodeTranslator):
     """
     Lower Program AST (PAST) to Iterator IR (ITIR).
 
@@ -57,7 +58,7 @@ class ProgramLowering(NodeTranslator):
     [Sym(id='inp'), Sym(id='out'), Sym(id='__inp_size_0'), Sym(id='__out_size_0')]
     """
 
-    contexts = (SymbolTableCreatorTrait.symtable_merger,)
+    # contexts = (SymbolTableCreatorTrait.symtable_merger,)
 
     @classmethod
     def apply(

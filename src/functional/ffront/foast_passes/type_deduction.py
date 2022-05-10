@@ -12,6 +12,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 import functional.ffront.field_operator_ast as foast
+import eve
 from eve import NodeTranslator, SymbolTableCreatorTrait
 from eve.extended_typing import Any, Optional
 from functional.common import GTSyntaxError
@@ -108,7 +109,7 @@ def boolified_typeinfo(typeinfo: TypeInfo):
     return TypeInfo(type_class(**kwargs))
 
 
-class FieldOperatorTypeDeduction(NodeTranslator):
+class FieldOperatorTypeDeduction(eve.traits.VisitorWithSymbolTableTrait, NodeTranslator):
     """
     Deduce and check types of FOAST expressions and symbols.
 
@@ -133,7 +134,7 @@ class FieldOperatorTypeDeduction(NodeTranslator):
     ...     kind=ct.ScalarKind.FLOAT64), dims=Ellipsis)
     """
 
-    contexts = (SymbolTableCreatorTrait.symtable_merger,)  # type: ignore  # TODO(ricoh): check if the SymbolTableTrait.symtable_merger annotation is correct.
+    #contexts = (SymbolTableCreatorTrait.symtable_merger,)  # type: ignore  # TODO(ricoh): check if the SymbolTableTrait.symtable_merger annotation is correct.
 
     @classmethod
     def apply(cls, node: foast.FieldOperator) -> foast.FieldOperator:

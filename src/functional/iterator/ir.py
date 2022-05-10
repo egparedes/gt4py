@@ -1,11 +1,12 @@
 from typing import List, Union
 
 import eve
-from eve.datamodels import Coerced
+from eve import datamodels
 from eve.concepts import SymbolName, SymbolRef
 from eve.traits import SymbolTableCreatorTrait
 from eve.utils import noninstantiable
-from functional.iterator.util.sym_validation import validate_symbol_refs
+
+# from functional.iterator.util.sym_validation import validate_symbol_refs
 
 
 @noninstantiable
@@ -17,7 +18,7 @@ class Node(eve.OpNode):
 
 
 class Sym(Node):  # helper
-    id: Coerced[SymbolName]  # noqa: A003
+    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
 
 
 @noninstantiable
@@ -43,7 +44,7 @@ class AxisLiteral(Expr):
 
 
 class SymRef(Expr):
-    id: SymbolRef  # noqa: A003
+    id: SymbolRef = datamodels.field(converter=True)  # noqa: A003
 
 
 class Lambda(Expr, SymbolTableCreatorTrait):
@@ -57,7 +58,7 @@ class FunCall(Expr):
 
 
 class FunctionDefinition(Node, SymbolTableCreatorTrait):
-    id: SymbolName  # noqa: A003
+    id: SymbolName = datamodels.field(converter=True) # noqa: A003
     params: List[Sym]
     expr: Expr
 
@@ -94,12 +95,13 @@ BUILTINS = {
 }
 
 
-class FencilDefinition(Node, SymbolTableCreatorTrait):
-    id: SymbolName  # noqa: A003
+class FencilDefinition(Node, eve.traits.SymbolTableTrait):
+    id: SymbolName = datamodels.field(converter=True) # noqa: A003
+
     function_definitions: List[FunctionDefinition]
     params: List[Sym]
     closures: List[StencilClosure]
 
     builtin_functions = [Sym(id=name) for name in BUILTINS]
 
-    _validate_symbol_refs = validate_symbol_refs()
+    # _validate_symbol_refs = validate_symbol_refs()

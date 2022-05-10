@@ -1,7 +1,6 @@
 from typing import Any
 
-from eve import NodeTranslator, iter_tree
-from eve.type_definitions import SymbolName
+from eve import NodeTranslator, SymbolName
 from functional.iterator import ir as itir
 from functional.iterator.backends.gtfn.gtfn_ir import (
     Backend,
@@ -110,7 +109,7 @@ class GTFN_lowering(NodeTranslator):
     @staticmethod
     def _collect_offsets(node: itir.FencilDefinition) -> set[str]:
         return (
-            iter_tree(node)
+            node.pre_walk_tree_values()
             .if_isinstance(itir.OffsetLiteral)
             .getattr("value")
             .if_isinstance(str)

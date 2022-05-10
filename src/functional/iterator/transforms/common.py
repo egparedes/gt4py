@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import eve
 from functional.iterator import ir
 
