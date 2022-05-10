@@ -195,21 +195,11 @@ TypeConverter = Callable[[Any], _T]
 _DATAMODEL_TAG: Final = "__DATAMODEL_TAG"
 _FIELD_VALIDATOR_TAG: Final = "__DATAMODEL_FIELD_VALIDATOR_TAG"
 _ROOT_VALIDATOR_TAG: Final = "__DATAMODEL_ROOT_VALIDATOR_TAG"
-_COERCED_TYPE_TAG: Final = "__DATAMODEL_COERCED_TYPE_TAG"
-_UNCHECKED_TYPE_TAG: Final = "__DATAMODEL_UNCHECKED_TYPE_TAG"
 
 
 MODEL_FIELD_DEFINITIONS_ATTR: Final = "__datamodel_fields__"
 MODEL_PARAM_DEFINITIONS_ATTR: Final = "__datamodel_params__"
 MODEL_ROOT_VALIDATORS_ATTR: Final = "__datamodel_root_validators__"
-
-
-#: Type hint marker to define fields that should be coerced at initialization
-Coerced = xtyping.Annotated[_T, _COERCED_TYPE_TAG]
-
-
-#: Type hint marker to define fields that should NOT be type-checked at initialization
-Unchecked = xtyping.Annotated[_T, _UNCHECKED_TYPE_TAG]
 
 
 if sys.version_info >= (3, 10):
@@ -277,15 +267,15 @@ DefaultFieldTypeValidatorFactory: Final[Optional[FieldTypeValidatorFactory]] = (
 )
 
 
-_REPR_DEFAULT: Final = True
-_EQ_DEFAULT: Final = True
-_ORDER_DEFAULT: Final = False
-_UNSAFE_HASH_DEFAULT: Final = False
-_FROZEN_DEFAULT: Final = False
-_MATCH_ARGS_DEFAULT: Final = True
-_KW_ONLY_DEFAULT: Final = False
-_SLOTS_DEFAULT: Final = False
-_COERCE_DEFAULT: Final = False
+REPR_DEFAULT: Final = True
+EQ_DEFAULT: Final = True
+ORDER_DEFAULT: Final = False
+UNSAFE_HASH_DEFAULT: Final = False
+FROZEN_DEFAULT: Final = False
+MATCH_ARGS_DEFAULT: Final = True
+KW_ONLY_DEFAULT: Final = False
+SLOTS_DEFAULT: Final = False
+CONVERT_DEFAULT: Final = False
 
 
 @overload
@@ -293,15 +283,15 @@ def datamodel(
     cls: Literal[None] = None,
     /,
     *,
-    repr: bool = _REPR_DEFAULT,  # noqa: A002  # shadowing 'repr' python builtin
-    eq: bool = _EQ_DEFAULT,
-    order: bool = _ORDER_DEFAULT,
-    unsafe_hash: bool = _UNSAFE_HASH_DEFAULT,
-    frozen: bool | Literal["strict"] = _FROZEN_DEFAULT,
-    match_args: bool = _MATCH_ARGS_DEFAULT,
-    kw_only: bool = _KW_ONLY_DEFAULT,
-    slots: bool = _SLOTS_DEFAULT,
-    coerce: bool = _COERCE_DEFAULT,
+    repr: bool = REPR_DEFAULT,  # noqa: A002  # shadowing 'repr' python builtin
+    eq: bool = EQ_DEFAULT,
+    order: bool = ORDER_DEFAULT,
+    unsafe_hash: bool = UNSAFE_HASH_DEFAULT,
+    frozen: bool | Literal["strict"] = FROZEN_DEFAULT,
+    match_args: bool = MATCH_ARGS_DEFAULT,
+    kw_only: bool = KW_ONLY_DEFAULT,
+    slots: bool = SLOTS_DEFAULT,
+    convert: bool = CONVERT_DEFAULT,
     type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultFieldTypeValidatorFactory,
 ) -> Callable[[Type[_T]], Type[_T]]:
     ...
@@ -312,15 +302,15 @@ def datamodel(  # noqa: F811  # redefinion of unused symbol
     cls: Type[_T],
     /,
     *,
-    repr: bool = _REPR_DEFAULT,  # noqa: A002  # shadowing 'repr' python builtin
-    eq: bool = _EQ_DEFAULT,
-    order: bool = _ORDER_DEFAULT,
-    unsafe_hash: bool = _UNSAFE_HASH_DEFAULT,
-    frozen: bool | Literal["strict"] = _FROZEN_DEFAULT,
-    match_args: bool = _MATCH_ARGS_DEFAULT,
-    kw_only: bool = _KW_ONLY_DEFAULT,
-    slots: bool = _SLOTS_DEFAULT,
-    coerce: bool = _COERCE_DEFAULT,
+    repr: bool = REPR_DEFAULT,  # noqa: A002  # shadowing 'repr' python builtin
+    eq: bool = EQ_DEFAULT,
+    order: bool = ORDER_DEFAULT,
+    unsafe_hash: bool = UNSAFE_HASH_DEFAULT,
+    frozen: bool | Literal["strict"] = FROZEN_DEFAULT,
+    match_args: bool = MATCH_ARGS_DEFAULT,
+    kw_only: bool = KW_ONLY_DEFAULT,
+    slots: bool = SLOTS_DEFAULT,
+    convert: bool = CONVERT_DEFAULT,
     type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultFieldTypeValidatorFactory,
 ) -> Type[_T]:
     ...
@@ -330,15 +320,15 @@ def datamodel(  # noqa: F811  # redefinion of unused symbol
     cls: Type[_T] = None,
     /,
     *,
-    repr: bool = _REPR_DEFAULT,  # noqa: A002  # shadowing 'repr' python builtin
-    eq: bool = _EQ_DEFAULT,
-    order: bool = _ORDER_DEFAULT,
-    unsafe_hash: bool = _UNSAFE_HASH_DEFAULT,
-    frozen: bool | Literal["strict"] = _FROZEN_DEFAULT,
-    match_args: bool = _MATCH_ARGS_DEFAULT,
-    kw_only: bool = _KW_ONLY_DEFAULT,
-    slots: bool = _SLOTS_DEFAULT,
-    coerce: bool = _COERCE_DEFAULT,
+    repr: bool = REPR_DEFAULT,  # noqa: A002  # shadowing 'repr' python builtin
+    eq: bool = EQ_DEFAULT,
+    order: bool = ORDER_DEFAULT,
+    unsafe_hash: bool = UNSAFE_HASH_DEFAULT,
+    frozen: bool | Literal["strict"] = FROZEN_DEFAULT,
+    match_args: bool = MATCH_ARGS_DEFAULT,
+    kw_only: bool = KW_ONLY_DEFAULT,
+    slots: bool = SLOTS_DEFAULT,
+    convert: bool = CONVERT_DEFAULT,
     type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultFieldTypeValidatorFactory,
 ) -> Union[Type[_T], Callable[[Type[_T]], Type[_T]]]:
     """Add generated special methods to classes according to the specified attributes (class decorator).
@@ -379,8 +369,8 @@ def datamodel(  # noqa: F811  # redefinion of unused symbol
             ``__init__`` (if ``init`` is ``False``, this parameter is ignored).
         slots: slots: If ``True`` (the default is ``False``), ``__slots__`` attribute will be generated
             and a new slotted class will be returned instead of the original one.
-        coerce: If ``True`` (default is ``False``), make all fields ``Coerced`` fields,
-            meaning that an automatic type converter will be generated.
+        convert: If ``True`` (default is ``False``), an automatic type converter will be generated
+            for all fields.
         type_validation_factory: Type validation factory used to build the field type validators.
             If ``None``, type validators will not be generators.
 
@@ -394,7 +384,7 @@ def datamodel(  # noqa: F811  # redefinion of unused symbol
         "match_args": match_args,
         "kw_only": kw_only,
         "slots": slots,
-        "coerce": coerce,
+        "convert": convert,
         "type_validation_factory": type_validation_factory,
     }
 
@@ -427,54 +417,54 @@ class DataModel:
         cls,
         /,
         *,
-        repr: bool = _REPR_DEFAULT,  # noqa: A002  # shadowing 'repr' python builtin
-        eq: bool = _EQ_DEFAULT,
-        order: bool = _ORDER_DEFAULT,
-        unsafe_hash: bool = _UNSAFE_HASH_DEFAULT,
+        repr: bool
+        | Literal["inherited"] = "inherited",  # noqa: A002  # shadowing 'repr' python builtin
+        eq: bool | Literal["inherited"] = "inherited",
+        order: bool | Literal["inherited"] = "inherited",
+        unsafe_hash: bool | Literal["inherited"] = "inherited",
         frozen: bool | Literal["strict", "inherited"] = "inherited",
-        match_args: bool = _MATCH_ARGS_DEFAULT,
-        kw_only: bool = _KW_ONLY_DEFAULT,
-        coerce: bool = _COERCE_DEFAULT,
-        type_validation_factory: Optional[
-            FieldTypeValidatorFactory
-        ] = DefaultFieldTypeValidatorFactory,
+        match_args: bool | Literal["inherited"] = "inherited",
+        kw_only: bool | Literal["inherited"] = "inherited",
+        convert: bool | Literal["inherited"] = "inherited",
+        type_validation_factory: Optional[FieldTypeValidatorFactory]
+        | Literal["inherited"] = "inherited",
         **kwargs: Any,
     ) -> None:
         super(DataModel, cls).__init_subclass__(
             **kwargs
         )  # type: ignore[call-arg]  # is not guaranteed that superclass does not accept kwargs
         cls_params = getattr(cls, MODEL_PARAM_DEFINITIONS_ATTR, None)
-        if frozen == "inherited":
-            frozen = cls_params.frozen if cls_params is not None else _FROZEN_DEFAULT
-        if cls_params is not None and cls_params.frozen and not frozen:
+
+        locals_ = locals()
+        datamodel_kwargs = {}
+        for arg_name, default_value in [
+            ("repr", REPR_DEFAULT),
+            ("eq", EQ_DEFAULT),
+            ("order", ORDER_DEFAULT),
+            ("unsafe_hash", UNSAFE_HASH_DEFAULT),
+            ("frozen", FROZEN_DEFAULT),
+            ("match_args", MATCH_ARGS_DEFAULT),
+            ("kw_only", KW_ONLY_DEFAULT),
+            ("convert", CONVERT_DEFAULT),
+            ("type_validation_factory", DefaultFieldTypeValidatorFactory),
+        ]:
+            arg_value = locals_[arg_name]
+            if arg_value == "inherited":
+                datamodel_kwargs[arg_name] = (
+                    default_value if cls_params is None else getattr(cls_params, arg_name)
+                )
+            else:
+                datamodel_kwargs[arg_name] = arg_value
+
+        if cls_params is not None and cls_params.frozen and not datamodel_kwargs["frozen"]:
             raise TypeError(f"Subclasses of a frozen DataModel cannot be unfrozen.")
+
         _make_datamodel(
             cls,
-            repr=repr,
-            eq=eq,
-            order=order,
-            unsafe_hash=unsafe_hash,
-            frozen=frozen,
-            match_args=match_args,
-            kw_only=kw_only,
             slots=False,
-            coerce=coerce,
-            type_validation_factory=type_validation_factory,
+            **datamodel_kwargs,
             stacklevel_offset=1,
         )
-
-
-DataModelParamNames = Literal[
-    "repr",
-    "eq",
-    "order",
-    "unsafe_hash",
-    "frozen",
-    "match_args",
-    "kw_only",
-    "coerce",
-    "type_validation_factory",
-]
 
 
 def field(
@@ -482,14 +472,16 @@ def field(
     default: Any = NOTHING,
     default_factory: Optional[Callable[[None], Any]] = None,
     init: bool = True,
-    repr: bool = _REPR_DEFAULT,  # noqa: A002   # shadowing 'repr' python builtin
+    repr: bool = REPR_DEFAULT,  # noqa: A002   # shadowing 'repr' python builtin
     hash: Optional[bool] = None,  # noqa: A002   # shadowing 'hash' python builtin
     compare: bool = True,
     metadata: Optional[Mapping[Any, Any]] = None,
-    kw_only: bool = _KW_ONLY_DEFAULT,
-    validator: Union[
-        None, AttrsValidator, FieldValidator, Sequence[Union[AttrsValidator, FieldValidator]]
-    ] = None,
+    kw_only: bool = KW_ONLY_DEFAULT,
+    converter: Callable[[Any], Any] | Literal[True] | None = None,
+    validator: AttrsValidator
+    | FieldValidator
+    | Sequence[AttrsValidator | FieldValidator]
+    | None = None,
 ) -> Any:  # attr.s lies in some typings
     """Define a new attribute on a class with advanced options.
 
@@ -517,6 +509,10 @@ def field(
             have their own key, to use as a namespace in the metadata.
         kw_only: If ``True`` (default is ``False``), make this field keyword-only in the
             generated ``__init__`` (if ``init`` is ``False``, this parameter is ignored).
+        converter: Callable that is automatically called to convert attribute’s value.
+            It is given the passed-in value, and the returned value will be used as the
+            new value of the attribute before being passed to the validator, if any.
+            If ``True``, a naive coercer converter will be generated.
         validator: FieldValidator or list of FieldValidators to be used with this field.
             (Note that validators can also be set using decorator notation).
 
@@ -550,6 +546,7 @@ def field(
         order=compare,
         metadata=metadata,
         kw_only=kw_only,
+        converter=converter,
         validator=validator,
     )
 
@@ -994,7 +991,7 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
     match_args: bool,
     kw_only: bool,
     slots: bool,
-    coerce: bool,
+    convert: bool,
     type_validation_factory: Optional[FieldTypeValidatorFactory],
     stacklevel_offset: int = 0,
 ) -> Type[_T]:
@@ -1008,7 +1005,7 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
     if "__annotations__" not in cls.__dict__:
         cls.__annotations__ = {}
     annotations = cls.__dict__["__annotations__"]
-    resolved_annotations = xtyping.get_partial_type_hints(cls, include_extras=True)
+    resolved_annotations = xtyping.get_partial_type_hints(cls)
 
     frozen, strict_frozen = (True, True) if frozen == "strict" else (frozen, False)
 
@@ -1016,57 +1013,59 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
     # for the annotated fields. The keys in the original annotations are used for
     # iteration, since the resolved annotations also contain superclasses' annotations
     for key in annotations:
-        solved_hint = annotations[key] = resolved_annotations[key]
-        if xtyping.get_origin(solved_hint) == xtyping.Annotated:
-            type_hint, *type_extras = xtyping.get_args(solved_hint)
-        else:
-            type_hint, *type_extras = solved_hint, []
-
+        type_hint = annotations[key] = resolved_annotations[key]
         if xtyping.get_origin(type_hint) is not ClassVar:
-            if coerce or _COERCED_TYPE_TAG in type_extras:
-                converter = _make_type_converter(type_hint, key)
-            else:
-                converter = None
+            type_validator = (
+                type_validation_factory(type_hint, key)
+                if type_validation_factory is not None
+                else None
+            )
 
-            if type_validation_factory and _UNCHECKED_TYPE_TAG not in type_extras:
-                type_validator = type_validation_factory(type_hint, key)
-            else:
-                type_validator = None
-
-            cls_attr_value = cls.__dict__.get(key, NOTHING)
-            if cls_attr_value is NOTHING:
-                # The field has no definition in the class dict, it's only an annotation
-                setattr(cls, key, attrs.field(converter=converter, validator=type_validator))
-            elif not isinstance(cls.__dict__[key], attr._make._CountingAttr):  # type: ignore[attr-defined]  # attr._make is not visible for mypy
-                # The field contains the default value in the class dict
-                if isinstance(cls_attr_value, _KNOWN_MUTABLE_TYPES):
-                    warnings.warn(
-                        f"'{cls_attr_value.__class__.__name__}' value used as default in '{cls.__name__}.{key}'.\n"
-                        "Mutable types should not be normally used as field defaults (use 'default_factory' instead).",
-                        stacklevel=stacklevel_offset + 2,
-                    )
-                setattr(
-                    cls,
-                    key,
-                    attrs.field(
-                        converter=converter, default=cls_attr_value, validator=type_validator
-                    ),
-                )
-            else:
+            attr_value_in_cls = cls.__dict__.get(key, NOTHING)
+            if isinstance(attr_value_in_cls, attr._make._CountingAttr):
                 # A field() function has been used to customize the definition of the field.
                 # Here we need to:
                 #  - prepend the type validator to the list of provided validators (if any)
-                #  - add the converter if the field needs to be coerced
-                counting_attr = cls.__dict__[key]
-                if counting_attr.converter is not None and converter is not None:
-                    raise TypeError(
-                        f"Impossible to add type coercer to field '{key}' with custom converter."
-                    )
-                cls.__dict__[key]._validator = (
+                #  - add the converter if the field needs to be converted and there is not another converter
+                attr_value_in_cls._validator = (
                     type_validator
-                    if cls_attr_value._validator is None
-                    else attr._make.and_(type_validator, cls_attr_value._validator)  # type: ignore[attr-defined]  # attr._make is not visible for mypy
+                    if attr_value_in_cls._validator is None
+                    else attr._make.and_(type_validator, attr_value_in_cls._validator)  # type: ignore[attr-defined]  # attr._make is not visible for mypy
                 )
+                if attr_value_in_cls.converter is True or (
+                    convert and attr_value_in_cls.converter is None
+                ):
+                    attr_value_in_cls.converter = _make_type_converter(type_hint, key)
+                elif convert:
+                    raise TypeError(
+                        f"Impossible to add automatic type converter to field '{key}' with custom converter."
+                    )
+
+            else:
+                converter = _make_type_converter(type_hint, key) if convert else None
+                if attr_value_in_cls is NOTHING:
+                    # The field has no definition in the class dict, it's only an annotation
+                    setattr(
+                        cls,
+                        key,
+                        attrs.field(converter=converter, validator=type_validator),
+                    )
+
+                else:
+                    # The field contains the default value in the class dict
+                    if isinstance(attr_value_in_cls, _KNOWN_MUTABLE_TYPES):
+                        warnings.warn(
+                            f"'{attr_value_in_cls.__class__.__name__}' value used as default in '{cls.__name__}.{key}'.\n"
+                            "Mutable types should not defbe normally used as field defaults (use 'default_factory' instead).",
+                            stacklevel=stacklevel_offset + 2,
+                        )
+                    setattr(
+                        cls,
+                        key,
+                        attrs.field(
+                            converter=converter, default=attr_value_in_cls, validator=type_validator
+                        ),
+                    )
 
     # All fields should be annotated with type hints
     num_attrs = 0
@@ -1170,7 +1169,7 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
             match_args=match_args,
             kw_only=kw_only,
             slots=slots,
-            coerce=coerce,
+            convert=convert,
             type_validation_factory=type_validation_factory,
         ),
     )

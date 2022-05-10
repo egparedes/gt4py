@@ -300,8 +300,8 @@ def test_slots():
     assert DataModel is Model
 
 
-def test_coertion():
-    @datamodels.datamodel(coerce=True)
+def test_conversion():
+    @datamodels.datamodel(convert=True)
     class CoercedModel:
         as_int: int
         a_str: str
@@ -326,7 +326,7 @@ def test_coertion():
     assert instance.a_str is A_STR
 
     class PartiallyCoercedModel(datamodels.DataModel):
-        as_int: datamodels.Coerced[int]
+        as_int: int = datamodels.field(converter=True)
         only_int: int
 
     instance = PartiallyCoercedModel(-2, 2)
@@ -336,6 +336,24 @@ def test_coertion():
     instance = PartiallyCoercedModel("-2", 2)
     assert instance.as_int == -2
     assert instance.only_int == 2
+
+    with pytest.raises(TypeError, match="only_int"):
+        PartiallyCoercedModel("-2", "2")
+
+    class CustomCoercedModel(datamodels.DataModel):
+        as_int: int = datamodels.field(converter=int)
+        only_int: int
+
+    instance = CustomCoercedModel(-2, 2)
+    assert instance.as_int == -2
+    assert instance.only_int == 2
+
+    instance = CustomCoercedModel("-2", 2)
+    assert instance.as_int == -2
+    assert instance.only_int == 2
+
+    with pytest.raises(TypeError, match="only_int"):
+        CustomCoercedModel("-2", "2")
 
 
 def test_custom_type_validation_factory():

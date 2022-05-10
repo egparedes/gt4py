@@ -20,8 +20,8 @@ import random
 import string
 from typing import Collection, Dict, List, Mapping, Optional, Sequence, Set, Type, TypeVar
 
+from eve import datamodels
 from eve.concepts import Block, FrozenOpNode, OpNode, SourceLocation, SymbolName, VType
-from eve.datamodels import Coerced
 from eve.traits import SymbolTableCreatorTrait
 from eve.type_definitions import IntEnum, StrEnum
 from eve.utils import CaseStyleConverter
@@ -103,7 +103,7 @@ class SimpleNodeWithAbstractCollections(OpNode):
 
 class SimpleNodeWithSymbolName(OpNode):
     int_value: int
-    name: Coerced[SymbolName]
+    name: SymbolName = datamodels.field(converter=True)
 
 
 class SimpleNodeWithDefaultSymbolName(OpNode):
