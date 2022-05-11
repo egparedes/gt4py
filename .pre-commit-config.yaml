@@ -73,7 +73,6 @@ repos:
       (?x)^(
       src/functional/ffront/func_to_foast.py | # until mypy supports match
       src/functional/ffront/func_to_past.py | # until mypy supports match
-      src/functional/ffront/decorator.py | # until mypy supports match
       src/functional/ffront/past_to_itir.py | # until mypy supports match
       src/functional/ffront/symbol_makers.py | # until mypy supports match
       src/functional/ffront/type_info.py | # until mypy supports match
