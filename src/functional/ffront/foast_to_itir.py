@@ -144,7 +144,7 @@ class FieldOperatorLowering(NodeTranslator):
             return TypeInfo(expr.type).is_field_type
 
         param_names = list(
-            node.iter_tree().if_isinstance(foast.Name).filter(is_field).getattr("id").unique()
+            node.pre_walk_values().if_isinstance(foast.Name).filter(is_field).getattr("id").unique()
         )
         return self.lifted_lambda(*param_names)
 

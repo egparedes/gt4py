@@ -51,8 +51,8 @@ def make_domain(dim_name: str, lower: int, upper: int) -> itir.FunCall:
                 fun=itir.SymRef(id="named_range"),
                 args=[
                     itir.AxisLiteral(value=dim_name),
-                    itir.Literal(value=lower, type="int"),
-                    itir.Literal(value=upper, type="int"),
+                    itir.Literal(value=str(lower), type="int"),
+                    itir.Literal(value=str(upper), type="int"),
                 ],
             )
         ],

@@ -25,7 +25,7 @@ import re
 
 from attr import frozen
 
-from . import datamodels, exceptions, trees, type_definitions, utils
+from . import datamodels, exceptions, extended_typing as xtyping, trees, type_definitions, utils
 from .datamodels import validators as dm_validators
 from .extended_typing import (
     Any,
@@ -152,26 +152,43 @@ AnySourceLocation = Union[SourceLocation, SourceLocationGroup]
 _T = TypeVar("_T")
 
 
-class AnnexRegister:
+class AnnexManager:
     register: ClassVar[Dict[str, Any]] = {}
 
     @classmethod
-    def register_key(cls: Type[AnnexRegister], key: str) -> Callable[[_T], _T]:
+    def register_user(
+        cls: Type[AnnexManager], key: str, type: xtyping.TypeAnnotation, *, shared: bool = False
+    ) -> Callable[[_T], _T]:
         assert isinstance(key, str)
 
         def _decorator(owner: _T) -> _T:
             if key in cls.register:
-                raise exceptions.EveRuntimeError(
-                    f"'{key}' has been already registered by {cls.register[key]}"
-                )
-            cls.register[key] = owner
+                reg_shared, reg_type, reg_owner = cls.register[key]
+                if not shared:
+                    raise exceptions.EveRuntimeError(
+                        f"Annex key '{key}' has been already registered by {reg_owner}."
+                    )
+                if not reg_shared:
+                    raise exceptions.EveRuntimeError(
+                        f"Annex key '{key}' has been privately registered by {reg_owner}."
+                    )
+                elif type != reg_type:
+                    raise exceptions.EveRuntimeError(
+                        f"Annex key '{key}' type '{type}' does not match registered type '{reg_type}' "
+                        f"registered by {reg_owner}."
+                    )
+                owners = reg_owner
+            else:
+                owners = []
+
+            cls.register[key] = (shared, type, [*owners, owner])
 
             return owner
 
         return _decorator
 
 
-register_annex_key = AnnexRegister.register_key
+register_annex_user = AnnexManager.register_user
 
 
 NodeKey = trees.TreeNodeKey

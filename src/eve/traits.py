@@ -60,14 +60,18 @@ class SymbolNamesCollector(visitors.NodeVisitor):
         return collector.collected_symbols
 
 
-@concepts.register_annex_key("symtable")
+@concepts.register_annex_user("symtable", Dict[str, concepts.Node], shared=True)
 @datamodels.datamodel
 class SymbolTableCreatorTrait:
     __slots__ = ()
 
     @datamodels.root_validator
     def _collect_symbol_names(cls: Type[SymbolTableCreatorTrait], node: concepts.Node) -> None:
-        node.annex.symtable = SymbolNamesCollector.apply(node)
+        collected_symbols = SymbolNamesCollector.apply(node)
+        if "symtable" in node.annex:
+            node.annex.symtable.update(collected_symbols)
+        else:
+            node.annex.symtable = collected_symbols
 
 
 _OutT = TypeVar("_OutT", covariant=True)
@@ -96,6 +100,7 @@ class SymbolRefsValidator(visitors.NodeVisitor):
         return validator.missing_symbols
 
 
+@concepts.register_annex_user("symtable", Dict[str, concepts.Node], shared=True)
 @datamodels.datamodel
 class SymbolRefsValidatorTrait:
     __slots__ = ()

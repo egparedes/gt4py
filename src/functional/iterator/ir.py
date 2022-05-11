@@ -2,7 +2,7 @@ from typing import List, Union
 
 import eve
 from eve import datamodels
-from eve.concepts import SymbolName, SymbolRef
+from eve.concepts import Block, SymbolName, SymbolRef
 from eve.traits import SymbolTableCreatorTrait
 from eve.utils import noninstantiable
 
@@ -99,10 +99,13 @@ BUILTINS = {
 class FencilDefinition(Node, eve.traits.SymbolTableTrait):
     id: SymbolName = datamodels.field(converter=True)  # noqa: A003
 
-    function_definitions: List[FunctionDefinition]
-    params: List[Sym]
-    closures: List[StencilClosure]
+    function_definitions: Block[FunctionDefinition] = datamodels.field(converter=True)
+    params: Block[Sym] = datamodels.field(converter=True)
+    closures: Block[StencilClosure] = datamodels.field(converter=True)
 
     builtin_functions = [Sym(id=name) for name in BUILTINS]
+
+    def __pre_init__(self) -> None:
+        self.annex.symtable = {name: "__builtin__" for name in BUILTINS}
 
     # _validate_symbol_refs = validate_symbol_refs()

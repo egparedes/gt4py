@@ -109,7 +109,7 @@ class GTFN_lowering(NodeTranslator):
     @staticmethod
     def _collect_offsets(node: itir.FencilDefinition) -> set[str]:
         return (
-            node.pre_walk_tree_values()
+            node.pre_walk_values()
             .if_isinstance(itir.OffsetLiteral)
             .getattr("value")
             .if_isinstance(str)

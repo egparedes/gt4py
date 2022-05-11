@@ -46,47 +46,47 @@ class TraversalOrder(Enum):
 Key = Union[int, str]
 
 
-def _pre_walk_tree_items(node: Any, *, __key__: Optional[Key] = None) -> Iterable[Tuple[Key, Any]]:
+def _pre_walk_items(node: Any, *, __key__: Optional[Key] = None) -> Iterable[Tuple[Key, Any]]:
     """Create a pre-order tree traversal iterator of (key, value) pairs."""
     yield __key__, node
     if (iter_child_items := getattr(node, "iter_child_items", None)) is not None:
         for key, child in iter_child_items():
-            yield from _pre_walk_tree_items(child, __key__=key)
+            yield from _pre_walk_items(child, __key__=key)
 
 
-def _pre_walk_tree_values(node: Any) -> Iterable[Tuple[Any]]:
+def _pre_walk_values(node: Any) -> Iterable[Tuple[Any]]:
     """Create a pre-order tree traversal iterator of values."""
     yield node
     if (iter_child_values := getattr(node, "iter_child_values", None)) is not None:
         for child in iter_child_values():
-            yield from _pre_walk_tree_values(child)
+            yield from _pre_walk_values(child)
 
 
-pre_walk_tree_items = utils.as_xiter(_pre_walk_tree_items)
-pre_walk_tree_values = utils.as_xiter(_pre_walk_tree_values)
+pre_walk_items = utils.as_xiter(_pre_walk_items)
+pre_walk_values = utils.as_xiter(_pre_walk_values)
 
 
-def _post_walk_tree_items(node: Any, *, __key__: Optional[Key] = None) -> Iterable[Tuple[Key, Any]]:
+def _post_walk_items(node: Any, *, __key__: Optional[Key] = None) -> Iterable[Tuple[Key, Any]]:
     """Create a post-order tree traversal iterator of (key, value) pairs."""
     yield __key__, node
     if (iter_child_items := getattr(node, "iter_child_items", None)) is not None:
         for key, child in iter_child_items():
-            yield from _post_walk_tree_items(child, __key__=key)
+            yield from _post_walk_items(child, __key__=key)
 
 
-def _post_walk_tree_values(node: Any) -> Iterable[Tuple[Any]]:
+def _post_walk_values(node: Any) -> Iterable[Tuple[Any]]:
     """Create a post-order tree traversal iterator of values."""
     if (iter_child_values := getattr(node, "iter_child_values", None)) is not None:
         for child in iter_child_values():
-            yield from _post_walk_tree_values(child)
+            yield from _post_walk_values(child)
     yield node
 
 
-post_walk_tree_items = utils.as_xiter(_post_walk_tree_items)
-post_walk_tree_values = utils.as_xiter(_post_walk_tree_values)
+post_walk_items = utils.as_xiter(_post_walk_items)
+post_walk_values = utils.as_xiter(_post_walk_values)
 
 
-def _bfs_walk_tree_items(
+def _bfs_walk_items(
     node: Any, *, __key__: Optional[Any] = None, __queue__: Optional[List] = None
 ) -> Iterable[Tuple[Key, Any]]:
     """Create a tree traversal iterator of (key, value) pairs by tree levels (Breadth-First Search)."""
@@ -96,12 +96,10 @@ def _bfs_walk_tree_items(
         __queue__.extend(iter_child_items())
     if __queue__:
         key, child = __queue__.pop(0)
-        yield from _bfs_walk_tree_items(child, __key__=key, __queue__=__queue__)
+        yield from _bfs_walk_items(child, __key__=key, __queue__=__queue__)
 
 
-def _bfs_walk_tree_values(
-    node: Any, *, __queue__: Optional[List] = None
-) -> Iterable[Tuple[Key, Any]]:
+def _bfs_walk_values(node: Any, *, __queue__: Optional[List] = None) -> Iterable[Tuple[Key, Any]]:
     """Create a tree traversal iterator of values by tree levels (Breadth-First Search)."""
     __queue__ = __queue__ or []
     yield node
@@ -109,15 +107,15 @@ def _bfs_walk_tree_values(
         __queue__.extend(iter_child_values())
     if __queue__:
         child = __queue__.pop(0)
-        yield from _bfs_walk_tree_values(child, __queue__=__queue__)
+        yield from _bfs_walk_values(child, __queue__=__queue__)
 
 
-bfs_walk_tree_items = utils.as_xiter(_bfs_walk_tree_items)
-bfs_walk_tree_values = utils.as_xiter(_bfs_walk_tree_values)
+bfs_walk_items = utils.as_xiter(_bfs_walk_items)
+bfs_walk_values = utils.as_xiter(_bfs_walk_values)
 
 
-def walk_tree_items(
-    node: concepts.TreeNode, traversal_order: TraversalOrder = TraversalOrder.PRE_ORDER
+def walk_items(
+    node: TreeNode, traversal_order: TraversalOrder = TraversalOrder.PRE_ORDER
 ) -> utils.XIterable[Tuple[Key, Any]]:
     """Create a tree traversal iterator of (key, value) pairs.
 
@@ -125,17 +123,17 @@ def walk_tree_items(
         traversal_order: Tree nodes traversal order.
     """
     if traversal_order is traversal_order.PRE_ORDER:
-        return pre_walk_tree_items(node=node)
+        return pre_walk_items(node=node)
     elif traversal_order is traversal_order.POST_ORDER:
-        return post_walk_tree_items(node=node)
+        return post_walk_items(node=node)
     elif traversal_order is traversal_order.LEVELS_ORDER:
-        return bfs_walk_tree_items(node=node)
+        return bfs_walk_items(node=node)
     else:
         raise ValueError(f"Invalid '{traversal_order}' traversal order.")
 
 
-def walk_tree_values(
-    node: concepts.TreeNode, traversal_order: TraversalOrder = TraversalOrder.PRE_ORDER
+def walk_values(
+    node: TreeNode, traversal_order: TraversalOrder = TraversalOrder.PRE_ORDER
 ) -> utils.XIterable[Any]:
     """Create a tree traversal iterator of values.
 
@@ -143,11 +141,11 @@ def walk_tree_values(
         traversal_order: Tree nodes traversal order.
     """
     if traversal_order is traversal_order.PRE_ORDER:
-        return pre_walk_tree_values(node=node)
+        return pre_walk_values(node=node)
     elif traversal_order is traversal_order.POST_ORDER:
-        return post_walk_tree_values(node=node)
+        return post_walk_values(node=node)
     elif traversal_order is traversal_order.LEVELS_ORDER:
-        return bfs_walk_tree_values(node=node)
+        return bfs_walk_values(node=node)
     else:
         raise ValueError(f"Invalid '{traversal_order}' traversal order.")
 
@@ -186,14 +184,14 @@ class TreeNode(abc.ABC):
     def iter_child_values(self) -> Generator[TreeNodeValue, None, None]:
         return None
 
-    pre_walk_tree_items = pre_walk_tree_items
-    pre_walk_tree_values = pre_walk_tree_values
+    pre_walk_items = pre_walk_items
+    pre_walk_values = pre_walk_values
 
-    post_walk_tree_items = post_walk_tree_items
-    post_walk_tree_values = post_walk_tree_values
+    post_walk_items = post_walk_items
+    post_walk_values = post_walk_values
 
-    bfs_walk_tree_items = bfs_walk_tree_items
-    bfs_walk_tree_values = bfs_walk_tree_values
+    bfs_walk_items = bfs_walk_items
+    bfs_walk_values = bfs_walk_values
 
-    walk_tree_items = walk_tree_items
-    walk_tree_values = walk_tree_values
+    walk_items = walk_items
+    walk_values = walk_values
