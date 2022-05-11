@@ -691,7 +691,7 @@ class TemplatedGenerator(NodeVisitor):
                         node=node,
                     ) from e.__cause__
 
-        elif isinstance(node, (list, tuple, collections.abc.Set)) or (
+        if isinstance(node, (list, tuple, collections.abc.Set)) or (
             isinstance(node, collections.abc.Sequence) and not isinstance(node, (str, bytes))
         ):
             return [self.visit(value, **kwargs) for value in node]
@@ -699,6 +699,12 @@ class TemplatedGenerator(NodeVisitor):
             return {key: self.visit(value, **kwargs) for key, value in node.items()}
 
         return self.generic_dump(node, **kwargs)
+
+    def visit_SequenceNode(self, node: TreeNode, **kwargs: Any) -> Union[str, Collection[str]]:
+        return [self.visit(child, **kwargs) for child in node.iter_child_values()]
+
+    def visit_MappingNode(self, node: TreeNode, **kwargs: Any) -> Union[str, Collection[str]]:
+        return {key: self.visit(child, **kwargs) for key, child in node.iter_child_items()}
 
     def get_template(self, node: TreeNode) -> Tuple[Optional[Template], Optional[str]]:
         """Get a template for a node instance (see class documentation)."""

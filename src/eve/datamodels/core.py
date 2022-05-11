@@ -193,6 +193,7 @@ TypeConverter = Callable[[Any], _T]
 
 # Implementation
 _DATAMODEL_TAG: Final = "__DATAMODEL_TAG"
+_GENERIC_DATAMODEL_TAG: Final = "__GENERIC_DATAMODEL_TAG"
 _FIELD_VALIDATOR_TAG: Final = "__DATAMODEL_FIELD_VALIDATOR_TAG"
 _ROOT_VALIDATOR_TAG: Final = "__DATAMODEL_ROOT_VALIDATOR_TAG"
 
@@ -276,6 +277,7 @@ MATCH_ARGS_DEFAULT: Final = True
 KW_ONLY_DEFAULT: Final = False
 SLOTS_DEFAULT: Final = False
 CONVERT_DEFAULT: Final = False
+GENERIC_DEFAULT: Final = False
 
 
 @overload
@@ -292,6 +294,7 @@ def datamodel(
     kw_only: bool = KW_ONLY_DEFAULT,
     slots: bool = SLOTS_DEFAULT,
     convert: bool = CONVERT_DEFAULT,
+    generic: bool = GENERIC_DEFAULT,
     type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultFieldTypeValidatorFactory,
 ) -> Callable[[Type[_T]], Type[_T]]:
     ...
@@ -311,6 +314,7 @@ def datamodel(  # noqa: F811  # redefinion of unused symbol
     kw_only: bool = KW_ONLY_DEFAULT,
     slots: bool = SLOTS_DEFAULT,
     convert: bool = CONVERT_DEFAULT,
+    generic: bool = GENERIC_DEFAULT,
     type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultFieldTypeValidatorFactory,
 ) -> Type[_T]:
     ...
@@ -329,6 +333,7 @@ def datamodel(  # noqa: F811  # redefinion of unused symbol
     kw_only: bool = KW_ONLY_DEFAULT,
     slots: bool = SLOTS_DEFAULT,
     convert: bool = CONVERT_DEFAULT,
+    generic: bool = GENERIC_DEFAULT,
     type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultFieldTypeValidatorFactory,
 ) -> Union[Type[_T], Callable[[Type[_T]], Type[_T]]]:
     """Add generated special methods to classes according to the specified attributes (class decorator).
@@ -385,6 +390,7 @@ def datamodel(  # noqa: F811  # redefinion of unused symbol
         "kw_only": kw_only,
         "slots": slots,
         "convert": convert,
+        "generic": generic,
         "type_validation_factory": type_validation_factory,
     }
 
@@ -417,8 +423,8 @@ class DataModel:
         cls,
         /,
         *,
-        repr: bool
-        | Literal["inherited"] = "inherited",  # noqa: A002  # shadowing 'repr' python builtin
+        repr: bool  # noqa: A002  # shadowing 'repr' python builtin
+        | Literal["inherited"] = "inherited",
         eq: bool | Literal["inherited"] = "inherited",
         order: bool | Literal["inherited"] = "inherited",
         unsafe_hash: bool | Literal["inherited"] = "inherited",
@@ -430,6 +436,7 @@ class DataModel:
         | Literal["inherited"] = "inherited",
         **kwargs: Any,
     ) -> None:
+        generic = kwargs.pop(_GENERIC_DATAMODEL_TAG, False)
         super(DataModel, cls).__init_subclass__(
             **kwargs
         )  # type: ignore[call-arg]  # is not guaranteed that superclass does not accept kwargs
@@ -462,6 +469,7 @@ class DataModel:
         _make_datamodel(
             cls,
             slots=False,
+            generic=generic,
             **datamodel_kwargs,
             stacklevel_offset=1,
         )
@@ -780,9 +788,10 @@ def concretize(
             reference_module_globals[class_name] = concrete_cls
         elif cls_in_module and reference_module_globals[class_name] is not concrete_cls:
             warnings.warn(
-                f"Existing '{class_name}' symbol in module '{module}' contains a reference"
-                "to a different object.",
-                RuntimeWarning,
+                RuntimeWarning(
+                    f"Existing '{class_name}' symbol in module '{module}' contains a reference"
+                    "to a different object."
+                )
             )
 
     return concrete_cls
@@ -997,6 +1006,7 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
     kw_only: bool,
     slots: bool,
     convert: bool,
+    generic: bool,
     type_validation_factory: Optional[FieldTypeValidatorFactory],
     stacklevel_offset: int = 0,
 ) -> Type[_T]:
@@ -1123,7 +1133,8 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
     ):
         raise TypeError(f"'{cls.__name__}' class contains forbidden custom '__attrs_post_init__'.")
     cls.__attrs_post_init__ = _make_post_init(has_post_init="__post_init__" in cls.__dict__)  # type: ignore[attr-defined]  # adding new attribute
-    cls.__class_getitem__ = _make_data_model_class_getitem()  # type: ignore[attr-defined]  # adding new attribute
+    if generic:
+        cls.__class_getitem__ = _make_data_model_class_getitem()  # type: ignore[attr-defined]  # adding new attribute
 
     new_cls = attrs.define(  # type: ignore[attr-defined]  # attr.define is not visible for mypy
         auto_attribs=True,
@@ -1271,4 +1282,8 @@ def _make_concrete_with_cache(
 
 
 class FrozenModel(DataModel, frozen=True):
+    __slots__ = ()
+
+
+class GenericDataModel(DataModel, __GENERIC_DATAMODEL_TAG=True):
     __slots__ = ()

@@ -25,6 +25,8 @@ import re
 
 from attr import frozen
 
+from eve.datamodels.core import GenericDataModel
+
 from . import datamodels, exceptions, extended_typing as xtyping, trees, type_definitions, utils
 from .datamodels import validators as dm_validators
 from .extended_typing import (
@@ -253,21 +255,23 @@ class FrozenOpNode(OpNode, frozen=True):
     ...
 
 
-BlockNodeT = TypeVar("BlockNodeT", bound="_BaseBlockNode")
+SequenceNodeT = TypeVar("SequenceNodeT", bound="SequenceNode")
 
 
-class _BaseBlockNode(Node, Generic[_T]):
+class SequenceNode(Node, Generic[_T]):
     """Non-instantiable base class for sequence-like IR node classes."""
 
     __slots__ = ()
 
     @classmethod
-    def from_child_items(cls: Type[BlockNodeT], items: Dict[NodeKey, NodeValue]) -> BlockNodeT:
+    def from_child_items(
+        cls: Type[SequenceNodeT], items: Dict[NodeKey, NodeValue]
+    ) -> SequenceNodeT:
         # Heavily discouraged!!
         return cls.from_child_values([items[i] for i in range(items)])
 
     @classmethod
-    def from_child_values(cls: Type[BlockNodeT], values: Iterable[NodeValue]) -> BlockNodeT:
+    def from_child_values(cls: Type[SequenceNodeT], values: Iterable[NodeValue]) -> SequenceNodeT:
         return cls(values)
 
     @property
@@ -281,17 +285,17 @@ class _BaseBlockNode(Node, Generic[_T]):
         yield from iter(self)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({super(_BaseBlockNode, self).__repr__()})"
+        return f"{self.__class__.__name__}({super(SequenceNode, self).__repr__()})"
 
     def __str__(self) -> str:
-        return f"{self.__class__.__name__}({super(_BaseBlockNode, self).__str__()})"
+        return f"{self.__class__.__name__}({super(SequenceNode, self).__str__()})"
 
 
-class Block(_BaseBlockNode, List[_T]):
+class Block(SequenceNode, List[_T]):
     __slots__ = ("__annex__",)
 
 
-class FrozenBlock(_BaseBlockNode, FrozenList[_T]):
+class FrozenBlock(SequenceNode, FrozenList[_T]):
     __slots__ = ("__annex__",)
 
 
@@ -306,21 +310,21 @@ def frozenblock(*items: _T) -> FrozenBlock[_T]:
 frozen_block = frozenblock
 
 
-TableNodeT = TypeVar("TableNodeT", bound="_BaseTableNode")
+MappingNodeT = TypeVar("MappingNodeT", bound="MappingNode")
 _KeyT = TypeVar("_KeyT")
 
 
-class _BaseTableNode(Node, Generic[_KeyT, _T]):
+class MappingNode(Node, Generic[_KeyT, _T]):
     """Non-instantiable base class for mapping-like IR node classes."""
 
     __slots__ = ()
 
     @classmethod
-    def from_child_items(cls: Type[TableNodeT], items: Dict[NodeKey, NodeValue]) -> TableNodeT:
+    def from_child_items(cls: Type[MappingNodeT], items: Dict[NodeKey, NodeValue]) -> MappingNodeT:
         return cls(items)
 
     @classmethod
-    def from_child_values(cls: Type[TableNodeT], values: Iterable[NodeValue]) -> TableNodeT:
+    def from_child_values(cls: Type[MappingNodeT], values: Iterable[NodeValue]) -> MappingNodeT:
         # Heavily discouraged!!
         return cls.from_child_items({key: value for key, value in enumerate(values)})
 
@@ -335,11 +339,11 @@ class _BaseTableNode(Node, Generic[_KeyT, _T]):
         yield from self.values()
 
 
-class Table(_BaseTableNode, Dict[_KeyT, _T]):
+class Table(MappingNode, Dict[_KeyT, _T]):
     __slots__ = ("__annex__",)
 
 
-class FrozenTable(_BaseTableNode, FrozenDict[_KeyT, _T]):
+class FrozenTable(MappingNode, FrozenDict[_KeyT, _T]):
     __slots__ = ("__annex__",)
 
 

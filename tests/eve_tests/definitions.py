@@ -270,9 +270,10 @@ def make_multinode_collection_value(
 ) -> Collection[T]:
     length = length or _SEQUENCE_LEN
 
-    maker = globals()[f"make_{CaseStyleConverter.convert(node_class.__name__, 'pascal', 'snake')}"]
+    item_maker = globals()[f"make_{CaseStyleConverter.convert(node_class.__name__, 'pascal', 'snake')}"]
+    items = [item_maker(fixed=fixed) for _ in range(length)]
 
-    return collection_type([maker(fixed=fixed) for _ in range(length)])  # type: ignore
+    return collection_type(items)  # type: ignore
 
 
 # -- Node maker functions --

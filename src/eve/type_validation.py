@@ -320,7 +320,10 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
                         mapping_validator=self.make_is_instance_of(name, origin_type),
                     )
 
-            # TODO(egparedes): add support for Callables
+                # Custom generic type: create a validator for the original type ignoring the annotation
+                return make_recursive(origin_type) 
+
+            # TODO(egparedes): add support for signature checking in Callables
             raise exceptions.EveValueError(f"{type_annotation} type annotation is not supported.")
 
         except exceptions.EveValueError as error:

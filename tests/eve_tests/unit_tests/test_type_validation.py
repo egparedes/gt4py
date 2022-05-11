@@ -259,13 +259,14 @@ def test_simple_validation_particularities():
     lenient_validator(True)
 
     # not supported annotations
+    InvalidAnnotation = typing.TypeGuard[str]
     assert (
-        type_val.simple_type_validator_factory(Callable[[int], float], "value", required=False)
+        type_val.simple_type_validator_factory(InvalidAnnotation, "value", required=False)
         is None
     )
 
     with pytest.raises(ValueError, match="annotation is not supported"):
-        type_val.simple_type_validator_factory(Callable[[int], float], "value", required=True)
+        type_val.simple_type_validator_factory(InvalidAnnotation, "value", required=True)
 
     with pytest.raises(ValueError, match="annotation is not supported"):
-        type_val.simple_type_validator_factory(Callable[[int], float], "value")
+        type_val.simple_type_validator_factory(InvalidAnnotation, "value")

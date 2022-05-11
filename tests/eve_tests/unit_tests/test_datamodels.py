@@ -110,7 +110,7 @@ class AnyModelFactory(factory.Factory):
     value = ("any", "value")
 
 
-class GenericModel(datamodels.DataModel, Generic[T]):
+class GenericModel(datamodels.GenericDataModel, Generic[T]):
     value: T
 
 
