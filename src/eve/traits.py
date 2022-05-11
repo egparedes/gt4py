@@ -43,15 +43,18 @@ class SymbolNamesCollector(visitors.NodeVisitor):
     def __init__(self) -> None:
         self.collected_symbols: Dict[str, concepts.Node] = {}
 
-    def visit_Node(self, node: concepts.Node) -> None:
-        for value in node.iter_child_values():
-            if isinstance(value, concepts.SymbolName):
-                if value in self.collected_symbols:
-                    raise exceptions.EveValueError(f"Multiple definitions of symbol '{value}'")
-                self.collected_symbols[value] = node
-        if not isinstance(node, SymbolTableCreatorTrait):
-            # Stop recursion if the node opens a new scope (i.e. node with SymbolTableTrait)
-            self.generic_visit(node)
+    def visit_OpNode(self, op_node: concepts.OpNode) -> None:
+        for field_name, attribute in op_node.__datamodel_fields__.items():
+            if isinstance(attribute.type, type) and issubclass(attribute.type, concepts.SymbolName):
+                symbol_name = getattr(op_node, field_name)
+                if symbol_name in self.collected_symbols:
+                    raise exceptions.EveValueError(
+                        f"Multiple definitions of symbol '{symbol_name}'"
+                    )
+                self.collected_symbols[symbol_name] = op_node
+        if not isinstance(op_node, SymbolTableCreatorTrait):
+            # Stop recursion if the node opens a new scope (i.e. node with SymbolTableCreatorTrait)
+            self.generic_visit(op_node)
 
     @classmethod
     def apply(cls, node: concepts.Node) -> Dict[str, concepts.Node]:
@@ -68,10 +71,7 @@ class SymbolTableCreatorTrait:
     @datamodels.root_validator
     def _collect_symbol_names(cls: Type[SymbolTableCreatorTrait], node: concepts.Node) -> None:
         collected_symbols = SymbolNamesCollector.apply(node)
-        if "symtable" in node.annex:
-            node.annex.symtable.update(collected_symbols)
-        else:
-            node.annex.symtable = collected_symbols
+        node.annex.symtable = collected_symbols
 
 
 _OutT = TypeVar("_OutT", covariant=True)
@@ -82,16 +82,19 @@ class SymbolRefsValidator(visitors.NodeVisitor):
     def __init__(self) -> None:
         self.missing_symbols: Set[str] = set()
 
-    def visit_Node(self, node: concepts.Node, *, symtable: Dict[str, Any], **kwargs: Any) -> None:
-        for value in node.iter_child_values():
-            if isinstance(value, concepts.SymbolRef):
-                if value not in symtable:
-                    self.missing_symbols.add(value)
+    def visit_OpNode(
+        self, op_node: concepts.OpNode, *, symtable: Dict[str, Any], **kwargs: Any
+    ) -> None:
+        for field_name, attribute in op_node.__datamodel_fields__.items():
+            if isinstance(attribute.type, type) and issubclass(attribute.type, concepts.SymbolRef):
+                symbol_name = getattr(op_node, field_name)
+                if symbol_name not in symtable:
+                    self.missing_symbols.add(symbol_name)
 
-        if isinstance(node, SymbolTableCreatorTrait):
+        if isinstance(op_node, SymbolTableCreatorTrait):
             # Append symbols from nested scope for nested nodes
-            symtable = {**symtable, **node.annex.symtable}
-        self.generic_visit(node, symtable=symtable, **kwargs)
+            symtable = {**symtable, **op_node.annex.symtable}
+        self.generic_visit(op_node, symtable=symtable, **kwargs)
 
     @classmethod
     def apply(cls, node: concepts.Node, *, symtable: Dict[str, Any]) -> Set[str]:

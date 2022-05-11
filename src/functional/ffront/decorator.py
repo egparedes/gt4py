@@ -11,8 +11,14 @@
 # distribution for a copy of the license or check <https://www.gnu.org/licenses/>.
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
+
+
 # TODO(tehrengruber): This file contains to many different components. Split
 #  into components for each dialect.
+
+
+from __future__ import annotations
+
 import abc
 import collections
 import dataclasses
@@ -265,7 +271,7 @@ def program(
     *,
     externals=None,
     backend=None,
-):
+) -> Program | Callable[[types.FunctionType], Program]:
     """
     Generate an implementation of a program from a Python function object.
 

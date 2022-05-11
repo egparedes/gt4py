@@ -14,7 +14,7 @@
 
 import re
 
-from eve import datamodels
+from eve import datamodels, SymbolName
 from eve.concepts import Block, OpNode, SourceLocation, SymbolName, SymbolRef, Table
 from eve.extended_typing import Any, Generic, Literal, Optional, TypeVar, Union
 from eve.traits import SymbolTableCreatorTrait
@@ -25,8 +25,8 @@ class LocatedNode(OpNode, kw_only=True):
     location: SourceLocation
 
 
-class SymbolName(SymbolName):
-    regex = re.compile(r"^[a-zA-Z_][\w$]*$")
+# class SymbolName(SymbolName):
+#     regex = re.compile(r"^[a-zA-Z_][\w$]*$")
 
 
 SymbolT = TypeVar("SymbolT", bound=common_types.SymbolType)
