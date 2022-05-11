@@ -941,7 +941,7 @@ def _make_type_converter(type_annotation: Type[_T], name: str) -> TypeConverter[
                 return value if isinstance(value, type_annotation) else type_annotation(value)
             except Exception as error:
                 raise TypeError(
-                    f"Error during coertion of given value {value} for field '{name}'."
+                    f"Error during coertion of given value '{value}' for field '{name}'."
                 ) from error
 
         return _type_converter
@@ -1021,7 +1021,7 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
         type_hint = annotations[key] = resolved_annotations[key]
         if xtyping.get_origin(type_hint) is not ClassVar:
             type_validator = (
-                type_validation_factory(type_hint, key)
+                type_validation_factory(type_hint, f"{cls.__name__}.{key}")
                 if type_validation_factory is not None
                 else None
             )

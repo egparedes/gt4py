@@ -347,7 +347,7 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
         def _is_instance_of(value: Any, **kwargs: Any) -> None:
             if not isinstance(value, type_):
                 raise TypeError(
-                    f"'{name}' must be {type_} (got '{value}' that is a {type(value)})."
+                    f"'{name}' must be {type_} (got '{value}' which is a {type(value)})."
                 )
 
         return _is_instance_of
@@ -358,7 +358,7 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
 
         def _is_instance_of_int(value: Any, **kwargs: Any) -> None:
             if not isinstance(value, int) or isinstance(value, bool):
-                raise TypeError(f"'{name}' must be {int} (got '{value}' that is a {type(value)}).")
+                raise TypeError(f"'{name}' must be {int} (got '{value}' which is a {type(value)}).")
 
         return _is_instance_of_int
 
@@ -392,7 +392,7 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
         def _is_tuple_of(value: Any, **kwargs: Any) -> None:
             if not isinstance(value, tuple_type):
                 raise TypeError(
-                    f"In '{name}' validation, got '{value}' that is a {type(value)} instead of {tuple_type}."
+                    f"In '{name}' validation, got '{value}' which is a {type(value)} instead of {tuple_type}."
                 )
             if len(value) != len(item_validators):
                 raise TypeError(

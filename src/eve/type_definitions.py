@@ -115,6 +115,9 @@ class ConstrainedStr(str):
             )
         cls.regex = regex
 
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({super().__repr__()})"
+
 
 # class IntRange(NamedTuple):
 #     start: Optional[int] = None

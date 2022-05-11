@@ -414,7 +414,7 @@ def test_default_values():
     class WrongModel:
         bool_value: bool = 1
 
-    with pytest.raises(TypeError, match="'bool_value'"):
+    with pytest.raises(TypeError, match="'WrongModel.bool_value'"):
         WrongModel()
 
 
@@ -433,7 +433,7 @@ def test_default_factories():
     class WrongModel:
         list_value: List[int] = datamodels.field(default_factory=tuple)
 
-    with pytest.raises(TypeError, match="'list_value'"):
+    with pytest.raises(TypeError, match="'WrongModel.list_value'"):
         WrongModel()
 
 
@@ -488,7 +488,7 @@ class Model:
         Model(value=value)
 
     for value in wrong_values:
-        with pytest.raises((TypeError, ValueError), match="'value'"):
+        with pytest.raises((TypeError, ValueError), match="'Model.value'"):
             Model(value=value)
 
 
@@ -1008,9 +1008,9 @@ def test_basic_generic_field_type_validation():
     PartialGenericModel(value=[1.0, "value"])
     PartialGenericModel(value=[(1.0, "value")])
     PartialGenericModel(value=[None])
-    with pytest.raises(TypeError, match="'value'"):
+    with pytest.raises(TypeError, match="'PartialGenericModel.value'"):
         PartialGenericModel(value=1)
-    with pytest.raises(TypeError, match="'value'"):
+    with pytest.raises(TypeError, match="'PartialGenericModel.value'"):
         PartialGenericModel(value=(1, 2))
 
 
@@ -1027,5 +1027,5 @@ def test_concrete_field_type_validation(
         Model(value=value)
 
     for value in wrong_values:
-        with pytest.raises((TypeError, ValueError), match="'value'"):
+        with pytest.raises((TypeError, ValueError), match=".value'"):
             Model(value=value)
