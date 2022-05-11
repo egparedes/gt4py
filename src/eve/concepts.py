@@ -284,11 +284,14 @@ class SequenceNode(Node, Generic[_T]):
     def iter_child_values(self) -> Generator[_T, None, None]:
         yield from iter(self)
 
+    def __getitem__(self, key: int | slice) -> _T:
+        if isinstance(key, slice):
+            return self.__class__(super().__getitem__(key))
+        else:
+            return super().__getitem__(key)
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({super(SequenceNode, self).__repr__()})"
-
-    def __str__(self) -> str:
-        return f"{self.__class__.__name__}({super(SequenceNode, self).__str__()})"
 
 
 class Block(SequenceNode, List[_T]):
@@ -337,6 +340,9 @@ class MappingNode(Node, Generic[_KeyT, _T]):
 
     def iter_child_values(self) -> Generator[_T, None, None]:
         yield from self.values()
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({super(MappingNode, self).__repr__()})"
 
 
 class Table(MappingNode, Dict[_KeyT, _T]):

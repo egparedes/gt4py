@@ -22,7 +22,7 @@ from functional.iterator.backends.gtfn.gtfn_ir import (
 )
 
 
-class GTFN_lowering(NodeTranslator):
+class GTFNLowering(NodeTranslator):
     _binary_op_map = {
         "plus": "+",
         "minus": "-",

@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import enum
-from typing import List, Union
+from typing import Union
 
 import eve
 from eve import OpNode, SymbolName, SymbolRef, datamodels
@@ -17,7 +19,7 @@ class GridType(StrEnum):
 
 
 class Sym(OpNode):  # helper
-    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
+    id: SymbolName = datamodels.coerced_field()  # noqa: A003
 
 
 class Expr(OpNode):
@@ -51,28 +53,28 @@ class OffsetLiteral(Expr):
 
 
 class SymRef(Expr):
-    id: SymbolRef = datamodels.field(converter=True)  # noqa: A003
+    id: SymbolRef = datamodels.coerced_field()  # noqa: A003
 
 
 class Lambda(Expr, SymbolTableCreatorTrait):
-    params: List[Sym]
+    params: eve.Block[Sym] = datamodels.coerced_field()
     expr: Expr
 
 
 class FunCall(Expr):
     fun: Expr  # VType[Callable]
-    args: List[Expr]
+    args: eve.Block[Expr] = datamodels.coerced_field()
 
 
 class TemplatedFunCall(Expr):
     fun: Expr  # VType[Callable]
-    template_args: List[Expr]
-    args: List[Expr]
+    template_args: eve.Block[Expr] = datamodels.coerced_field()
+    args: eve.Block[Expr] = datamodels.coerced_field()
 
 
 class FunctionDefinition(OpNode, SymbolTableCreatorTrait):
-    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
-    params: List[Sym]
+    id: SymbolName = datamodels.coerced_field()  # noqa: A003
+    params: eve.Block[Sym] = datamodels.coerced_field()
     expr: Expr
 
 
@@ -84,28 +86,30 @@ class StencilExecution(OpNode):
     backend: Backend
     stencil: SymRef  # TODO should be list of assigns for canonical `scan`
     output: SymRef
-    inputs: List[SymRef]
+    inputs: eve.Block[SymRef] = datamodels.coerced_field()
+
+
+BUILTINS = {
+    "deref",
+    "shift",
+    "tuple",
+    "get",
+    "can_deref",
+    "domain",  # TODO(havogt) decide if domain is part of IR
+    "named_range",
+}
 
 
 class FencilDefinition(OpNode, eve.traits.SymbolTableTrait):
-    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
-    params: List[Sym]
-    function_definitions: List[FunctionDefinition]
-    executions: List[StencilExecution]
-    offset_declarations: List[str]
+    id: SymbolName = datamodels.coerced_field()  # noqa: A003
+    params: eve.Block[Sym] = datamodels.coerced_field()
+    function_definitions: eve.Block[FunctionDefinition] = datamodels.coerced_field()
+    executions: eve.Block[StencilExecution] = datamodels.coerced_field()
+    offset_declarations: eve.Block[str] = datamodels.coerced_field()
     grid_type: GridType
 
-    builtin_functions = list(
-        Sym(id=name)
-        for name in [
-            "deref",
-            "shift",
-            "tuple",
-            "get",
-            "can_deref",
-            "domain",  # TODO(havogt) decide if domain is part of IR
-            "named_range",
-        ]
+    builtin_functions: eve.FrozenBlock[Sym] = datamodels.field(
+        default=eve.frozenblock(*(Sym(id=name) for name in BUILTINS)), repr=False
     )
 
     # _validate_symbol_refs = validate_symbol_refs()

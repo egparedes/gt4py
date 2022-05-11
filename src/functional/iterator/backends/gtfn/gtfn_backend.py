@@ -4,7 +4,7 @@ import functional.iterator.ir as itir
 from eve.utils import UIDs
 from functional.iterator.backends.backend import register_backend
 from functional.iterator.backends.gtfn.codegen import GTFNCodegen
-from functional.iterator.backends.gtfn.itir_to_gtfn_ir import GTFN_lowering
+from functional.iterator.backends.gtfn.itir_to_gtfn_ir import GTFNLowering
 from functional.iterator.embedded import NeighborTableOffsetProvider
 from functional.iterator.transforms.common import add_fundefs, replace_nodes
 from functional.iterator.transforms.extract_function import extract_function
@@ -44,7 +44,7 @@ def generate(program: itir.FencilDefinition, *, grid_type: str, **kwargs: Any) -
         unroll_reduce=True,
     )
     transformed = extract_fundefs_from_closures(transformed)
-    gtfn_ir = GTFN_lowering().visit(transformed, grid_type=grid_type)
+    gtfn_ir = GTFNLowering().visit(transformed, grid_type=grid_type)
     generated_code = GTFNCodegen.apply(gtfn_ir, **kwargs)
     return generated_code
     # TODO: re-enable clang-format once we have CSE

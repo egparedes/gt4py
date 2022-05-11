@@ -101,6 +101,7 @@ class FencilDefinition(Node, eve.traits.SymbolTableTrait):
     id: eve.SymbolName = datamodels.coerced_field()  # noqa: A003
 
     function_definitions: eve.Block[FunctionDefinition] = datamodels.coerced_field()
+    
     params: eve.Block[Sym] = datamodels.coerced_field()
     closures: eve.Block[StencilClosure] = datamodels.coerced_field()
 
