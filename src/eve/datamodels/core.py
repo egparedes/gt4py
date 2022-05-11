@@ -559,6 +559,9 @@ def field(
     )
 
 
+coerced_field = functools.partial(field, converter=True)
+
+
 def validator(name: str) -> Callable[[FieldValidator], FieldValidator]:
     """Define a custom field validator for a specific field (decorator function).
 

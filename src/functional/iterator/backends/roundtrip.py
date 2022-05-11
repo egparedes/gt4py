@@ -88,7 +88,6 @@ def executor(ir: Node, *args, **kwargs):
     ir = apply_common_transforms(
         ir, use_tmps=use_tmps, offset_provider=kwargs["offset_provider"], register_tmp=register_tmp
     )
-
     program = EmbeddedDSL.apply(ir)
     wrapper = WrapperGenerator.apply(ir, tmps=tmps)
     offset_literals: Iterable[str] = (
