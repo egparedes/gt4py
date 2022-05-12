@@ -61,8 +61,8 @@ from .visitors import NodeVisitor
 
 SourceFormatter = Callable[[str], str]
 
-#: Global dict storing registered formatters.
 SOURCE_FORMATTERS: Dict[str, SourceFormatter] = {}
+"""Global dict storing registered formatters."""
 
 
 class FormatterNameError(exceptions.EveRuntimeError):

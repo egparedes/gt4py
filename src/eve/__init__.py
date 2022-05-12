@@ -53,7 +53,7 @@ from .concepts import (
     frozentable,
     table,
 )
-from .datamodels import DataModel, concretize, datamodel, field
+from .datamodels import Coerced, DataModel, concretize, datamodel, field
 from .exceptions import EveError, EveRuntimeError, EveTypeError, EveValueError
 from .traits import SymbolTableCreatorTrait, VisitorWithSymbolTableTrait
 from .type_definitions import NOTHING, ConstrainedStr, IntEnum, NothingType, StrEnum

@@ -246,6 +246,17 @@ else:
         return isinstance(obj, type)
 
 
+def is_generic(obj: Any) -> bool:
+    """Return ``True`` if obj is a generic class or an instance of a generic class."""
+    cls = obj if isinstance(obj, type) else obj.__class__
+    return issubclass(cls, Generic)
+
+
+def has_type_parameters(cls: Type) -> bool:
+    """Return ``True`` if obj is a generic class with type parameters."""
+    return issubclass(cls, Generic) and len(getattr(cls, "__parameters__", [])) > 0
+
+
 def get_actual_type(obj: _T) -> Type[_T]:
     """Return type of an object (also working for GenericAlias instances which pretend to be an actual type)."""
     return StdGenericAliasType if isinstance(obj, StdGenericAliasType) else type(obj)

@@ -100,6 +100,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 import sys
+import typing
 import warnings
 
 import attr
@@ -193,14 +194,25 @@ TypeConverter = Callable[[Any], _T]
 
 # Implementation
 _DATAMODEL_TAG: Final = "__DATAMODEL_TAG"
-_GENERIC_DATAMODEL_TAG: Final = "__GENERIC_DATAMODEL_TAG"
 _FIELD_VALIDATOR_TAG: Final = "__DATAMODEL_FIELD_VALIDATOR_TAG"
 _ROOT_VALIDATOR_TAG: Final = "__DATAMODEL_ROOT_VALIDATOR_TAG"
+_COERCED_TYPE_TAG: Final = "__DATAMODEL_COERCED_TYPE_TAG"
+_UNCHECKED_TYPE_TAG: Final = "__DATAMODEL_UNCHECKED_TYPE_TAG"
 
+_DM_OPTS = "__dm_opts"
+_GENERIC_DATAMODEL_ROOT_DM_OPT: Final = "_GENERIC_DATAMODEL_ROOT_DM_OPT"
 
 MODEL_FIELD_DEFINITIONS_ATTR: Final = "__datamodel_fields__"
 MODEL_PARAM_DEFINITIONS_ATTR: Final = "__datamodel_params__"
 MODEL_ROOT_VALIDATORS_ATTR: Final = "__datamodel_root_validators__"
+
+
+Coerced = xtyping.Annotated[_T, _COERCED_TYPE_TAG]
+"""Type hint marker to define fields that should be coerced at initialization."""
+
+
+Unchecked = xtyping.Annotated[_T, _UNCHECKED_TYPE_TAG]
+"""Type hint marker to define fields that should NOT be type-checked at initialization."""
 
 
 if sys.version_info >= (3, 10):
@@ -217,11 +229,11 @@ class ForwardRefValidator:
     and then create the actual type validator for the field.
     """
 
-    #: Type factory used to create the actual field validator.
     factory: type_val.TypeValidatorFactory
+    """Type factory used to create the actual field validator."""
 
-    #: Actual type validator created after resolving the forward references.
     validator: Union[type_val.FixedTypeValidator, None, NothingType] = NOTHING
+    """Actual type validator created after resolving the forward references."""
 
     def __call__(self, instance: DataModelTP, attribute: attr.Attribute, value: Any) -> None:
         if self.validator is NOTHING:
@@ -261,12 +273,10 @@ def field_type_validator_factory(
 
 simple_type_validator_factory = field_type_validator_factory(type_val.simple_type_validator_factory)
 
-#: Default type validator factory used by datamodels classes.
-#: `None` by default if running in optimized mode.
 DefaultFieldTypeValidatorFactory: Final[Optional[FieldTypeValidatorFactory]] = (
     simple_type_validator_factory if __debug__ else None
 )
-
+"""Default type validator factory used by datamodels classes. `None` by default if running in optimized mode."""
 
 REPR_DEFAULT: Final = True
 EQ_DEFAULT: Final = True
@@ -276,7 +286,7 @@ FROZEN_DEFAULT: Final = False
 MATCH_ARGS_DEFAULT: Final = True
 KW_ONLY_DEFAULT: Final = False
 SLOTS_DEFAULT: Final = False
-CONVERT_DEFAULT: Final = False
+COERCE_DEFAULT: Final = False
 GENERIC_DEFAULT: Final = False
 
 
@@ -293,7 +303,7 @@ def datamodel(
     match_args: bool = MATCH_ARGS_DEFAULT,
     kw_only: bool = KW_ONLY_DEFAULT,
     slots: bool = SLOTS_DEFAULT,
-    convert: bool = CONVERT_DEFAULT,
+    coerce: bool = COERCE_DEFAULT,
     generic: bool = GENERIC_DEFAULT,
     type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultFieldTypeValidatorFactory,
 ) -> Callable[[Type[_T]], Type[_T]]:
@@ -313,7 +323,7 @@ def datamodel(  # noqa: F811  # redefinion of unused symbol
     match_args: bool = MATCH_ARGS_DEFAULT,
     kw_only: bool = KW_ONLY_DEFAULT,
     slots: bool = SLOTS_DEFAULT,
-    convert: bool = CONVERT_DEFAULT,
+    coerce: bool = COERCE_DEFAULT,
     generic: bool = GENERIC_DEFAULT,
     type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultFieldTypeValidatorFactory,
 ) -> Type[_T]:
@@ -332,7 +342,7 @@ def datamodel(  # noqa: F811  # redefinion of unused symbol
     match_args: bool = MATCH_ARGS_DEFAULT,
     kw_only: bool = KW_ONLY_DEFAULT,
     slots: bool = SLOTS_DEFAULT,
-    convert: bool = CONVERT_DEFAULT,
+    coerce: bool = COERCE_DEFAULT,
     generic: bool = GENERIC_DEFAULT,
     type_validation_factory: Optional[FieldTypeValidatorFactory] = DefaultFieldTypeValidatorFactory,
 ) -> Union[Type[_T], Callable[[Type[_T]], Type[_T]]]:
@@ -374,8 +384,11 @@ def datamodel(  # noqa: F811  # redefinion of unused symbol
             ``__init__`` (if ``init`` is ``False``, this parameter is ignored).
         slots: slots: If ``True`` (the default is ``False``), ``__slots__`` attribute will be generated
             and a new slotted class will be returned instead of the original one.
-        convert: If ``True`` (default is ``False``), an automatic type converter will be generated
+        coerce: If ``True`` (default is ``False``), an automatic type converter will be generated
             for all fields.
+        generic: If ``True`` (default is ``False``) the class should be a ``Generic[]`` class,
+            and the generated Data Model will support creation of new Data Model subclasses
+            when using concrete types as arguments of ``DataModelClass[some_concret_type]``.
         type_validation_factory: Type validation factory used to build the field type validators.
             If ``None``, type validators will not be generators.
 
@@ -389,19 +402,25 @@ def datamodel(  # noqa: F811  # redefinion of unused symbol
         "match_args": match_args,
         "kw_only": kw_only,
         "slots": slots,
-        "convert": convert,
+        "coerce": coerce,
         "generic": generic,
         "type_validation_factory": type_validation_factory,
     }
 
-    if cls is None:  # called as @datamodel()
+    if cls is None:  # called as: @datamodel()
         return functools.partial(_make_datamodel, **datamodel_options)
-    else:  # called as @datamodel
+    else:  # called as: @datamodel
         return _make_datamodel(
             cls,
-            stacklevel_offset=1,
+            _stacklevel_offset=1,
             **datamodel_options,  # type: ignore[arg-type]
         )
+
+
+frozenmodel = functools.partial(datamodel, frozen=True)
+"""Data Model definition function using ``frozen=True``."""
+
+frozen_model = frozenmodel
 
 
 class DataModel:
@@ -431,16 +450,21 @@ class DataModel:
         frozen: bool | Literal["strict", "inherited"] = "inherited",
         match_args: bool | Literal["inherited"] = "inherited",
         kw_only: bool | Literal["inherited"] = "inherited",
-        convert: bool | Literal["inherited"] = "inherited",
+        coerce: bool | Literal["inherited"] = "inherited",
         type_validation_factory: Optional[FieldTypeValidatorFactory]
         | Literal["inherited"] = "inherited",
         **kwargs: Any,
     ) -> None:
-        generic = kwargs.pop(_GENERIC_DATAMODEL_TAG, False)
+        dm_opts = kwargs.pop(_DM_OPTS, [])
         super(DataModel, cls).__init_subclass__(
             **kwargs
         )  # type: ignore[call-arg]  # is not guaranteed that superclass does not accept kwargs
         cls_params = getattr(cls, MODEL_PARAM_DEFINITIONS_ATTR, None)
+
+        if _GENERIC_DATAMODEL_ROOT_DM_OPT in dm_opts:
+            generic = "True_no_checks"
+        else:
+            generic = getattr(cls_params, "generic", False)
 
         locals_ = locals()
         datamodel_kwargs = {}
@@ -452,14 +476,12 @@ class DataModel:
             ("frozen", FROZEN_DEFAULT),
             ("match_args", MATCH_ARGS_DEFAULT),
             ("kw_only", KW_ONLY_DEFAULT),
-            ("convert", CONVERT_DEFAULT),
+            ("coerce", COERCE_DEFAULT),
             ("type_validation_factory", DefaultFieldTypeValidatorFactory),
         ]:
             arg_value = locals_[arg_name]
             if arg_value == "inherited":
-                datamodel_kwargs[arg_name] = (
-                    default_value if cls_params is None else getattr(cls_params, arg_name)
-                )
+                datamodel_kwargs[arg_name] = getattr(cls_params, arg_name, default_value)
             else:
                 datamodel_kwargs[arg_name] = arg_value
 
@@ -471,7 +493,7 @@ class DataModel:
             slots=False,
             generic=generic,
             **datamodel_kwargs,
-            stacklevel_offset=1,
+            _stacklevel_offset=1,
         )
 
 
@@ -485,7 +507,7 @@ def field(
     compare: bool = True,
     metadata: Optional[Mapping[Any, Any]] = None,
     kw_only: bool = KW_ONLY_DEFAULT,
-    converter: Callable[[Any], Any] | Literal[True] | None = None,
+    converter: Callable[[Any], Any] | Literal["coerce"] | None = None,
     validator: AttrsValidator
     | FieldValidator
     | Sequence[AttrsValidator | FieldValidator]
@@ -520,7 +542,7 @@ def field(
         converter: Callable that is automatically called to convert attribute’s value.
             It is given the passed-in value, and the returned value will be used as the
             new value of the attribute before being passed to the validator, if any.
-            If ``True``, a naive coercer converter will be generated.
+            If ``"coerce"`` is passed, a naive coercer converter will be generated.
         validator: FieldValidator or list of FieldValidators to be used with this field.
             (Note that validators can also be set using decorator notation).
 
@@ -559,7 +581,8 @@ def field(
     )
 
 
-coerced_field = functools.partial(field, converter=True)
+coerced_field = functools.partial(field, converter="coerce")
+"""Field definition function using ``converter="coerce"``."""
 
 
 def validator(name: str) -> Callable[[FieldValidator], FieldValidator]:
@@ -605,12 +628,10 @@ def is_datamodel(obj: Any) -> bool:
     return hasattr(cls, MODEL_FIELD_DEFINITIONS_ATTR)
 
 
-def is_generic(model: Union[DataModelTP, Type[DataModelTP]]) -> bool:
-    """Return True if `model` is a generic Data Model class or an instance of a generic Data Model."""
-    if not is_datamodel(model):
-        raise TypeError(f"Invalid datamodel instance or class: '{model}'.")
-
-    return len(getattr(model, "__parameters__", [])) > 0
+def is_generic_datamodel_class(cls: Type) -> bool:
+    """Return ``True`` if `obj` is a generic Data Model class with type parameters."""
+    assert isinstance(cls, type)
+    return is_datamodel(cls) and xtyping.has_type_parameters(cls)
 
 
 def get_fields(model: Union[DataModelTP, Type[DataModelTP]]) -> utils.FrozenNamespace:
@@ -692,12 +713,11 @@ def astuple(instance: DataModelTP) -> Tuple[Any, ...]:
     return attrs.astuple(instance, recurse=True)
 
 
-#: Create a new instance, based on inst with changes applied.
 evolve = attrs.evolve
+"""Create a new instance, based on inst with changes applied."""
 
-#: Validate all attributes on inst that have a validator.
 validate = attrs.validate
-
+"""Validate all attributes on inst that have a validator."""
 
 _DataModelT = TypeVar("_DataModelT", bound=DataModelTP)
 
@@ -997,7 +1017,7 @@ _FROZEN_COLLECTIONS_CHANGES: Final = {
 }
 
 
-def _make_datamodel(  # noqa: C901  # too complex but still readable
+def _make_datamodel(  # noqa: C901  # too complex but still readable and documented
     cls: Type[_T],
     *,
     repr: bool,  # noqa: A002   # shadowing 'repr' python builtin
@@ -1008,10 +1028,10 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
     match_args: bool,
     kw_only: bool,
     slots: bool,
-    convert: bool,
-    generic: bool,
+    coerce: bool,
+    generic: bool | Literal["True_no_checks"],
     type_validation_factory: Optional[FieldTypeValidatorFactory],
-    stacklevel_offset: int = 0,
+    _stacklevel_offset: int = 0,
 ) -> Type[_T]:
     """Actual implementation of the Data Model creation.
 
@@ -1024,6 +1044,7 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
         cls.__annotations__ = {}
     annotations = cls.__dict__["__annotations__"]
     resolved_annotations = xtyping.get_partial_type_hints(cls)
+    annotations_with_extras = xtyping.get_partial_type_hints(cls, include_extras=True)
 
     frozen, strict_frozen = (True, True) if frozen == "strict" else (frozen, False)
 
@@ -1033,34 +1054,47 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
     for key in annotations:
         type_hint = annotations[key] = resolved_annotations[key]
         if xtyping.get_origin(type_hint) is not ClassVar:
-            type_validator = (
-                type_validation_factory(type_hint, f"{cls.__name__}.{key}")
-                if type_validation_factory is not None
-                else None
-            )
+            if xtyping.get_origin(annotations_with_extras[key]) == xtyping.Annotated:
+                _, *type_extras = xtyping.get_args(annotations_with_extras[key])
+            else:
+                type_extras = ()
 
+            coerce_field = coerce or _COERCED_TYPE_TAG in type_extras
+            qual_key = f"{cls.__name__}.{key}"
+
+            # Create type validator if validation is enabled
+            if type_validation_factory is None or _UNCHECKED_TYPE_TAG in type_extras:
+                type_validator = None
+            else:
+                type_validator = type_validation_factory(type_hint, qual_key)
+
+            # Declare an attrs.field() for this field with the right options.
+            # There are different cases depending on the current value of the attribute in the class dict.
             attr_value_in_cls = cls.__dict__.get(key, NOTHING)
             if isinstance(attr_value_in_cls, attr._make._CountingAttr):
-                # A field() function has been used to customize the definition of the field.
-                # Here we need to:
+                # A field() function has already been used to customize the definition of the field.
+                # In this case, we need to:
                 #  - prepend the type validator to the list of provided validators (if any)
-                #  - add the converter if the field needs to be converted and there is not another converter
+                #  - add the converter if the field needs to be converted and another custom converter
+                #      has not been defined
                 attr_value_in_cls._validator = (
                     type_validator
                     if attr_value_in_cls._validator is None
                     else attr._make.and_(type_validator, attr_value_in_cls._validator)  # type: ignore[attr-defined]  # attr._make is not visible for mypy
                 )
-                if attr_value_in_cls.converter is True or (
-                    convert and attr_value_in_cls.converter is None
-                ):
-                    attr_value_in_cls.converter = _make_type_converter(type_hint, key)
-                elif convert:
-                    raise TypeError(
-                        f"Impossible to add automatic type converter to field '{key}' with custom converter."
-                    )
+                coerce_field = coerce_field or attr_value_in_cls.converter == "coerce"
+                if coerce_field:
+                    if attr_value_in_cls.converter in (None, "coerce"):
+                        attr_value_in_cls.converter = _make_type_converter(type_hint, qual_key)
+                    else:
+                        raise TypeError(
+                            f"Impossible to add automatic type converter to field '{qual_key}' "
+                            "which already defines a custom converter."
+                        )
 
             else:
-                converter = _make_type_converter(type_hint, key) if convert else None
+                # Create field converter if automatic coertion is enabled
+                converter = _make_type_converter(type_hint, qual_key) if coerce_field else None
                 if attr_value_in_cls is NOTHING:
                     # The field has no definition in the class dict, it's only an annotation
                     setattr(
@@ -1075,7 +1109,7 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
                         warnings.warn(
                             f"'{attr_value_in_cls.__class__.__name__}' value used as default in '{cls.__name__}.{key}'.\n"
                             "Mutable types should not defbe normally used as field defaults (use 'default_factory' instead).",
-                            stacklevel=stacklevel_offset + 2,
+                            stacklevel=_stacklevel_offset + 2,
                         )
                     setattr(
                         cls,
@@ -1136,8 +1170,18 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
     ):
         raise TypeError(f"'{cls.__name__}' class contains forbidden custom '__attrs_post_init__'.")
     cls.__attrs_post_init__ = _make_post_init(has_post_init="__post_init__" in cls.__dict__)  # type: ignore[attr-defined]  # adding new attribute
+
     if generic:
-        cls.__class_getitem__ = _make_data_model_class_getitem()  # type: ignore[attr-defined]  # adding new attribute
+        if generic == "True_no_checks":
+            # For the root GenericDataModel class, only set the attribute in __datamodel_params__ to True
+            generic = True
+        else:
+            # For any other subclass, add the proper __class_getitem__ method
+            if not issubclass(cls, (typing.Generic, xtyping.Generic)):
+                raise TypeError(
+                    f"'{cls.__name__}' cannot be converted to a GenericDataModel because it is not a generic class."
+                )
+            cls.__class_getitem__ = _make_data_model_class_getitem()  # type: ignore[attr-defined]  # adding new attribute
 
     new_cls = attrs.define(  # type: ignore[attr-defined]  # attr.define is not visible for mypy
         auto_attribs=True,
@@ -1178,7 +1222,6 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
         new_cls,
         MODEL_PARAM_DEFINITIONS_ATTR,
         utils.FrozenNamespace(
-            init=True,
             repr=repr,
             eq=eq,
             order=order,
@@ -1188,7 +1231,8 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable
             match_args=match_args,
             kw_only=kw_only,
             slots=slots,
-            convert=convert,
+            coerce=coerce,
+            generic=generic,
             type_validation_factory=type_validation_factory,
         ),
     )
@@ -1213,7 +1257,7 @@ def _make_concrete_with_cache(
     class_name: Optional[str] = None,
     module: Optional[str] = None,
 ) -> Type[DataModelTP]:
-    if not is_generic(datamodel_cls):
+    if not is_generic_datamodel_class(datamodel_cls):
         raise TypeError(f"'{datamodel_cls.__name__}' is not a generic model class.")
     for t in type_args:
         if not (
@@ -1288,5 +1332,5 @@ class FrozenModel(DataModel, frozen=True):
     __slots__ = ()
 
 
-class GenericDataModel(DataModel, __GENERIC_DATAMODEL_TAG=True):
+class GenericDataModel(DataModel, __dm_opts=[_GENERIC_DATAMODEL_ROOT_DM_OPT]):
     __slots__ = ()

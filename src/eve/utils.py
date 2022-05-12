@@ -570,10 +570,10 @@ class UIDGenerator:
         else dataclasses.field(default=None)
     )
 
-    #: Constantly increasing counter for generation of sequential unique ids
     _counter: Iterator[int] = dataclasses.field(
         default_factory=functools.partial(itertools.count, 1), init=False
     )
+    """Constantly increasing counter for generation of sequential unique ids."""
 
     def random_id(self, *, prefix: Optional[str] = None, width: Optional[int] = None) -> str:
         """Generate a random globally unique id."""

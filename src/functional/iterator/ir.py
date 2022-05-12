@@ -1,7 +1,7 @@
 from typing import List, Union
 
 import eve
-from eve import datamodels, frozenblock
+from eve import Coerced, datamodels, frozenblock
 
 # from eve.concepts import Block, SymbolName, SymbolRef
 from eve.traits import SymbolTableCreatorTrait
@@ -20,7 +20,7 @@ class Node(eve.OpNode):
 
 
 class Sym(Node):  # helper
-    id: eve.SymbolName = datamodels.coerced_field()  # noqa: A003
+    id: Coerced[eve.SymbolName]  # noqa: A003
 
 
 @noninstantiable
@@ -46,22 +46,22 @@ class AxisLiteral(Expr):
 
 
 class SymRef(Expr):
-    id: eve.SymbolRef = datamodels.coerced_field()  # noqa: A003
+    id: Coerced[eve.SymbolRef]  # noqa: A003
 
 
 class Lambda(Expr, SymbolTableCreatorTrait):
-    params: eve.Block[Sym] = datamodels.coerced_field()
+    params: Coerced[eve.Block[Sym]]
     expr: Expr
 
 
 class FunCall(Expr):
     fun: Expr  # VType[Callable]
-    args: eve.Block[Expr] = datamodels.coerced_field()
+    args: Coerced[eve.Block[Expr]]
 
 
 class FunctionDefinition(Node, SymbolTableCreatorTrait):
-    id: eve.SymbolName = datamodels.coerced_field()  # noqa: A003
-    params: eve.Block[Sym] = datamodels.coerced_field()
+    id: Coerced[eve.SymbolName]  # noqa: A003
+    params: Coerced[eve.Block[Sym]]
     expr: Expr
 
 
@@ -69,7 +69,7 @@ class StencilClosure(Node):
     domain: Expr
     stencil: Expr
     output: SymRef  # we could consider Expr for cases like make_tuple(out0,out1)
-    inputs: eve.Block[SymRef] = datamodels.coerced_field()
+    inputs: Coerced[eve.Block[SymRef]]
 
 
 BUILTINS = {
@@ -98,12 +98,12 @@ BUILTINS = {
 
 
 class FencilDefinition(Node, eve.traits.SymbolTableTrait):
-    id: eve.SymbolName = datamodels.coerced_field()  # noqa: A003
+    id: Coerced[eve.SymbolName]  # noqa: A003
 
-    function_definitions: eve.Block[FunctionDefinition] = datamodels.coerced_field()
-    
-    params: eve.Block[Sym] = datamodels.coerced_field()
-    closures: eve.Block[StencilClosure] = datamodels.coerced_field()
+    function_definitions: Coerced[eve.Block[FunctionDefinition]]
+
+    params: Coerced[eve.Block[Sym]]
+    closures: Coerced[eve.Block[StencilClosure]]
 
     builtin_functions: eve.FrozenBlock[Sym] = datamodels.field(
         default=eve.frozenblock(*(Sym(id=name) for name in BUILTINS)), repr=False

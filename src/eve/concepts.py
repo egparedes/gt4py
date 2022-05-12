@@ -366,5 +366,5 @@ frozen_table = frozentable
 
 class VType(datamodels.FrozenModel):
 
-    #: Unique name
+    # Unique name
     name: str

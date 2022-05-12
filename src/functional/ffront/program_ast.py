@@ -14,7 +14,7 @@
 
 import re
 
-from eve import datamodels, SymbolName
+from eve import Coerced, SymbolName, datamodels
 from eve.concepts import Block, OpNode, SourceLocation, SymbolName, SymbolRef, Table
 from eve.extended_typing import Any, Generic, Literal, Optional, TypeVar, Union
 from eve.traits import SymbolTableCreatorTrait
@@ -33,7 +33,7 @@ SymbolT = TypeVar("SymbolT", bound=common_types.SymbolType)
 
 
 class Symbol(LocatedNode, Generic[SymbolT]):
-    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
+    id: Coerced[SymbolName]  # noqa: A003
     type: Union[SymbolT, common_types.DeferredSymbolType]  # noqa A003
     namespace: common_types.Namespace = common_types.Namespace(common_types.Namespace.LOCAL)
 
@@ -56,13 +56,13 @@ class Expr(LocatedNode):
 
 
 class Name(Expr):
-    id: SymbolRef = datamodels.field(converter=True)  # noqa: A003
+    id: Coerced[SymbolRef]  # noqa: A003
 
 
 class Call(Expr):
     func: Name
-    args: Block[Expr] = datamodels.field(converter=True)
-    kwargs: Table[str, Expr] = datamodels.field(converter=True)
+    args: Coerced[Block[Expr]]
+    kwargs: Coerced[Table[str, Expr]]
 
 
 class Subscript(Expr):
@@ -71,7 +71,7 @@ class Subscript(Expr):
 
 
 class TupleExpr(Expr):
-    elts: Block[Expr] = datamodels.field(converter=True)
+    elts: Coerced[Block[Expr]]
 
 
 class Constant(Expr):
@@ -89,7 +89,7 @@ class Stmt(LocatedNode):
 
 
 class Program(LocatedNode, SymbolTableCreatorTrait):
-    id: SymbolName = datamodels.field(converter=True)  # noqa: A003
-    params: Block[DataSymbol] = datamodels.field(converter=True)
-    body: Block[Call] = datamodels.field(converter=True)
-    captured_vars: Block[Symbol] = datamodels.field(converter=True)
+    id: Coerced[SymbolName]  # noqa: A003
+    params: Coerced[Block[DataSymbol]]
+    body: Coerced[Block[Call]]
+    captured_vars: Coerced[Block[Symbol]]

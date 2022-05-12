@@ -321,7 +321,7 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
                     )
 
                 # Custom generic type: create a validator for the original type ignoring the annotation
-                return make_recursive(origin_type) 
+                return make_recursive(origin_type)
 
             # TODO(egparedes): add support for signature checking in Callables
             raise exceptions.EveValueError(f"{type_annotation} type annotation is not supported.")
@@ -479,11 +479,11 @@ class SimpleTypeValidatorFactory(TypeValidatorFactory):
         return _combined_validator
 
 
-#: Public (with optional cache) entry point for :class:`SimpleTypeValidatorFactory`.
 simple_type_validator_factory: Final = cast(
     TypeValidatorFactory,
     utils.optional_lru_cache(SimpleTypeValidatorFactory(), typed=True),  # type: ignore[arg-type]
 )
+"""Public (with optional cache) entry point for :class:`SimpleTypeValidatorFactory`."""
 
 
 def simple_type_validator(

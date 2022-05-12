@@ -4,7 +4,7 @@ import enum
 from typing import Union
 
 import eve
-from eve import OpNode, SymbolName, SymbolRef, datamodels
+from eve import Coerced, OpNode, SymbolName, SymbolRef, datamodels
 from eve.traits import SymbolTableCreatorTrait
 from eve.type_definitions import StrEnum
 
@@ -19,7 +19,7 @@ class GridType(StrEnum):
 
 
 class Sym(OpNode):  # helper
-    id: SymbolName = datamodels.coerced_field()  # noqa: A003
+    id: Coerced[SymbolName]  # noqa: A003
 
 
 class Expr(OpNode):
@@ -53,28 +53,28 @@ class OffsetLiteral(Expr):
 
 
 class SymRef(Expr):
-    id: SymbolRef = datamodels.coerced_field()  # noqa: A003
+    id: Coerced[SymbolRef]  # noqa: A003
 
 
 class Lambda(Expr, SymbolTableCreatorTrait):
-    params: eve.Block[Sym] = datamodels.coerced_field()
+    params: Coerced[eve.Block[Sym]]
     expr: Expr
 
 
 class FunCall(Expr):
     fun: Expr  # VType[Callable]
-    args: eve.Block[Expr] = datamodels.coerced_field()
+    args: Coerced[eve.Block[Expr]]
 
 
 class TemplatedFunCall(Expr):
     fun: Expr  # VType[Callable]
-    template_args: eve.Block[Expr] = datamodels.coerced_field()
-    args: eve.Block[Expr] = datamodels.coerced_field()
+    template_args: Coerced[eve.Block[Expr]]
+    args: Coerced[eve.Block[Expr]]
 
 
 class FunctionDefinition(OpNode, SymbolTableCreatorTrait):
-    id: SymbolName = datamodels.coerced_field()  # noqa: A003
-    params: eve.Block[Sym] = datamodels.coerced_field()
+    id: Coerced[SymbolName]  # noqa: A003
+    params: Coerced[eve.Block[Sym]]
     expr: Expr
 
 
@@ -86,7 +86,7 @@ class StencilExecution(OpNode):
     backend: Backend
     stencil: SymRef  # TODO should be list of assigns for canonical `scan`
     output: SymRef
-    inputs: eve.Block[SymRef] = datamodels.coerced_field()
+    inputs: Coerced[eve.Block[SymRef]]
 
 
 BUILTINS = {
@@ -101,11 +101,11 @@ BUILTINS = {
 
 
 class FencilDefinition(OpNode, eve.traits.SymbolTableTrait):
-    id: SymbolName = datamodels.coerced_field()  # noqa: A003
-    params: eve.Block[Sym] = datamodels.coerced_field()
-    function_definitions: eve.Block[FunctionDefinition] = datamodels.coerced_field()
-    executions: eve.Block[StencilExecution] = datamodels.coerced_field()
-    offset_declarations: eve.Block[str] = datamodels.coerced_field()
+    id: Coerced[SymbolName]  # noqa: A003
+    params: Coerced[eve.Block[Sym]]
+    function_definitions: Coerced[eve.Block[FunctionDefinition]]
+    executions: Coerced[eve.Block[StencilExecution]]
+    offset_declarations: Coerced[eve.Block[str]]
     grid_type: GridType
 
     builtin_functions: eve.FrozenBlock[Sym] = datamodels.field(

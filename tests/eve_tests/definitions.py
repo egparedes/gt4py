@@ -20,7 +20,7 @@ import random
 import string
 from typing import Collection, Dict, List, Mapping, Optional, Sequence, Set, Type, TypeVar
 
-from eve import datamodels
+from eve import Coerced, datamodels
 from eve.concepts import Block, FrozenOpNode, OpNode, SourceLocation, SymbolName, VType
 from eve.traits import SymbolTableCreatorTrait
 from eve.type_definitions import IntEnum, StrEnum
@@ -103,7 +103,7 @@ class SimpleNodeWithAbstractCollections(OpNode):
 
 class SimpleNodeWithSymbolName(OpNode):
     int_value: int
-    name: SymbolName = datamodels.field(converter=True)
+    name: Coerced[SymbolName]
 
 
 class SimpleNodeWithDefaultSymbolName(OpNode):
@@ -270,7 +270,9 @@ def make_multinode_collection_value(
 ) -> Collection[T]:
     length = length or _SEQUENCE_LEN
 
-    item_maker = globals()[f"make_{CaseStyleConverter.convert(node_class.__name__, 'pascal', 'snake')}"]
+    item_maker = globals()[
+        f"make_{CaseStyleConverter.convert(node_class.__name__, 'pascal', 'snake')}"
+    ]
     items = [item_maker(fixed=fixed) for _ in range(length)]
 
     return collection_type(items)  # type: ignore

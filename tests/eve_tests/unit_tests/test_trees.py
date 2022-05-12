@@ -64,9 +64,7 @@ def bfs_ordered_tree():
 
 def test_iter_tree_pre(dfs_ordered_tree):
     values = [
-        value
-        for value in eve.trees.pre_walk_values(dfs_ordered_tree)
-        if isinstance(value, int)
+        value for value in eve.trees.pre_walk_values(dfs_ordered_tree) if isinstance(value, int)
     ]
     assert values == list(sorted(values))
 
@@ -81,9 +79,7 @@ def test_iter_tree_pre(dfs_ordered_tree):
 
 def test_iter_tree_post(dfs_ordered_tree):
     values = [
-        value
-        for value in eve.trees.post_walk_values(dfs_ordered_tree)
-        if isinstance(value, int)
+        value for value in eve.trees.post_walk_values(dfs_ordered_tree) if isinstance(value, int)
     ]
     assert values == list(sorted(values))
 
@@ -98,9 +94,7 @@ def test_iter_tree_post(dfs_ordered_tree):
 
 def test_iter_tree_levels(bfs_ordered_tree):
     values = [
-        value
-        for value in eve.trees.bfs_walk_values(bfs_ordered_tree)
-        if isinstance(value, int)
+        value for value in eve.trees.bfs_walk_values(bfs_ordered_tree) if isinstance(value, int)
     ]
     assert values == list(sorted(values))
 

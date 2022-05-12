@@ -261,8 +261,7 @@ def test_simple_validation_particularities():
     # not supported annotations
     InvalidAnnotation = typing.TypeGuard[str]
     assert (
-        type_val.simple_type_validator_factory(InvalidAnnotation, "value", required=False)
-        is None
+        type_val.simple_type_validator_factory(InvalidAnnotation, "value", required=False) is None
     )
 
     with pytest.raises(ValueError, match="annotation is not supported"):
