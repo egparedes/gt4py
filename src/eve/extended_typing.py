@@ -124,26 +124,6 @@ _T = TypeVar("_T")
 NoArgsCallable = Callable[[], Any]
 
 
-# Frozen collections
-class FrozenList(List[_T]):
-    __slots__ = ()
-
-    def __setitem__(self, item: int, value: _T) -> None:
-        raise TypeError(f"'{self.__class__}' object does not support item assignment")
-
-    def __delitem__(self, item: int) -> None:
-        raise TypeError(f"'{self.__class__}' object does not support item deletion")
-
-
-_KeyT = TypeVar("_KeyT")
-if _sys.version_info >= (3, 9):
-    FrozenDict: TypeAlias = _frozendict.frozendict[_KeyT, _T]
-else:
-
-    class FrozenDict(_frozendict.frozendict, Generic[_KeyT, _T]):  # type: ignore[no-redef]  # mypy consider this a redefinition
-        __slots__ = ()
-
-
 # Typing annotations
 if _sys.version_info >= (3, 9):
     SolvedTypeAnnotation = Union[
@@ -162,13 +142,11 @@ else:
 TypeAnnotation = Union[ForwardRef, SolvedTypeAnnotation]
 SourceTypeAnnotation = Union[str, TypeAnnotation]
 
-StdGenericAliasType: Final[Type] = (
-    _types.GenericAlias if _sys.version_info >= (3, 9) else _typing._GenericAlias  # type: ignore[attr-defined]  # _GenericAlias is not exported in stub
-)
-StdGenericAlias: TypeAlias = (
-    _types.GenericAlias if _sys.version_info >= (3, 9) else _typing._GenericAlias  # type: ignore[attr-defined]  # _GenericAlias is not exported in stub
-)
+StdGenericAliasType: Final[Type] = type(List[int])
 
+if _sys.version_info >= (3, 9):
+    if TYPE_CHECKING:
+        StdGenericAlias: TypeAlias = _types.GenericAlias
 
 _TypingSpecialFormType: Final[Type] = _typing._SpecialForm
 _TypingGenericAliasType: Final[Type] = (
@@ -249,12 +227,12 @@ else:
 def is_generic(obj: Any) -> bool:
     """Return ``True`` if obj is a generic class or an instance of a generic class."""
     cls = obj if isinstance(obj, type) else obj.__class__
-    return issubclass(cls, Generic)
+    return issubclass(cls, Generic)  # type: ignore[arg-type]  # Generic not considered as a class
 
 
 def has_type_parameters(cls: Type) -> bool:
     """Return ``True`` if obj is a generic class with type parameters."""
-    return issubclass(cls, Generic) and len(getattr(cls, "__parameters__", [])) > 0
+    return issubclass(cls, Generic) and len(getattr(cls, "__parameters__", [])) > 0  # type: ignore[arg-type]  # Generic not considered as a class
 
 
 def get_actual_type(obj: _T) -> Type[_T]:
@@ -561,3 +539,10 @@ def infer_type(  # noqa: C901  # function is complex but well organized in indep
             return Callable
 
     return type(value)
+
+
+# TODO(egparedes): traversing a typing definition is an operation needed in several places
+#   but it currently requires custom and cumbersome code due to the messy implementation details
+#   in the standard library. Ideally, this code could be replaced by translating it once to a
+#   custom "typing tree" data structure which could be then traversed in a generic way.
+#

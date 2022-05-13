@@ -68,16 +68,15 @@ repos:
   hooks:
   - id: mypy
     additional_dependencies:
+    - types-attrs
     - types-frozendict
     exclude: |
       (?x)^(
-      src/functional/ffront/func_to_foast.py | # until mypy supports match
+
       src/functional/ffront/func_to_past.py | # until mypy supports match
       src/functional/ffront/past_to_itir.py | # until mypy supports match
       src/functional/ffront/symbol_makers.py | # until mypy supports match
-      src/functional/ffront/type_info.py | # until mypy supports match
       src/functional/ffront/foast_to_itir.py | # until mypy supports match
-      src/functional/ffront/foast_passes/type_deduction.py | # until mypy supports match
       src/functional/ffront/past_passes/type_deduction.py | # until mypy supports match
       docs/eve/conf.py |
       tests/eve_tests/definitions.py |
