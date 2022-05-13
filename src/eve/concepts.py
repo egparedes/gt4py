@@ -35,8 +35,6 @@ from .extended_typing import (
     ClassVar,
     Dict,
     Final,
-    FrozenDict,
-    FrozenList,
     Generator,
     Generic,
     Iterable,
@@ -298,7 +296,7 @@ class Block(SequenceNode, List[_T]):
     __slots__ = ("__annex__",)
 
 
-class FrozenBlock(SequenceNode, FrozenList[_T]):
+class FrozenBlock(SequenceNode, List[_T]):
     __slots__ = ("__annex__",)
 
 
@@ -349,7 +347,8 @@ class Table(MappingNode, Dict[_KeyT, _T]):
     __slots__ = ("__annex__",)
 
 
-class FrozenTable(MappingNode, FrozenDict[_KeyT, _T]):
+class FrozenTable(MappingNode, Dict[_KeyT, _T]):
+#class FrozenTable(MappingNode, FrozenDict[_KeyT, _T]):
     __slots__ = ("__annex__",)
 
 
