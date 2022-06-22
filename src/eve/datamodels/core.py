@@ -984,8 +984,7 @@ def _make_data_model_class_getitem() -> classmethod:
             # in Python 3.8, xtyping.StdGenericAliasType (aka typing._GenericAlias)
             # does not copy all required `__dict__` entries, so do it manually
             for k, v in concrete_cls.__dict__.items():
-                if k not in res.__dict__:
-                    res.__dict__[k] = v
+                res.__dict__.setdefault(k, v)
         return res
 
     return classmethod(__class_getitem__)
@@ -1096,7 +1095,7 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable and documen
 
         # Create type validator if validation is enabled
         if type_validation_factory is None or _UNCHECKED_TYPE_TAG in type_extras:
-            type_validator = lambda a, b, c: None  # noqa: E731
+            type_validator = None
         else:
             type_validator = type_validation_factory(type_hint, qualified_field_name)
 
@@ -1107,8 +1106,8 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable and documen
             # A field() function has already been used to customize the definition of the field.
             # In this case, we need to:
             #  - prepend the type validator to the list of provided validators (if any)
-            #  - add the converter if the field needs to be converted and another custom converter
-            #      has not been defined
+            #  - add the automatic converter if the field needs to be converted and another
+            #      custom converter has not been defined
             attr_value_in_cls._validator = (
                 type_validator
                 if attr_value_in_cls._validator is None
