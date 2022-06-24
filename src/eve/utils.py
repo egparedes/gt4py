@@ -70,6 +70,7 @@ from .extended_typing import (
     Type,
     TypeVar,
     Union,
+    cast,
     overload,
 )
 from .type_definitions import NOTHING, NothingType
@@ -346,38 +347,101 @@ def is_noninstantiable(cls: Type[_T]) -> bool:
     return "__noninstantiable__" in cls.__dict__
 
 
-def content_hash(*args: Any, hash_algorithm: str | xtyping.HashlibAlgorithm | None = None) -> str:
-    """Stable content-based hash function using instance serialization data.
+@overload
+def get_stable_hasher(
+    *,
+    hash_kind: Literal["int"],
+    hash_algorithm_maker: str | Callable[[], xtyping.HashlibAlgorithm] = xxhash.xxh3_64,
+) -> Callable[..., int]:
+    ...
 
-    It provides a customizable hash function for any kind of data.
+
+@overload
+def get_stable_hasher(
+    *,
+    hash_kind: Literal["str"],
+    hash_algorithm_maker: str | Callable[[], xtyping.HashlibAlgorithm] = xxhash.xxh3_64,
+) -> Callable[..., str]:
+    ...
+
+
+@functools.lru_cache(maxsize=32)
+def get_stable_hasher(
+    *,
+    hash_kind: Literal["int", "str"] = "int",
+    hash_algorithm_maker: str | Callable[[], xtyping.HashlibAlgorithm] = xxhash.xxh3_64,
+) -> Callable[..., str] | Callable[..., int]:
+    """Make a stable content-based hash function using instance serialization data.
+
+    The returned function uses the provided hash algorithm for any
+    'pickleable' Python instance (it uses `pickle` internally to get a byte stream).
     Unlike the builtin `hash` function, it is stable (same hash value across
-    interpreter reboots) and it does not use hash customizations on user
-    classes (it uses `pickle` internally to get a byte stream).
+    interpreter reboots) and it does not uses custom __hash__ implementations for
+    user-defined classes.
 
     Arguments:
-        hash_algorithm: object implementing the `hash algorithm` interface
-            from :mod:`hashlib` or canonical name (`str`) of the
-            hash algorithm as defined in :mod:`hashlib`.
-            Defaults to :class:`xxhash.xxh64`.
+        hash_algorithm: callable instance constructor for objects implementing
+          the `Hash` interface from :mod:`hashlib`.
+    """
+    if isinstance(hash_algorithm_maker, str):
+        hash_algorithm_maker = cast(
+            Callable[[], xtyping.HashlibAlgorithm],
+            lambda name=hash_algorithm_maker: hashlib.new(name),
+        )
 
+    if hash_kind == "int":
+        digest_fn: Callable[[xtyping.HashlibAlgorithm], int] = (
+            hash_algorithm_maker.intdigest
+            if hasattr(hash_algorithm_maker, "intdigest")  # only for xxhash algorithms
+            else lambda h: int(h.hexdigest()[:16], base=16)
+        )
+    elif hash_kind == "str":
+        digest_fn: Callable[[xtyping.HashlibAlgorithm], str] = lambda h: h.hexdigest()[:16]
+    else:
+        raise ValueError(f"Invalid 'hash_kind' value ({hash_kind}).")
+
+    def hasher(*args: Any) -> str:
+        h = hash_algorithm_maker()
+        h.update(pickle.dumps(args))
+        return digest_fn(h)
+
+    return hasher
+
+
+def stable_hash(
+    *args: Any,
+    hash_algorithm: Optional[str | xtyping.HashlibAlgorithm] = None,
+    hash_kind: Literal["int", "str"] = "int",
+) -> str | int:
+    """Stable content-based hash function using instance serialization data.
+
+    The returned value uses the provided hash algorithm for any
+    'pickleable' Python instance (it uses `pickle` internally to get a byte stream).
+    Unlike the builtin `hash` function, it is stable (same hash value across
+    interpreter reboots) and it does not uses custom __hash__ implementations for
+    user-defined classes.
+
+    Arguments:
+        hash_algorithm: instance implementing the `Hash` interface from :mod:`hashlib`
+          (or name of the algorithm to use)
     """
     if hash_algorithm is None:
-        hash_algorithm = xxhash.xxh64()
-    elif isinstance(hash_algorithm, str):
-        hash_algorithm = hashlib.new(hash_algorithm)  # type: ignore[assignment]
+        hash_algorithm = xxhash.xxh3_64()
+    if isinstance(hash_algorithm, str):
+        hash_algorithm = hashlib.new(hash_algorithm)
 
-    hash_algorithm.update(pickle.dumps(args))  # type: ignore[union-attr]
-    result = hash_algorithm.hexdigest()  # type: ignore[union-attr]
-    assert isinstance(result, str)
+    hash_algorithm.update(pickle.dumps(args))
 
-    return result
-
-
-ddiff = deepdiff.DeepDiff
-"""Shortcut for deepdiff.DeepDiff.
-
-Check https://zepworks.com/deepdiff/current/diff.html for more info.
-"""
+    if hash_kind == "int":
+        return (
+            hash_algorithm.intdigest()
+            if hasattr(hash_algorithm, "intdigest")  # only for xxhash algorithms
+            else int(hash_algorithm.hexdigest()[:16], base=16)
+        )
+    elif hash_kind == "str":
+        return hash_algorithm.hexdigest()[:16]
+    else:
+        raise ValueError(f"Invalid 'hash_kind' value ({hash_kind}).")
 
 
 def dhash(obj: Any, **kwargs: Any) -> str:
@@ -385,7 +449,14 @@ def dhash(obj: Any, **kwargs: Any) -> str:
 
     Check https://zepworks.com/deepdiff/current/deephash.html for more info.
     """
-    return deepdiff.deephash.DeepHash(obj)[obj]
+    return deepdiff.deephash.DeepHash(obj, **kwargs)[obj]
+
+
+ddiff = deepdiff.DeepDiff
+"""Shortcut for deepdiff.DeepDiff.
+
+Check https://zepworks.com/deepdiff/current/diff.html for more info.
+"""
 
 
 def pprint_ddiff(
@@ -400,7 +471,8 @@ def pprint_ddiff(
     Keyword Arguments:
         pprint_opts: kwargs dict with options for pprint.pprint.
     """
-    pprint_opts = pprint_opts or {"indent": 2}
+    pprint_opts = pprint_opts or {}
+    pprint_opts.setdefault("indent", 2)
     pprint.pprint(deepdiff.DeepDiff(old, new, **kwargs), **pprint_opts)
 
 
@@ -412,7 +484,6 @@ class CaseStyleConverter:
 
     Functionality exposed through :meth:`split()`, :meth:`join()` and
     :meth:`convert()` methods.
-
     """
 
     class CASE_STYLE(enum.Enum):

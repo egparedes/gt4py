@@ -21,6 +21,7 @@ import string
 from typing import Any
 
 import pytest
+import xxhash
 
 import eve
 from eve.utils import XIterable
@@ -136,6 +137,7 @@ def unique_data_items(request):
         DataClass(data=input_data[0]),
         ModelClass(data=input_data),
         ModelClass(data=input_data[0]),
+        [DataClass(data=input_data), ModelClass(data=input_data[0])],
     ]
 
 
@@ -161,31 +163,65 @@ def test_noninstantiable_class():
     assert not eve.utils.is_noninstantiable(InstantiableSubclass)
 
 
-@pytest.fixture(
-    params=[None, hashlib.md5(), "md5", hashlib.sha1(), "sha1", hashlib.sha256(), "sha256"]
-)
-def hash_algorithm(request):
-    yield request.param
+hash_kind_options = ["int", "str"]
 
 
-def test_shash(unique_data_items, hash_algorithm):
-    from eve.utils import content_hash
+class TestHashes:
+    @pytest.mark.parametrize(
+        "hash_algorithm_maker",
+        [xxhash.xxh3_64, hashlib.md5, "md5", hashlib.sha1, "sha1", hashlib.sha256, "sha256"],
+    )
+    @pytest.mark.parametrize("hash_kind", hash_kind_options)
+    def test_get_stable_hasher(self, unique_data_items, hash_algorithm_maker, hash_kind):
+        from eve.utils import get_stable_hasher
 
-    # Test hash consistency
-    for item in unique_data_items:
-        if hasattr(hash_algorithm, "copy"):
-            h1 = hash_algorithm.copy()
-            h2 = hash_algorithm.copy()
-        else:
-            h1 = hash_algorithm
-            h2 = hash_algorithm
-        assert content_hash(item, hash_algorithm=h1) == content_hash(
-            copy.deepcopy(item), hash_algorithm=h2
+        ch = get_stable_hasher(hash_algorithm_maker=hash_algorithm_maker, hash_kind=hash_kind)
+        hashes = list(ch(item) for item in unique_data_items)
+
+        assert all(type(it).__name__ == hash_kind for it in hashes)
+        assert hashes == list(ch(item) for item in unique_data_items)
+        assert len(hashes) == len(unique_data_items)
+
+    @pytest.mark.parametrize(
+        "hash_algorithm",
+        [None, hashlib.md5(), "md5", hashlib.sha1(), "sha1", hashlib.sha256(), "sha256"],
+    )
+    @pytest.mark.parametrize("hash_kind", hash_kind_options)
+    def test_stable_hash(self, unique_data_items, hash_algorithm, hash_kind):
+        from eve.utils import stable_hash
+
+        # Test hash consistency
+        for item in unique_data_items:
+            if hasattr(hash_algorithm, "copy"):
+                h1 = hash_algorithm.copy()
+                h2 = hash_algorithm.copy()
+            else:
+                h1 = hash_algorithm
+                h2 = hash_algorithm
+            assert stable_hash(item, hash_algorithm=h1) == stable_hash(
+                copy.deepcopy(item), hash_algorithm=h2
+            )
+
+        # Test hash specificity
+        hashes = set(
+            stable_hash(item, hash_algorithm=hash_algorithm, hash_kind=hash_kind)
+            for item in unique_data_items
         )
+        assert len(hashes) == len(unique_data_items)
 
-    # Test hash specificity
-    hashes = set(content_hash(item, hash_algorithm=hash_algorithm) for item in unique_data_items)
-    assert len(hashes) == len(unique_data_items)
+        # Test hash output type
+        assert all(type(it).__name__ == hash_kind for it in hashes)
+
+    def test_dhash(self, unique_data_items):
+        from eve.utils import dhash
+
+        # Test hash consistency
+        for item in unique_data_items:
+            assert dhash(item) == dhash(copy.deepcopy(item))
+
+        # Test hash specificity
+        hashes = set(dhash(item) for item in unique_data_items)
+        assert len(hashes) == len(unique_data_items)
 
 
 # -- CaseStyleConverter --

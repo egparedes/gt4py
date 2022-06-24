@@ -18,9 +18,13 @@
 
 from __future__ import annotations
 
+import array as _array
+import ctypes as _ctypes
 import dataclasses as _dataclasses
 import functools as _functools
 import inspect as _inspect
+import mmap as _mmap
+import pickle as _pickle
 import sys as _sys
 import types as _types
 import typing as _typing
@@ -196,6 +200,14 @@ class DataDescriptor(NonDataDescriptor[_C, _V], Protocol):
         ...
 
 
+# Based on typeshed definitions
+ReadOnlyBuffer: TypeAlias = Union[bytes, SupportsBytes]
+WriteableBuffer: TypeAlias = Union[
+    bytearray, memoryview, _array.array, _mmap.mmap, _pickle.PickleBuffer
+]
+ReadableBuffer: TypeAlias = Union[ReadOnlyBuffer, WriteableBuffer]
+
+
 class HashlibAlgorithm(Protocol):
     """Used in the hashlib module of the standard library."""
 
@@ -203,10 +215,13 @@ class HashlibAlgorithm(Protocol):
     block_size: int
     name: str
 
+    def __init__(self, data: ReadableBuffer = ...) -> None:
+        ...
+
     def copy(self) -> HashlibAlgorithm:
         ...
 
-    def update(self, data: bytes | SupportsBytes) -> None:
+    def update(self, data: ReadableBuffer) -> None:
         ...
 
     def digest(self) -> bytes:
