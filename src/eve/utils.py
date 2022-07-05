@@ -348,7 +348,7 @@ def is_noninstantiable(cls: Type[_T]) -> bool:
 
 
 @overload
-def get_stable_hasher(
+def get_pickle_hasher(
     *,
     hash_kind: Literal["int"],
     hash_algorithm_maker: str | Callable[[], xtyping.HashlibAlgorithm] = xxhash.xxh3_64,
@@ -357,7 +357,7 @@ def get_stable_hasher(
 
 
 @overload
-def get_stable_hasher(
+def get_pickle_hasher(
     *,
     hash_kind: Literal["str"],
     hash_algorithm_maker: str | Callable[[], xtyping.HashlibAlgorithm] = xxhash.xxh3_64,
@@ -366,12 +366,12 @@ def get_stable_hasher(
 
 
 @functools.lru_cache(maxsize=32)
-def get_stable_hasher(
+def get_pickle_hasher(
     *,
     hash_kind: Literal["int", "str"] = "int",
     hash_algorithm_maker: str | Callable[[], xtyping.HashlibAlgorithm] = xxhash.xxh3_64,
 ) -> Callable[..., str] | Callable[..., int]:
-    """Make a stable content-based hash function using instance serialization data.
+    """Make a stable content-based hash function using instance's serialization data.
 
     The returned function uses the provided hash algorithm for any
     'pickleable' Python instance (it uses `pickle` internally to get a byte stream).
@@ -400,7 +400,7 @@ def get_stable_hasher(
     else:
         raise ValueError(f"Invalid 'hash_kind' value ({hash_kind}).")
 
-    def hasher(*args: Any) -> str:
+    def hasher(*args: Any) -> str | int:
         h = hash_algorithm_maker()
         h.update(pickle.dumps(args))
         return digest_fn(h)
@@ -408,12 +408,12 @@ def get_stable_hasher(
     return hasher
 
 
-def stable_hash(
+def pickle_hash(
     *args: Any,
     hash_algorithm: Optional[str | xtyping.HashlibAlgorithm] = None,
     hash_kind: Literal["int", "str"] = "int",
 ) -> str | int:
-    """Stable content-based hash function using instance serialization data.
+    """Stable content-based hash function using instance's serialization data.
 
     The returned value uses the provided hash algorithm for any
     'pickleable' Python instance (it uses `pickle` internally to get a byte stream).
@@ -442,6 +442,10 @@ def stable_hash(
         return hash_algorithm.hexdigest()[:16]
     else:
         raise ValueError(f"Invalid 'hash_kind' value ({hash_kind}).")
+
+
+phash = get_pickle_hasher()
+"""Content-based hash function using default values for :func:`get_pickle_hasher`."""
 
 
 def dhash(obj: Any, **kwargs: Any) -> str:
@@ -474,6 +478,20 @@ def pprint_ddiff(
     pprint_opts = pprint_opts or {}
     pprint_opts.setdefault("indent", 2)
     pprint.pprint(deepdiff.DeepDiff(old, new, **kwargs), **pprint_opts)
+
+
+@dataclasses.dataclass(frozen=True)
+class IDHashable:
+    """Utility class to wrap non-hashable values in a hashable-by-id container.
+
+    Notes:
+        Based on similar definition in: https://jax.readthedocs.io/en/latest/autodidax.html
+    """
+
+    obj: Any
+
+    def __hash__(self) -> int:
+        return id(self.obj)
 
 
 AnyWordsIterable = Union[str, Iterable[str]]
@@ -625,6 +643,10 @@ class Namespace(types.SimpleNamespace, Generic[T]):
 
     asdict = as_dict
 
+    @property
+    def content_id(self) -> int:
+        return phash(self)
+
 
 class FrozenNamespace(Namespace[T]):
     """An immutable version of :class:`Namespace`.
@@ -659,7 +681,7 @@ class FrozenNamespace(Namespace[T]):
 
     def __hash__(self) -> int:  # type: ignore[override]
         if not hasattr(self, "__cached_hash_value__"):
-            object.__setattr__(self, "__cached_hash_value__", hash(tuple(self.__dict__.items())))
+            object.__setattr__(self, "__cached_hash_value__", self.content_id)
 
         return self.__cached_hash_value__
 

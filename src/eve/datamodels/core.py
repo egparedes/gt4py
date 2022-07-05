@@ -147,7 +147,7 @@ _ROOT_VALIDATOR_TAG: Final = "__DATAMODEL_ROOT_VALIDATOR_TAG"
 _COERCED_TYPE_TAG: Final = "__DATAMODEL_COERCED_TYPE_TAG"
 _UNCHECKED_TYPE_TAG: Final = "__DATAMODEL_UNCHECKED_TYPE_TAG"
 
-_DM_OPTS = "__dm_opts"
+_DM_OPTS_KEY: Final = "__dm_opts"
 _GENERIC_DATAMODEL_ROOT_DM_OPT: Final = "_GENERIC_DATAMODEL_ROOT_DM_OPT"
 
 MODEL_FIELD_DEFINITIONS_ATTR: Final = "__datamodel_fields__"
@@ -465,7 +465,7 @@ else:
             | Literal["inherited"] = "inherited",
             **kwargs: Any,
         ) -> None:
-            dm_opts = kwargs.pop(_DM_OPTS, [])
+            dm_opts = kwargs.pop(_DM_OPTS_KEY, [])
             super(DataModel, cls).__init_subclass__(
                 **kwargs
             )  # type: ignore[call-arg]  # is not guaranteed that superclass does not accept kwargs
@@ -1248,7 +1248,7 @@ def _make_datamodel(  # noqa: C901  # too complex but still readable and documen
             if is_datamodel(f_attr.type):
                 if getattr(f_attr.type, MODEL_PARAM_DEFINITIONS_ATTR).strict_frozen is True:
                     continue
-            elif xtyping.is_hashable_type(f_attr.type):
+            elif xtyping.is_value_hashable_typing(f_attr.type):
                 continue
             unhashable_fields.add(f_attr.name)
 

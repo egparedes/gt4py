@@ -172,10 +172,10 @@ class TestHashes:
         [xxhash.xxh3_64, hashlib.md5, "md5", hashlib.sha1, "sha1", hashlib.sha256, "sha256"],
     )
     @pytest.mark.parametrize("hash_kind", hash_kind_options)
-    def test_get_stable_hasher(self, unique_data_items, hash_algorithm_maker, hash_kind):
-        from eve.utils import get_stable_hasher
+    def test_get_pickle_hasher(self, unique_data_items, hash_algorithm_maker, hash_kind):
+        from eve.utils import get_pickle_hasher
 
-        ch = get_stable_hasher(hash_algorithm_maker=hash_algorithm_maker, hash_kind=hash_kind)
+        ch = get_pickle_hasher(hash_algorithm_maker=hash_algorithm_maker, hash_kind=hash_kind)
         hashes = list(ch(item) for item in unique_data_items)
 
         assert all(type(it).__name__ == hash_kind for it in hashes)
@@ -188,7 +188,7 @@ class TestHashes:
     )
     @pytest.mark.parametrize("hash_kind", hash_kind_options)
     def test_stable_hash(self, unique_data_items, hash_algorithm, hash_kind):
-        from eve.utils import stable_hash
+        from eve.utils import pickle_hash
 
         # Test hash consistency
         for item in unique_data_items:
@@ -198,13 +198,13 @@ class TestHashes:
             else:
                 h1 = hash_algorithm
                 h2 = hash_algorithm
-            assert stable_hash(item, hash_algorithm=h1) == stable_hash(
+            assert pickle_hash(item, hash_algorithm=h1) == pickle_hash(
                 copy.deepcopy(item), hash_algorithm=h2
             )
 
         # Test hash specificity
         hashes = set(
-            stable_hash(item, hash_algorithm=hash_algorithm, hash_kind=hash_kind)
+            pickle_hash(item, hash_algorithm=hash_algorithm, hash_kind=hash_kind)
             for item in unique_data_items
         )
         assert len(hashes) == len(unique_data_items)
@@ -222,6 +222,14 @@ class TestHashes:
         # Test hash specificity
         hashes = set(dhash(item) for item in unique_data_items)
         assert len(hashes) == len(unique_data_items)
+
+    def test_IDHashable(self, unique_data_items):
+        from eve.utils import IDHashable
+
+        for item in unique_data_items:
+            assert hash(IDHashable(item)) == id(item)
+            assert hash(IDHashable(item)) == hash(IDHashable(item))
+            assert hash(IDHashable(item_copy := copy.deepcopy(item))) == id(item_copy)
 
 
 # -- CaseStyleConverter --

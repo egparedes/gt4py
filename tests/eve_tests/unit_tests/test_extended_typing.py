@@ -89,13 +89,13 @@ def test_get_actual_type(instance, expected):
 @pytest.mark.parametrize(
     "x", [int, float, complex, str, tuple, frozenset, 1, -2.0, "foo", (), (1, 3.0)]
 )
-def test_is_hashable(x):
-    assert xtyping.is_hashable(x)
+def test_is_value_hashable(x):
+    assert xtyping.is_value_hashable(x)
 
 
-@pytest.mark.parametrize("x", [(list, list(), (1, []), dict())])
-def test_is_not_hashable(x):
-    assert not xtyping.is_hashable(x)
+@pytest.mark.parametrize("x", [(list(), (1, []), dict())])
+def test_is_not_value_hashable(x):
+    assert not xtyping.is_value_hashable(x)
 
 
 @pytest.mark.parametrize(
@@ -115,15 +115,15 @@ def test_is_not_hashable(x):
         None,
     ],
 )
-def test_is_hashable_type(t):
-    assert xtyping.is_hashable_type(t)
+def test_is_value_hashable_type(t):
+    assert xtyping.is_value_hashable_typing(t)
 
 
 @pytest.mark.parametrize(
     "t", [dict, Dict, Dict[str, int], Sequence[int], List[str], Any, TypeVar("T")]
 )
-def test_is_not_hashable_type(t):
-    assert not xtyping.is_hashable_type(t)
+def test_is_not_value_hashable_type(t):
+    assert not xtyping.is_value_hashable_typing(t)
 
 
 def test_is_protocol():
