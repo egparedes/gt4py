@@ -245,80 +245,86 @@ class _ExtendedProtocolMeta(_typing._ProtocolMeta):
 
 
 def extended_runtime_checkable(
-    cls, *, instance_check_shortcut: bool = True, subclass_check_with_data_members: bool = False
+    maybe_cls=None,
+    *,
+    instance_check_shortcut: bool = True,
+    subclass_check_with_data_members: bool = False,
 ) -> Any:
-    cls = _typing.runtime_checkable(cls)
-    if not (instance_check_shortcut or subclass_check_with_data_members):
+    def _decorator(cls):
+        cls = _typing.runtime_checkable(cls)
+        if not (instance_check_shortcut or subclass_check_with_data_members):
+            return cls
+
+        if instance_check_shortcut:
+            cls.__class__ = _ExtendedProtocolMeta
+
+        if subclass_check_with_data_members:
+            assert "__subclasshook__" in cls.__dict__
+            if cls.__subclasshook__.__module__ not in (
+                "typing",
+                "typing_extensions",
+                "extended_typing",
+            ):
+                raise TypeError(
+                    "Cannot use 'subclass_check_with_data_members' with custom '__subclasshook__' definitions."
+                )
+
+            _allow_reckless_class_checks = _typing._allow_reckless_class_checks
+            _get_protocol_attrs = _typing._get_protocol_attrs
+            _is_callable_members_only = _typing._is_callable_members_only
+
+            def _patched_proto_hook(other):
+                if not cls.__dict__.get("_is_protocol", False):
+                    return NotImplemented
+
+                # First, perform various sanity checks.
+                if not getattr(cls, "_is_runtime_protocol", False):
+                    if _allow_reckless_class_checks():
+                        return NotImplemented
+                    raise TypeError(
+                        "Instance and class checks can only be used with"
+                        " @runtime_checkable protocols"
+                    )
+                if not _is_callable_members_only(cls) and _allow_reckless_class_checks():
+                    return NotImplemented
+                if not isinstance(other, type):
+                    # Same error message as for issubclass(1, int).
+                    raise TypeError("issubclass() arg 1 must be a class")
+
+                # Second, perform the actual structural compatibility check.
+                for attr in _get_protocol_attrs(cls):
+                    for base in other.__mro__:
+                        # Check if the members appears in the class dictionary...
+                        if callable(getattr(cls, attr, None)):  # Method member
+                            if attr in base.__dict__:
+                                if base.__dict__[attr] is None:
+                                    return NotImplemented
+                                break
+                        elif attr in base.__dict__ or (  # Data member
+                            base_annotations := getattr(base, "__annotations__", {})
+                            and isinstance(base_annotations, _collections_abc.Mapping)
+                            and attr in base_annotations
+                        ):
+                            break
+
+                        # ...or in annotations, if it is a sub-protocol.
+                        base_annotations = getattr(base, "__annotations__", {})
+                        if (
+                            isinstance(base_annotations, _collections_abc.Mapping)
+                            and attr in base_annotations
+                            and issubclass(other, Generic)
+                            and other._is_protocol
+                        ):
+                            break
+                    else:
+                        return NotImplemented
+                return True
+
+            cls.__subclasshook__ = _patched_proto_hook
+
         return cls
 
-    if instance_check_shortcut:
-        cls.__class__ = _ExtendedProtocolMeta
-
-    if subclass_check_with_data_members:
-        assert "__subclasshook__" in cls.__dict__
-        if cls.__subclasshook__.__module__ not in (
-            "typing",
-            "typing_extensions",
-            "extended_typing",
-        ):
-            raise TypeError(
-                "Cannot use 'subclass_check_with_data_members' with custom '__subclasshook__' definitions."
-            )
-
-        _allow_reckless_class_checks = _typing._allow_reckless_class_checks
-        _get_protocol_attrs = _typing._get_protocol_attrs
-        _is_callable_members_only = _typing._is_callable_members_only
-
-        def _patched_proto_hook(other):
-            if not cls.__dict__.get("_is_protocol", False):
-                return NotImplemented
-
-            # First, perform various sanity checks.
-            if not getattr(cls, "_is_runtime_protocol", False):
-                if _allow_reckless_class_checks():
-                    return NotImplemented
-                raise TypeError(
-                    "Instance and class checks can only be used with"
-                    " @runtime_checkable protocols"
-                )
-            if not _is_callable_members_only(cls) and _allow_reckless_class_checks():
-                return NotImplemented
-            if not isinstance(other, type):
-                # Same error message as for issubclass(1, int).
-                raise TypeError("issubclass() arg 1 must be a class")
-
-            # Second, perform the actual structural compatibility check.
-            for attr in _get_protocol_attrs(cls):
-                for base in other.__mro__:
-                    # Check if the members appears in the class dictionary...
-                    if callable(getattr(cls, attr, None)):  # Method member
-                        if attr in base.__dict__:
-                            if base.__dict__[attr] is None:
-                                return NotImplemented
-                            break
-                    elif attr in base.__dict__ or (  # Data member
-                        annotations := getattr(base, "__annotations__", {})
-                        and isinstance(annotations, _collections_abc.Mapping)
-                        and attr in annotations
-                    ):
-                        break
-
-                    # ...or in annotations, if it is a sub-protocol.
-                    annotations = getattr(base, "__annotations__", {})
-                    if (
-                        isinstance(annotations, _collections_abc.Mapping)
-                        and attr in annotations
-                        and issubclass(other, Generic)
-                        and other._is_protocol
-                    ):
-                        break
-                else:
-                    return NotImplemented
-            return True
-
-        cls.__subclasshook__ = _patched_proto_hook
-
-    return cls
+    return _decorator(maybe_cls) if maybe_cls is not None else _decorator
 
 
 if _sys.version_info >= (3, 9):

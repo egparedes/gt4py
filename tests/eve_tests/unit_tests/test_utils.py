@@ -24,6 +24,7 @@ import pytest
 import xxhash
 
 import eve
+import eve.utils
 from eve.utils import XIterable
 
 
@@ -267,6 +268,49 @@ def test_case_style_converter(name_with_cases):
             assert [w.lower() for w in CaseStyleConverter.split(cased_string, case)] == [
                 w.lower() for w in words
             ]
+
+
+# -- Namespaces --
+class TestNamespaces:
+    @pytest.mark.parametrize(
+        "ns",
+        [
+            eve.utils.Namespace(a=1, b="2", c=[1, 2, 3], d={"F": 3.5}),
+            eve.utils.FrozenNamespace(a=1, b="2", c=[1, 2, 3], d={"F": 3.5}),
+        ],
+    )
+    def test_members(self, ns):
+        ns_dict = ns.as_dict()
+
+        assert ns.keys() == ns_dict.keys()
+        assert list(ns.values()) == list(ns_dict.values())
+        assert ns.items() == ns_dict.items()
+
+        assert all(key in ns for key in ns.keys())
+
+        assert ns.content_id == eve.utils.phash(ns)
+
+        assert type(ns)(a=()) != type(ns)()
+        assert type(ns)(a=()) != type(ns)(b=())
+        assert type(ns)(a=()) == type(ns)(a=())
+
+    def test_frozen(self):
+
+        with pytest.raises(TypeError):
+            hash(eve.utils.Namespace(a=1, b="2", c=[1, 2, 3], d={"F": 3.5}))
+
+        ns = eve.utils.FrozenNamespace(a=1, b="2", c=[1, 2, 3], d={"F": 3.5})
+
+        with pytest.raises(TypeError, match="Trying to modify immutable"):
+            ns.a = 42
+
+        with pytest.raises(TypeError, match="Trying to modify immutable"):
+            del ns.a
+
+        with pytest.raises(TypeError, match="Trying to modify immutable"):
+            ns.new_attr = 42
+
+        assert hash(ns) == ns.content_id == hash(ns)
 
 
 # -- UIDGenerator --
