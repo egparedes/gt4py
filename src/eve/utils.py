@@ -466,16 +466,16 @@ Check https://zepworks.com/deepdiff/current/diff.html for more info.
 def pprint_ddiff(
     old: Any,
     new: Any,
-    *,
-    pprint_opts: Optional[Dict[str, Any]] = None,
     **kwargs: Any,
 ) -> None:
-    """Pretty printing of deepdiff.DeepDiff objects.
+    """Pretty printing of :class:`deepdiff.DeepDiff` objects.
 
-    Keyword Arguments:
-        pprint_opts: kwargs dict with options for pprint.pprint.
+    Keyword arguments with ``pp_`` prefix are forwarded to :func:`pprint.pprint`
+    (after removing the prefix). Any other keyword argument is forwarded to
+    :class:`deepdiff.DeepDiff`.
+
     """
-    pprint_opts = pprint_opts or {}
+    pprint_opts = {key[3:]: kwargs.pop(key) for key in list(kwargs.keys()) if key.startswith("pp_")}
     pprint_opts.setdefault("indent", 2)
     pprint.pprint(deepdiff.DeepDiff(old, new, **kwargs), **pprint_opts)
 

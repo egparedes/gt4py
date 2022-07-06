@@ -17,6 +17,7 @@
 import copy
 import dataclasses
 import hashlib
+import io
 import string
 from typing import Any
 
@@ -231,6 +232,15 @@ class TestHashes:
             assert hash(IDHashable(item)) == id(item)
             assert hash(IDHashable(item)) == hash(IDHashable(item))
             assert hash(IDHashable(item_copy := copy.deepcopy(item))) == id(item_copy)
+
+
+class TestDDiffTools:
+    def test_pprint_ddiff(self):
+        d = {"key": [(1, 2), (3, 4)], "nested": {("foo", 2): [2, "str", {1, 2, 3}]}}
+        stream = io.StringIO()
+        eve.utils.pprint_ddiff(d, d | {"new": "NEW"}, pp_stream=stream)
+
+        assert "dictionary_item_added" in stream.getvalue()
 
 
 # -- CaseStyleConverter --
