@@ -244,7 +244,7 @@ class Node(datamodels.DataModel, trees.Tree, kw_only=True):  # type: ignore[call
 
     @property
     def content_id(self) -> int:
-        return hash((self.node_id, self.annex.content_id))
+        return utils.phash((self.node_id, self.annex.content_id))
 
 
 NodeT = TypeVar("NodeT", bound="Node")
