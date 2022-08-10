@@ -23,7 +23,7 @@ import abc
 import collections.abc
 import functools
 
-from . import utils
+from . import extended_typing as xtyping, utils
 from .extended_typing import (
     TYPE_CHECKING,
     Any,
@@ -51,25 +51,45 @@ except ModuleNotFoundError:
 TreeKey = Union[int, str]
 
 
+class TreeLike(abc.ABC):
+    ...
+
+
 if TYPE_CHECKING:
-    TreeLike = Any
-else:
-
-    class TreeLike(abc.ABC):
-        ...
+    TreeLike = TreeLike | Any
 
 
-TreeLikeT = TypeVar("TreeLikeT", bound=TreeLike)
+_T = TypeVar("_T")
 
 
-class Tree(Protocol):
+@xtyping.extended_runtime_checkable
+class Tree(Protocol[_T]):
     @abc.abstractmethod
     def iter_children_values(self) -> Iterable:
         ...
 
     @abc.abstractmethod
-    def iter_children_items(self) -> Iterable[Tuple[TreeKey, Any]]:
+    def iter_children_items(self) -> Iterable[Tuple[TreeKey, _T]]:
         ...
+
+
+# @xtyping.extended_runtime_checkable
+# class Tree(Protocol[_T]):
+#     @abc.abstractmethod
+#     def iter_children(self) -> Iterable[_T]:
+#         ...
+
+#     @abc.abstractmethod
+#     def iter_children_items(self) -> Iterable[Tuple[TreeKey, _T]]:
+#         ...
+
+#     @abc.abstractmethod
+#     def map_children(self) -> Iterable[_T]:
+#         ...
+
+#     @abc.abstractmethod
+#     def map_children_items(self) -> Iterable[_T]:
+#         ...
 
 
 TreeLike.register(Tree)
@@ -81,6 +101,12 @@ _T = TypeVar("_T")
 def iter_children_values(node: TreeLike) -> Iterable:
     """Create an iterator to traverse values as Eve tree nodes."""
     return node.iter_children_values() if hasattr(node, "iter_children_values") else iter(())
+
+
+@functools.singledispatch
+def iter_children_keys(node: TreeLike) -> Iterable[TreeKey]:
+    """Create an iterator to traverse values as Eve tree nodes."""
+    return node.iter_children_keys() if hasattr(node, "iter_children_keys") else iter(())
 
 
 @functools.singledispatch
@@ -106,8 +132,8 @@ register_tree_like(str, bytes, iter_values_fn=lambda _: iter(()), iter_items_fn=
 register_tree_like(
     collections.abc.Sequence,  # type: ignore[misc]  # It should be concrete class
     collections.abc.Set,  # type: ignore[misc]  # It should be concrete class
-    iter_values_fn=lambda x: iter(x),
-    iter_items_fn=lambda x: enumerate(x),
+    iter_values_fn=iter,
+    iter_items_fn=enumerate,
 )
 register_tree_like(
     collections.abc.Mapping,  # type: ignore[misc]  # It should be concrete class

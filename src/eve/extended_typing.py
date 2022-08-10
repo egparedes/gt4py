@@ -21,6 +21,7 @@ from __future__ import annotations
 import array as _array
 import collections.abc as _collections_abc
 import dataclasses as _dataclasses
+import enum as _enum
 import functools as _functools
 import inspect as _inspect
 import mmap as _mmap
@@ -659,3 +660,11 @@ def infer_type(  # noqa: C901  # function is complex but well organized in indep
 #   in the standard library. Ideally, this code could be replaced by translating it once to a
 #   custom "typing tree" data structure which could be then traversed in a generic way.
 #
+
+
+
+@_dataclasses.dataclass
+class TypingST:
+    typing: type
+    params: Tuple[TypingST, ...]
+

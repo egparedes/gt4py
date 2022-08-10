@@ -189,3 +189,9 @@ class NodeTranslator(NodeVisitor):
             )
 
         return copy.deepcopy(node, memo=memo)
+
+
+class GraphTranslator(NodeTranslator):
+    def visit(self, node: concepts.RootNode, **kwargs: Any) -> Any:
+        ...
+

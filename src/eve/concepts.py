@@ -198,8 +198,8 @@ class Node(datamodels.DataModel, trees.Tree, kw_only=True):  # type: ignore[call
     The `annex` attribute is used to dynamically add data to a node, even to
     frozen classes. Data in the `annex` do not affect the hash or equality
     comparisons of the node, since it is not really a field. Thus, visitors
-    and pipeline passes can freely attach computed attributes into the instance
-    `annex`.
+    and pipeline passes can freely attach computed attributes into the
+    instance's `annex`.
     """
 
     __slots__ = ()
@@ -248,7 +248,7 @@ class Node(datamodels.DataModel, trees.Tree, kw_only=True):  # type: ignore[call
 
 
 NodeT = TypeVar("NodeT", bound="Node")
-ValueNode = Union[bool, bytes, int, float, str, IntEnum, StrEnum]
+ValueNode = Union[bool, bytes, int, float, complex, str, IntEnum, StrEnum]
 LeafNode = Union[NodeT, ValueNode]
 CollectionNode = Union[List[LeafNode], Dict[Any, LeafNode], Set[LeafNode]]
 RootNode = Union[NodeT, CollectionNode]
