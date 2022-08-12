@@ -22,7 +22,8 @@ import functools
 import pydantic
 import pydantic.generics
 
-from . import iterators, utils
+# from . import iterators, utils
+from . import utils
 from .type_definitions import NOTHING, IntEnum, Str, StrEnum
 from .typingx import (
     Any,
@@ -237,3 +238,6 @@ class VType(FrozenModel):
 
     def __init__(self, name: str) -> None:
         super().__init__(name=name)
+
+
+from . import iterators, utils

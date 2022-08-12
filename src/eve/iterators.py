@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import collections.abc
+import functools
 
 from . import concepts, utils
 from .type_definitions import Enum
@@ -36,6 +37,7 @@ KeyValue = Tuple[Union[int, str], Any]
 TreeIterationItem = Union[Any, Tuple[KeyValue, Any]]
 
 
+@functools.singledispatch
 def generic_iter_children(
     node: concepts.TreeNode, *, with_keys: bool = False
 ) -> Iterable[Union[Any, Tuple[KeyValue, Any]]]:
@@ -47,18 +49,38 @@ def generic_iter_children(
             Defaults to `False`.
 
     """
-    if isinstance(node, concepts.BaseNode):
-        return node.iter_children() if with_keys else node.iter_children_values()
-    elif isinstance(node, (list, tuple)) or (
-        isinstance(node, collections.abc.Sequence) and not isinstance(node, (str, bytes))
-    ):
-        return enumerate(node) if with_keys else iter(node)
-    elif isinstance(node, (set, collections.abc.Set)):
-        return zip(node, node) if with_keys else iter(node)  # type: ignore  # problems with iter(Set)
-    elif isinstance(node, (dict, collections.abc.Mapping)):
-        return node.items() if with_keys else node.values()
-
     return iter(())
+
+
+@generic_iter_children.register(concepts.BaseNode)
+def _iter_node(node, *, with_keys=False):
+    return node.iter_children() if with_keys else node.iter_children_values()
+
+
+@generic_iter_children.register(str)
+@generic_iter_children.register(bytes)
+def _iter_string(node, *, with_keys=False):
+    return iter(())
+
+
+@generic_iter_children.register(list)
+@generic_iter_children.register(tuple)
+@generic_iter_children.register(collections.abc.Sequence)
+def _iter_sequence(node, *, with_keys=False):
+    return enumerate(node) if with_keys else iter(node)
+
+
+@generic_iter_children.register(set)
+@generic_iter_children.register(frozenset)
+@generic_iter_children.register(collections.abc.Set)
+def _iter_set(node, *, with_keys=False):
+    return zip(node, node) if with_keys else iter(node)
+
+
+@generic_iter_children.register(dict)
+@generic_iter_children.register(collections.abc.Mapping)
+def _iter_mapping(node, *, with_keys=False):
+    return node.items() if with_keys else node.values()
 
 
 class TraversalOrder(Enum):

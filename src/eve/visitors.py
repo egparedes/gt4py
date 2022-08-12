@@ -20,6 +20,7 @@ from __future__ import annotations
 import collections.abc
 import contextlib
 import copy
+import functools
 import operator
 
 from . import concepts, iterators, utils
@@ -41,6 +42,25 @@ from .typingx import (
 
 
 ContextCallable = Callable[["NodeVisitor", concepts.TreeNode, Dict[str, Any]], ContextManager[None]]
+
+
+@functools.lru_cache(maxsize=None, typed=False)
+def _get_visitor_method_name(visitor_class, node_class) -> str:
+    method_name = "visit_" + node_class.__name__
+    if hasattr(visitor_class, method_name):
+        return method_name
+
+    elif concepts.BaseNode in (mro := node_class.__mro__):
+        for base_node_class in mro[1:]:
+            if base_node_class is concepts.BaseNode:
+                return "generic_visit"
+
+            method_name = "visit_" + base_node_class.__name__
+            if hasattr(visitor_class, method_name):
+                return method_name
+
+    else:
+        return "generic_visit"
 
 
 class NodeVisitor:
@@ -113,20 +133,7 @@ class NodeVisitor:
     contexts: ClassVar[Optional[Tuple[ContextCallable, ...]]] = None
 
     def visit(self, node: concepts.TreeNode, **kwargs: Any) -> Any:
-        visitor = self.generic_visit
-
-        method_name = "visit_" + node.__class__.__name__
-        if hasattr(self, method_name):
-            visitor = getattr(self, method_name)
-        elif isinstance(node, concepts.BaseNode):
-            for node_class in node.__class__.__mro__[1:]:
-                method_name = "visit_" + node_class.__name__
-                if hasattr(self, method_name):
-                    visitor = getattr(self, method_name)
-                    break
-
-                if node_class is concepts.BaseNode:
-                    break
+        visitor = getattr(self, _get_visitor_method_name(self.__class__, node.__class__))
 
         if ctxs := type(self).contexts:
             with contextlib.ExitStack() as stack:
@@ -139,6 +146,60 @@ class NodeVisitor:
     def generic_visit(self, node: concepts.TreeNode, **kwargs: Any) -> Any:
         for child in iterators.generic_iter_children(node):
             self.visit(child, **kwargs)
+
+
+@functools.singledispatch
+def _NodeTranslator_generic_visit(
+    node: concepts.TreeNode, translator: NodeTranslator, **kwargs: Any
+) -> Any:
+    if not hasattr(translator, "_memo_dict_"):
+        translator._memo_dict_ = {}
+
+    return copy.deepcopy(node, memo=translator._memo_dict_)
+
+
+@_NodeTranslator_generic_visit.register(concepts.BaseNode)
+def _translate_node(node, translator, **kwargs):
+    return node.__class__(  # type: ignore
+        **{key: value for key, value in node.iter_impl_fields()},
+        **{
+            key: processed_value
+            for key, value in node.iter_children()
+            if (processed_value := translator.visit(value, **kwargs)) is not NOTHING
+        },
+    )
+
+
+@_NodeTranslator_generic_visit.register(str)
+@_NodeTranslator_generic_visit.register(bytes)
+def _translate_string(node, translator, **kwargs):
+    return node
+
+
+@_NodeTranslator_generic_visit.register(list)
+@_NodeTranslator_generic_visit.register(tuple)
+@_NodeTranslator_generic_visit.register(set)
+@_NodeTranslator_generic_visit.register(frozenset)
+@_NodeTranslator_generic_visit.register(collections.abc.Sequence)
+@_NodeTranslator_generic_visit.register(collections.abc.Set)
+def _translate_sequence(node, translator, **kwargs):
+    return node.__class__(  # type: ignore
+        processed_value
+        for value in node
+        if (processed_value := translator.visit(value, **kwargs)) is not NOTHING  # type: ignore[no-redef]
+    )
+
+
+@_NodeTranslator_generic_visit.register(dict)
+@_NodeTranslator_generic_visit.register(collections.abc.Mapping)
+def _translate_mapping(node, translator, **kwargs):
+    return node.__class__(  # type: ignore[call-arg]
+        {
+            key: processed_value
+            for key, value in node.items()
+            if (processed_value := translator.visit(value, **kwargs)) is not NOTHING  # type: ignore[no-redef]
+        }
+    )
 
 
 class NodeTranslator(NodeVisitor):
@@ -168,42 +229,7 @@ class NodeTranslator(NodeVisitor):
     _memo_dict_: Dict[int, Any]
 
     def generic_visit(self, node: concepts.TreeNode, **kwargs: Any) -> Any:
-        if isinstance(node, concepts.BaseNode):
-            return node.__class__(  # type: ignore
-                **{key: value for key, value in node.iter_impl_fields()},
-                **{
-                    key: processed_value
-                    for key, value in node.iter_children()
-                    if (processed_value := self.visit(value, **kwargs)) is not NOTHING
-                },
-            )
-
-        elif isinstance(node, (list, tuple, set, collections.abc.Set)) or (
-            isinstance(node, collections.abc.Sequence) and not isinstance(node, (str, bytes))
-        ):
-            # Sequence or set: create a new container instance with the new values
-            return node.__class__(  # type: ignore
-                processed_value
-                for value in node
-                if (processed_value := self.visit(value, **kwargs)) is not NOTHING  # type: ignore[no-redef]
-            )
-
-        elif isinstance(node, (dict, collections.abc.Mapping)):
-            # Mapping: create a new mapping instance with the new values
-            return node.__class__(  # type: ignore[call-arg]
-                {
-                    key: processed_value
-                    for key, value in node.items()
-                    if (processed_value := self.visit(value, **kwargs)) is not NOTHING  # type: ignore[no-redef]
-                }
-            )
-
-        else:
-            if not hasattr(self, "_memo_dict_"):
-                self._memo_dict_ = {}
-            result = copy.deepcopy(node, memo=self._memo_dict_)
-
-        return result
+        return _NodeTranslator_generic_visit(node, self, **kwargs)
 
 
 class NodeMutator(NodeVisitor):
@@ -300,3 +326,6 @@ class NodeMutator(NodeVisitor):
                     set_op(result, key, new_value)
 
         return result
+
+
+NodeMutator = None
