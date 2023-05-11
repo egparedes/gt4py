@@ -1,6 +1,6 @@
 [build-system]
-build-backend = "setuptools.build_meta"
-requires = ["setuptools>=60.6", "wheel", "cython"]
+build-backend = 'setuptools.build_meta'
+requires = ['setuptools>=60.6', 'wheel', 'cython']
 
 # ---- Project description ----
 # -- Standard options (PEP 621) --
@@ -90,12 +90,12 @@ performance = ["scipy>=1.7.2"]
 testing = ["hypothesis>=6.0.0", "pytest>=7.0"]
 
 [project.scripts]
-gtpyc = "gt4py.cartesian.cli:gtpyc"
+gtpyc = 'gt4py.cartesian.cli:gtpyc'
 
 [project.urls]
-Documentation = "https://gridtools.github.io/gt4py"
-Homepage = "https://gridtools.github.io/"
-Source = "https://github.com/GridTools/gt4py"
+Documentation = 'https://gridtools.github.io/gt4py'
+Homepage = 'https://gridtools.github.io/'
+Source = 'https://github.com/GridTools/gt4py'
 
 # ---- Other tools ----
 # -- black --
@@ -337,6 +337,76 @@ markers = [
 ]
 norecursedirs = ['dist', 'build', 'cpp_backend_tests/build*', '_local/*', '.*']
 testpaths = 'tests'
+
+# -- ruff --
+[tool.ruff]
+ignore = [
+  'E501',
+  'B008',  # Do not perform function calls in argument defaults
+  'B028',  # Consider replacing f"'{foo}'" with f"{foo!r}"  # TODO: review
+  'B905'  # B905 `zip()` without an explicit `strict=` parameter  # TODO: review
+]
+ignore-init-module-imports = true
+line-length = 100  # It should be the same as in `tool.black.line-length` above.
+respect-gitignore = true
+# Rules:
+# E: pycodestyle
+# F: Pyflakes
+# I: isort
+# B: flake8-bugbear
+# A: flake8-builtins
+# T100: flake8-debugger
+# ERA: eradicate
+# NPY: NumPy-specific rules
+# RUF: Ruff-specific rules
+select = ['E', 'F', 'I', 'B', 'A', 'T100', 'ERA', 'NPY', 'RUF']
+show-fixes = true
+# show-source = true
+target-version = 'py310'
+typing-modules = ['gt4py.eve.extended_typing']
+unfixable = []
+
+[tool.ruff.isort]
+combine-as-imports = true
+# force-wrap-aliases = true
+known-first-party = ['gt4py', '__externals__', '__gtscript__']
+known-third-party = [
+  'attr',
+  'black',
+  'boltons',
+  'cached_property',
+  'click',
+  'dace',
+  'devtools',
+  'factory',
+  'hypothesis',
+  'importlib_resources',
+  'jinja2',
+  'mako',
+  'networkx',
+  'numpy',
+  'packaging',
+  'pybind11',
+  'pytest',
+  'pytest_factoryboy',
+  'setuptools',
+  'tabulate',
+  'typing_extensions',
+  'xxhash'
+]
+lines-after-imports = 2
+order-by-type = true
+section-order = ['future', 'standard-library', 'third-party', 'first-party', 'tests', 'local-folder']
+split-on-trailing-comma = false
+
+[tool.ruff.isort.sections]
+'tests' = ['cartesian_tests', 'eve_tests', 'next_tests', 'storage_tests']
+
+[tool.ruff.mccabe]
+max-complexity = 15
+
+[tool.ruff.per-file-ignores]
+'src/gt4py/eve/extended_typing.py' = ['F401', 'F405']
 
 # -- Setuptools-specific --
 [tool.setuptools]
