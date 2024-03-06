@@ -324,6 +324,24 @@ class NdArrayField(
         assert common.is_relative_index_sequence(slice_)
         return new_domain, slice_
 
+    def _take_mdim(
+        self,
+        restricted_connectivity: core_defs.NDArrayObject,
+        axis: int,
+    ) -> core_defs.NDArrayObject:
+        xp = self.array_ns
+        dim = self.domain.dims[axis]
+        offset_abs = [
+            restricted_connectivity if d == dim else xp.indices(restricted_connectivity.shape)[d_i]
+            for d_i, d in enumerate(self.domain.dims)
+        ]
+        new_buffer_flat = xp.take(
+            xp.asarray(self._ndarray).flatten(),
+            xp.ravel_multi_index(tuple(offset_abs), self._ndarray.shape).flatten(),
+        )
+        new_buffer = new_buffer_flat.reshape(restricted_connectivity.shape)
+        return new_buffer
+
 
 @dataclasses.dataclass(frozen=True)
 class NdArrayConnectivityField(  # type: ignore[misc] # for __ne__, __eq__
@@ -600,6 +618,7 @@ class NumPyArrayConnectivityField(NdArrayConnectivityField):
 
 common._connectivity.register(np.ndarray, NumPyArrayConnectivityField.from_array)
 
+
 # CuPy
 if cp:
     _nd_array_implementations.append(cp)
@@ -615,6 +634,7 @@ if cp:
         array_ns: ClassVar[ModuleType] = cp
 
     common._connectivity.register(cp.ndarray, CuPyArrayConnectivityField.from_array)
+
 
 # JAX
 if jnp:
@@ -668,6 +688,20 @@ def _astype(field: common.Field | core_defs.ScalarT | tuple, type_: type) -> NdA
 
 
 NdArrayField.register_builtin_func(fbuiltins.astype, _astype)
+
+
+def _as_offset(offset_: fbuiltins.FieldOffset, field: common.Field) -> common.ConnectivityField:
+    if isinstance(field, NdArrayField):
+        # change field.ndarray from relative to absolute
+        offset_dim = field.domain.dims.index(offset_.source)
+        new_connectivity = field.array_ns.indices(field.ndarray.shape)[offset_dim] + field.ndarray
+        return common.connectivity(new_connectivity, codomain=offset_.source, domain=field.domain)
+    raise AssertionError(
+        "This is the NdArrayConnectivityField implementation of `experimental.as_offset`."
+    )
+
+
+NdArrayField.register_builtin_func(experimental.as_offset, _as_offset)  # type: ignore[has-type] #type specified in experimental
 
 
 def _get_slices_from_domain_slice(

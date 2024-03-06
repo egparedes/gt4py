@@ -59,6 +59,10 @@ def _type_conversion_helper(t: type) -> type[ts.TypeSpec] | tuple[type[ts.TypeSp
         return ts.FieldType
     elif t is common.Dimension:
         return ts.DimensionType
+    elif t is FieldOffset:
+        return ts.OffsetType
+    elif t is common.ConnectivityField:
+        return ts.OffsetType
     elif t is core_defs.ScalarT:
         return ts.ScalarType
     elif t is type:
