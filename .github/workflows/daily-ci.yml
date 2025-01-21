@@ -23,6 +23,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
+
     - uses: actions/checkout@v4
 
     - name: Install C++ libraries
@@ -42,9 +43,6 @@ jobs:
         cache-dependency-glob: "uv.lock"
         python-version: ${{ matrix.python-version }}
 
-    # - name: Update requirements
-    #   run: uv lock --resolution=${{ matrix.dependencies-factor }} --prerelease=allow
-
     - name: Run CPU tests for '${{ matrix.module-factor }}' with '${{ matrix.dependencies-factor }}' resolution strategy
       env:
         NUM_PROCESSES: auto
@@ -57,7 +55,7 @@ jobs:
         SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
       uses: slackapi/slack-github-action@v1.23.0
       with:
-        channel-id: ${{ vars.SLACK_BOT_CHANNEL }}
+        channel-id: ${{ vars.SLACK_BOT_CHANNEL_TEST }}
         payload: |
           {
             "text": "${{ github.workflow }}: `Daily CI: '**${{ matrix.module-factor }} (CPU)** for **Python-${{ matrix.python-version }}**>: *Failed tests!*",

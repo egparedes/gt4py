@@ -38,4 +38,4 @@ jobs:
       env:
         NUM_PROCESSES: auto
       shell: bash
-      run: uv run nox -s eve_tests-${{ matrix.python-version }}
+      run: uv run nox -s test_eve-${{ matrix.python-version }}

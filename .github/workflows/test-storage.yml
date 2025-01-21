@@ -39,4 +39,4 @@ jobs:
       env:
         NUM_PROCESSES: auto
       shell: bash
-      run: uv run nox -s 'storage_tests-${{ matrix.python-version }}(cpu)'
+      run: uv run nox -s 'test_storage-${{ matrix.python-version }}(cpu)'

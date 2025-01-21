@@ -26,18 +26,18 @@ except ImportError:
 # -- nox configuration --
 nox.options.default_venv_backend = "uv"
 nox.options.sessions = [
-    "cartesian_tests-3.10(internal, cpu)",
-    "cartesian_tests-3.10(dace, cpu)",
-    "cartesian_tests-3.11(internal, cpu)",
-    "cartesian_tests-3.11(dace, cpu)",
-    "eve_tests-3.10",
-    "eve_tests-3.11",
-    "next_tests-3.10(internal, cpu, nomesh)",
-    "next_tests-3.10(dace, cpu, nomesh)",
-    "next_tests-3.11(internal, cpu, nomesh)",
-    "next_tests-3.11(dace, cpu, nomesh)",
-    "storage_tests-3.10(cpu)",
-    "storage_tests-3.11(cpu)",
+    "test_cartesian-3.10(internal, cpu)",
+    "test_cartesian-3.10(dace, cpu)",
+    "test_cartesian-3.11(internal, cpu)",
+    "test_cartesian-3.11(dace, cpu)",
+    "test_eve-3.10",
+    "test_eve-3.11",
+    "test_next-3.10(internal, cpu, nomesh)",
+    "test_next-3.10(dace, cpu, nomesh)",
+    "test_next-3.11(internal, cpu, nomesh)",
+    "test_next-3.11(dace, cpu, nomesh)",
+    "test_storage-3.10(cpu)",
+    "test_storage-3.11(cpu)",
 ]
 
 # -- Parameter sets --
@@ -67,10 +67,32 @@ CodeGenTestSettings: Final[dict[str, dict[str, Sequence]]] = {
 
 
 # -- nox sessions --
+@nox.session(python=["3.10", "3.11"])
+def docs(session: nox.Session) -> None:
+    """Run and test documentation workflows."""
+
+    _install_session_venv(session, extras=["testing"], groups=["docs", "test"])
+
+    session.run(*"jupytext docs/user/next/QuickstartGuide.md --to .ipynb".split())
+    session.run(*"jupytext docs/user/next/advanced/*.md --to .ipynb".split())
+
+    num_processes = session.env.get("NUM_PROCESSES", "auto")
+    for notebook in [
+        "docs/user/next/workshop/slides",
+        "docs/user/next/workshop/exercises",
+        "docs/user/next/QuickstartGuide.ipynb",
+        "docs/user/next/advanced",
+        "examples",
+    ]:
+        session.run(
+            *f"pytest --nbmake {notebook} -sv -n {num_processes}".split(),
+        )
+
+
 @nox.session(python=["3.10", "3.11"], tags=["cartesian"])
 @nox.parametrize("device", [DeviceNoxParam.cpu, DeviceNoxParam.cuda12])
 @nox.parametrize("codegen", [CodeGenNoxParam.internal, CodeGenNoxParam.dace])
-def cartesian_tests(
+def test_cartesian(
     session: nox.Session,
     codegen: CodeGenOption,
     device: DeviceOption,
@@ -102,7 +124,7 @@ def cartesian_tests(
 
 
 @nox.session(python=["3.10", "3.11"], tags=["cartesian", "next", "cpu"])
-def eve_tests(session: nox.Session) -> None:
+def test_eve(session: nox.Session) -> None:
     """Run 'gt4py.eve' tests."""
 
     _install_session_venv(session, groups=["test"])
@@ -130,7 +152,7 @@ def eve_tests(session: nox.Session) -> None:
 )
 @nox.parametrize("device", [DeviceNoxParam.cpu, DeviceNoxParam.cuda12])
 @nox.parametrize("codegen", [CodeGenNoxParam.internal, CodeGenNoxParam.dace])
-def next_tests(
+def test_next(
     session: nox.Session,
     codegen: CodeGenOption,
     device: DeviceOption,
@@ -170,7 +192,7 @@ def next_tests(
 
 @nox.session(python=["3.10", "3.11"], tags=["cartesian", "next"])
 @nox.parametrize("device", [DeviceNoxParam.cpu, DeviceNoxParam.cuda12])
-def storage_tests(
+def test_storage(
     session: nox.Session,
     device: DeviceOption,
 ) -> None:
@@ -206,21 +228,14 @@ def _install_session_venv(
     groups: Sequence[str] = (),
 ) -> None:
     """Install session packages using uv."""
-    uv_venv = {
-        key: value
-        for key, value in os.environ.items()
-        if key.startswith("NOX")
-        or key.startswith("PYTEST_")
-        or key.startswith("PYTHON")
-        or key.startswith("UV_")
-    } | {"UV_PROJECT_ENVIRONMENT": session.virtualenv.location}
     session.run_install(
         "uv",
         "sync",
         "--no-dev",
         *(f"--extra={e}" for e in extras),
         *(f"--group={g}" for g in groups),
-        env=uv_venv,
+        env={key: value for key, value in os.environ.items()}
+        | {"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
     for item in args:
         session.run_install(
