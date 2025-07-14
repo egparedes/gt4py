@@ -308,26 +308,43 @@ respect-gitignore = true
 show-fixes = true
 # show-source = true
 target-version = 'py310'
+typing-modules = ['gt4py.eve.extended_typing']
 
 [tool.ruff.format]
 docstring-code-format = true
 
 [tool.ruff.lint]
-# # Rules sets:
+exclude = ['docs/**', "examples/**", "tests/**"]
+# Rules sets:
+# A: flake8-builtins
+# B: flake8-bugbear
 # E: pycodestyle
 # F: Pyflakes
 # I: isort
-# B: flake8-bugbear
-# A: flake8-builtins
-# T10: flake8-debugger
+# Q: flake8-quotes
+# C4: flake8-comprehensions
+# TD: flake8-todos
+# UP: pyupgrade
 # ERA: eradicate
+# FBT: flake8-boolean-trap
+# FLY: flynt
+# ICN: flake8-import-conventions
 # NPY: NumPy-specific rules
+# PGH: pygrep-hooks
+# PTH: flake8-use-pathlib
 # RUF: Ruff-specific rules
+# SIM: flake8-simplify
+# T10: flake8-debugger
+# YTT: flake8-2020
+# PERF: Perflint
+# FA100: future-rewritable-type-annotation
 ignore = [
   'E501',  # [line-too-long]
-  'B905'  # [zip-without-explicit-strict]  # TODO(egparedes): Reevaluate this rule
+  'B905',  # [zip-without-explicit-strict]
+  'TD003'  # [missing-todo-link]
 ]
 select = ['E', 'F', 'I', 'B', 'A', 'T10', 'ERA', 'NPY', 'RUF']
+# select = ['A', 'B', 'E', 'F', 'I', 'Q', 'C4', 'TD', 'UP', 'ERA', 'FBT', 'FLY', 'ICN', 'NPY', 'PGH', 'PTH', 'RUF', 'SIM', 'T10', 'YTT', 'PERF', 'FA100']
 typing-modules = ['gt4py.eve.extended_typing']
 unfixable = []
 
