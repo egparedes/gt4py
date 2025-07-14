@@ -37,7 +37,7 @@ lint = [
   'pre-commit>=4.0.1',
   'ruff>=0.8.0',
   'tach>=0.23.0',
-  'validate-pyproject-schema-store[all]>=2025.06.13'
+  'validate-pyproject-schema-store[all]>=2025.07.14'
 ]
 test = [
   'coverage[toml]>=7.6.1',
@@ -54,6 +54,8 @@ test = [
 ]
 typing = [
   'mypy[faster-cache]>=1.13.0',
+  'pyrefly>=0.23.1',
+  'ty>=0.0.1a14',
   'types-tabulate>=0.8.10',
   'types-PyYAML>=6.0.10',
   'types-decorator>=5.1.8',
@@ -251,6 +253,15 @@ module = 'gt4py.next.program_processors.runners.dace_iterator.*'
 ignore_errors = true
 module = 'gt4py.next.iterator.runtime'
 
+# -- pyrefly: alternative type checker --
+[tool.pyrefly]
+permissive-ignores = true
+project-excludes = ["docs/**", "tests/**", ".venv/**", "build/**", "dist/**", "examples/**"]
+project-includes = ["src/gt4py/**"]
+replace-imports-with-any = ["sympy.*"]
+search-path = ["src"]
+use-untyped-imports = true
+
 # -- pytest --
 [tool.pytest]
 
@@ -417,6 +428,15 @@ sdist = "versioningit.cmdclass.sdist"
 
 [tool.setuptools.packages]
 find = {namespaces = false, where = ['src']}
+
+# -- ty: alternative type checker --
+[tool.ty]
+
+[tool.ty.environment]
+root = ["./src"]
+
+[tool.ty.src]
+include = ["src"]  # add "tests"
 
 # -- uv: packages & workspace --
 [tool.uv]
