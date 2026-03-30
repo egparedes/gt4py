@@ -33,9 +33,7 @@ from gt4py.next.utils import RecursionGuard
 nonlocated_node_pickler = eve_concepts.skipping_fields_node_pickler("location")
 
 #: Generate an unique fingerprint for an `eve.Node` that is location agnostic.
-nonlocated_fingerprint: eve_concepts.NodeFingerprinter = functools.partial(
-    eve_utils.content_hash, pickler=nonlocated_node_pickler
-)
+nonlocated_fingerprint = functools.partial(eve_utils.content_hash, pickler=nonlocated_node_pickler)
 
 
 class LocatedNode(Node):

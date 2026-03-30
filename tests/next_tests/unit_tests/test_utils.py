@@ -17,42 +17,42 @@ from gt4py.next import utils
 
 # Module-level classes so pickle can resolve them by qualified name.
 @dataclasses.dataclass
-class _DataclassModel(utils.MetadataBasedPickling):
+class _DataclassModel(utils.ModelPicklerMixin):
     value: int
     transient: str = dataclasses.field(default="skip", metadata=utils.gt4py_metadata(pickle=False))
 
 
 @dataclasses.dataclass(slots=True)
-class _SlottedDataclassModel(utils.MetadataBasedPickling):
+class _SlottedDataclassModel(utils.ModelPicklerMixin):
     value: int
     transient: str = dataclasses.field(default="skip", metadata=utils.gt4py_metadata(pickle=False))
 
 
 @datamodels.datamodel(slots=False)
-class _DatamodelModel(utils.MetadataBasedPickling):
+class _DatamodelModel(utils.ModelPicklerMixin):
     value: int
     transient: str = datamodels.field(default="skip", metadata=utils.gt4py_metadata(pickle=False))
 
 
 @dataclasses.dataclass
-class _EmptyDataclassModel(utils.MetadataBasedPickling):
+class _EmptyDataclassModel(utils.ModelPicklerMixin):
     pass
 
 
 @dataclasses.dataclass(slots=True)
-class _EmptySlottedDataclassModel(utils.MetadataBasedPickling):
+class _EmptySlottedDataclassModel(utils.ModelPicklerMixin):
     pass
 
 
 @datamodels.datamodel(slots=False)
-class _EmptyDatamodelModel(utils.MetadataBasedPickling):
+class _EmptyDatamodelModel(utils.ModelPicklerMixin):
     pass
 
 
 class TestMetadataBasedPickling:
     def test_get_metadata_based_getstate_rejects_non_dataclass_like_type(self):
         with pytest.raises(TypeError, match="Expected a dataclass or datamodel type"):
-            utils._get_metadata_based_state_getstate(object)
+            utils._get_model_pickler_getstate(object)
 
     @pytest.mark.parametrize(
         "instance,expected_state",
@@ -67,8 +67,8 @@ class TestMetadataBasedPickling:
     )
     def test_get_metadata_based_getstate(self, instance, expected_state):
         cls = type(instance)
-        getstate = utils._get_metadata_based_state_getstate(cls)
-        assert getstate is utils._get_metadata_based_state_getstate(cls)  # cached
+        getstate = utils._get_model_pickler_getstate(cls)
+        assert getstate is utils._get_model_pickler_getstate(cls)  # cached
 
         assert getstate(instance) == expected_state
 

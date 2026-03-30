@@ -43,8 +43,8 @@ from boltons.strutils import (
     unwrap_text as unwrap_text,
 )
 
-from . import extended_typing as xtyping
-from .extended_typing import (
+from gt4py.eve import extended_typing as xtyping
+from gt4py.eve.extended_typing import (
     TYPE_CHECKING,
     Any,
     ArgsOnlyCallable,
@@ -66,7 +66,7 @@ from .extended_typing import (
     cast,
     overload,
 )
-from .type_definitions import NOTHING, NothingType
+from gt4py.eve.type_definitions import NOTHING, NothingType
 
 
 try:

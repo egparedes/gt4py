@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import abc
 import copyreg
 import dataclasses
 import functools
@@ -21,13 +22,17 @@ from typing import (
     Final,
     Optional,
     ParamSpec,
+    Protocol,
     Sequence,
     TypeAlias,
     TypeGuard,
     TypeVar,
     cast,
     overload,
+    runtime_checkable,
 )
+
+from typing_extensions import Self
 
 from gt4py.eve import datamodels, utils as eve_utils
 
@@ -46,7 +51,7 @@ _StandardSetStateMethod: TypeAlias = Callable[[object, _StandardPickleState], No
 
 
 @functools.cache
-def _get_metadata_based_state_getstate(cls: type) -> _StandardGetStateMethod:
+def _get_model_pickler_getstate(cls: type) -> _StandardGetStateMethod:
     """
     Helper function to make class-specific `__getstate__` method following the standard implementation.
     """
@@ -111,7 +116,7 @@ def _get_metadata_based_state_getstate(cls: type) -> _StandardGetStateMethod:
     return __getstate__
 
 
-class MetadataBasedPickling:
+class ModelPicklerMixin:
     """
     Mixin for adding metadata-based pickling to dataclass-like objects.
 
@@ -121,7 +126,7 @@ class MetadataBasedPickling:
     For example: `foo = field(..., metadata=gt4py_metadata(pickle=False))`.
     """
 
-    __slots__ = ()  # to avoid creation of __dict__ when not needed
+    __slots__ = ()
 
     def __getstate__(self) -> _StandardPickleState:
         """
@@ -131,11 +136,104 @@ class MetadataBasedPickling:
         implementation, used by `pickle` (as documented in `object.__getstate__`,
         check: https://devdocs.io/python~3.14/library/pickle#object.__getstate__)
         """
-        return _get_metadata_based_state_getstate(type(self))(self)  # type: ignore[arg-type]  # type(self) should be hashable
+        return _get_model_pickler_getstate(type(self))(self)  # type: ignore[arg-type]  # type(self) should be hashable
 
     # Note: we don't implement `__setstate__` as the output of our custom
     #  `__getstate__` implementation should be compatible with the default
     #  implementation.
+
+
+@runtime_checkable
+class FingerprintableProtocol(Protocol):
+    """
+    Protocol for objects that can be fingerprinted with a custom function.
+
+    The fingerprint should be a stable hash string representing the state of the object.
+    """
+
+    __slots__ = ()
+
+    @property
+    def fingerprint(self) -> str: ...
+
+    @property
+    def fingerprinter(self) -> Callable[[FingerprintableProtocol], str]: ...
+
+
+class FingerprintableABC(abc.ABC):
+    """
+    Protocol for objects that can be fingerprinted with a custom function.
+
+    The fingerprint should be a stable hash string representing the state of the object.
+    """
+
+    __slots__ = ()
+
+    @classmethod
+    def __subclasshook__(cls, C: type) -> bool | types.NotImplementedType:
+        if cls is FingerprintableABC and hasattr(C, "fingerprint") and hasattr(C, "fingerprinter"):
+            return True
+
+        return NotImplemented
+
+    @property
+    def fingerprint(self: Self) -> str:
+        return self.fingerprinter(self)
+
+    @property
+    def fingerprinter(self: Self) -> Callable[[Any], str]:
+        return fingerprinter
+
+
+fingerprinter: Callable[[Any], str] = functools.partial(
+    eve_utils.content_hash,
+    pickler=eve_utils.custom_pickler_from_reducers(
+        {FingerprintableABC: lambda obj: (obj.__class__, (), (obj.fingerprint,))}
+    ),
+)
+
+
+class FingerprintableMixin:
+    """Mixin for adding fingerprinting to objects following the `Fingerprintable` protocol."""
+
+    __slots__ = ()
+
+    @property
+    def fingerprint(self) -> str:
+        return fingerprinter(self)
+
+    @property
+    def fingerprinter(self) -> Callable[[FingerprintableProtocol], str]:
+        return fingerprinter
+
+
+class CachedFingerprintableMixin:
+    """Mixin for adding fingerprinting to objects following the `Fingerprintable` protocol."""
+
+    @functools.cached_property
+    def fingerprint(self) -> str:
+        return fingerprinter(self)
+
+    @property
+    def fingerprinter(self) -> Callable[[FingerprintableProtocol], str]:
+        return fingerprinter
+
+    # @classmethod
+    # def __subclasshook__(cls, C: type) -> bool | types.NotImplementedType:
+    #     if issubclass(C, FingerprintableABC) and C.__setattr__ is not object.__setattr__:
+    #         return True
+
+    #     return NotImplemented
+
+
+# assert issubclass(FingerprintableMixin, FingerprintableABC)
+# if TYPE_CHECKING:
+#     __F: FingerprintableProtocol = FingerprintableMixin()
+
+
+# assert issubclass(CachedFingerprintableMixin, FingerprintableABC)
+# if TYPE_CHECKING:
+#     __F: FingerprintableProtocol = CachedFingerprintableMixin()
 
 
 class RecursionGuard:

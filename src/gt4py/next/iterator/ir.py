@@ -29,9 +29,7 @@ _semantic_node_pickler: type[pickle.Pickler] = concepts.skipping_fields_node_pic
 )
 
 #: Generates an unique fingerprint for IR nodes ignoring their location and type attributes.
-semantic_fingerprint: concepts.NodeFingerprinter = functools.partial(
-    eve_utils.content_hash, pickler=_semantic_node_pickler
-)
+semantic_fingerprint = functools.partial(eve_utils.content_hash, pickler=_semantic_node_pickler)
 
 
 @eve_utils.noninstantiable

@@ -16,7 +16,7 @@ import factory
 import numpy as np
 
 from gt4py._core import definitions as core_defs
-from gt4py.eve import codegen, utils
+from gt4py.eve import codegen
 from gt4py.next import common
 from gt4py.next.ffront import fbuiltins
 from gt4py.next.iterator import ir as itir
@@ -55,15 +55,84 @@ class GTFNTranslationStep(
     symbolic_domain_sizes: dict[str, itir.Expr] | None = None
     use_max_domain_range_on_unstructured_shift: bool | None = None
 
-    @functools.cached_property
-    def workflow_state_id(self) -> str:
-        return utils.content_hash(
-            self.language_settings,
-            self.enable_itir_transforms,
-            self.use_imperative_backend,
-            self.device_type,
-            tuple(self.symbolic_domain_sizes.items()) if self.symbolic_domain_sizes else None,
+    def __call__(
+        self, inp: definitions.CompilableProgramDef
+    ) -> stages.ProgramSource[code_specs.HeaderAndSourceCodeSpec]:
+        """Generate GTFN C++ code from the ITIR definition."""
+        program: itir.Program = inp.data
+
+        # handle regular parameters and arguments of the program (i.e. what the user defined in
+        #  the program)
+        arg_types = inp.args.args
+        regular_parameters, regular_args_expr = self._process_regular_arguments(
+            program, arg_types, inp.args.offset_provider_type
         )
+
+        # handle connectivity parameters and arguments (i.e. what the user provided in the offset
+        #  provider)
+        connectivity_parameters, connectivity_args_expr = self._process_connectivity_args(
+            inp.args.offset_provider_type
+        )
+
+        # combine into a format that is aligned with what the backend expects
+        parameters: list[interface.Parameter] = regular_parameters + connectivity_parameters
+        backend_arg = self._backend_type()
+        args_expr: list[str] = [backend_arg, *regular_args_expr]
+
+        function = interface.Function(program.id, tuple(parameters))
+        decl_body = (
+            f"return generated::{function.name}("
+            f"{', '.join(connectivity_args_expr)})({', '.join(args_expr)});"
+        )
+        decl_src = cpp_interface.render_function_declaration(function, body=decl_body)
+        stencil_src = self.generate_stencil_source(
+            program,
+            inp.args.offset_provider,
+            inp.args.column_axis,
+        )
+        source_code = interface.format_source(
+            self._code_spec(),
+            f"""
+                    #include <{self._backend_header()}>
+                    #include <gridtools/sid/dimension_to_tuple_like.hpp>
+                    {stencil_src}
+                    {decl_src}
+                    """.strip(),
+        )
+
+        module: stages.ProgramSource[code_specs.HeaderAndSourceCodeSpec] = stages.ProgramSource(
+            entry_point=function,
+            library_deps=(interface.LibraryDependency(self._library_name(), "master"),),
+            source_code=source_code,
+            code_spec=self._code_spec(),
+        )
+        return module
+
+    def generate_stencil_source(
+        self,
+        program: itir.Program,
+        offset_provider: common.OffsetProvider | common.OffsetProviderType,
+        column_axis: Optional[common.Dimension],
+    ) -> str:
+        if self.enable_itir_transforms:
+            new_program = self._preprocess_program(program, offset_provider)
+        else:
+            assert isinstance(program, itir.Program)
+            new_program = program
+
+        gtfn_ir = GTFN_lowering.apply(
+            new_program,
+            offset_provider_type=common.offset_provider_to_type(offset_provider),
+            column_axis=column_axis,
+        )
+
+        if self.use_imperative_backend:
+            gtfn_im_ir = GTFN_IM_lowering().visit(node=gtfn_ir)
+            generated_code = GTFNIMCodegen.apply(gtfn_im_ir)
+        else:
+            generated_code = GTFNCodegen.apply(gtfn_ir)
+
+        return codegen.format_source("cpp", generated_code, style="LLVM")
 
     def _default_code_spec(self) -> code_specs.HeaderAndSourceCodeSpec:
         match self.device_type:
@@ -180,85 +249,6 @@ class GTFNTranslationStep(
             new_program = apply_common_transforms(program, unroll_reduce=True)
 
         return new_program
-
-    def generate_stencil_source(
-        self,
-        program: itir.Program,
-        offset_provider: common.OffsetProvider | common.OffsetProviderType,
-        column_axis: Optional[common.Dimension],
-    ) -> str:
-        if self.enable_itir_transforms:
-            new_program = self._preprocess_program(program, offset_provider)
-        else:
-            assert isinstance(program, itir.Program)
-            new_program = program
-
-        gtfn_ir = GTFN_lowering.apply(
-            new_program,
-            offset_provider_type=common.offset_provider_to_type(offset_provider),
-            column_axis=column_axis,
-        )
-
-        if self.use_imperative_backend:
-            gtfn_im_ir = GTFN_IM_lowering().visit(node=gtfn_ir)
-            generated_code = GTFNIMCodegen.apply(gtfn_im_ir)
-        else:
-            generated_code = GTFNCodegen.apply(gtfn_ir)
-
-        return codegen.format_source("cpp", generated_code, style="LLVM")
-
-    def __call__(
-        self, inp: definitions.CompilableProgramDef
-    ) -> stages.ProgramSource[code_specs.HeaderAndSourceCodeSpec]:
-        """Generate GTFN C++ code from the ITIR definition."""
-        program: itir.Program = inp.data
-
-        # handle regular parameters and arguments of the program (i.e. what the user defined in
-        #  the program)
-        arg_types = inp.args.args
-        regular_parameters, regular_args_expr = self._process_regular_arguments(
-            program, arg_types, inp.args.offset_provider_type
-        )
-
-        # handle connectivity parameters and arguments (i.e. what the user provided in the offset
-        #  provider)
-        connectivity_parameters, connectivity_args_expr = self._process_connectivity_args(
-            inp.args.offset_provider_type
-        )
-
-        # combine into a format that is aligned with what the backend expects
-        parameters: list[interface.Parameter] = regular_parameters + connectivity_parameters
-        backend_arg = self._backend_type()
-        args_expr: list[str] = [backend_arg, *regular_args_expr]
-
-        function = interface.Function(program.id, tuple(parameters))
-        decl_body = (
-            f"return generated::{function.name}("
-            f"{', '.join(connectivity_args_expr)})({', '.join(args_expr)});"
-        )
-        decl_src = cpp_interface.render_function_declaration(function, body=decl_body)
-        stencil_src = self.generate_stencil_source(
-            program,
-            inp.args.offset_provider,
-            inp.args.column_axis,
-        )
-        source_code = interface.format_source(
-            self._code_spec(),
-            f"""
-                    #include <{self._backend_header()}>
-                    #include <gridtools/sid/dimension_to_tuple_like.hpp>
-                    {stencil_src}
-                    {decl_src}
-                    """.strip(),
-        )
-
-        module: stages.ProgramSource[code_specs.HeaderAndSourceCodeSpec] = stages.ProgramSource(
-            entry_point=function,
-            library_deps=(interface.LibraryDependency(self._library_name(), "master"),),
-            source_code=source_code,
-            code_spec=self._code_spec(),
-        )
-        return module
 
     def _backend_header(self) -> str:
         match self.device_type:
