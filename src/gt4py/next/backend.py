@@ -9,9 +9,12 @@
 from __future__ import annotations
 
 import dataclasses
+import types
+from collections.abc import Callable
 from typing import Generic
 
 from gt4py._core import definitions as core_defs
+from gt4py.eve import utils as eve_utils
 from gt4py.next import custom_layout_allocators as next_allocators
 from gt4py.next.ffront import (
     foast_to_gtir,
@@ -27,23 +30,24 @@ from gt4py.next.iterator import ir as itir
 from gt4py.next.otf import arguments, definitions, stages, toolchain, workflow
 
 
-def jit_to_aot_args(
-    inp: arguments.JITArgs,
-) -> arguments.CompileTimeArgs:
-    return arguments.CompileTimeArgs.from_concrete(*inp.args, **inp.kwargs)
-
-
-def adapted_jit_to_aot_args_factory() -> workflow.Workflow[
-    definitions.ConcreteProgramDef[definitions.IRDefinitionT, arguments.JITArgs],
-    definitions.ConcreteProgramDef[definitions.IRDefinitionT, arguments.CompileTimeArgs],
-]:
-    """Wrap `jit_to_aot` into a workflow adapter to fit into backend transform workflows."""
-    return toolchain.ArgsOnlyAdapter(jit_to_aot_args)
+@workflow.make_step
+def aotify_args_step(
+    inp: definitions.ConcreteProgramDef[
+        definitions.IRDefinitionT, arguments.JITArgs | arguments.CompileTimeArgs
+    ],
+) -> definitions.ConcreteProgramDef[definitions.IRDefinitionT, arguments.CompileTimeArgs]:
+    if isinstance(inp.args, arguments.JITArgs):
+        inp = dataclasses.replace(
+            inp,
+            args=arguments.CompileTimeArgs.from_concrete(*inp.args.args, **inp.args.kwargs),
+        )
+    assert isinstance(inp.args, arguments.CompileTimeArgs)
+    return inp
 
 
 @dataclasses.dataclass(frozen=True)
 class Transforms(
-    workflow.MultiWorkflow[
+    workflow.MultiStepWorkflow[
         definitions.ConcreteProgramDef[definitions.IRDefinitionT, definitions.ArgsDefinitionT],
         definitions.CompilableProgramDef,
     ]
@@ -65,7 +69,7 @@ class Transforms(
     aotify_args: workflow.Workflow[
         definitions.ConcreteProgramDef[definitions.IRDefinitionT, arguments.JITArgs],
         definitions.ConcreteProgramDef[definitions.IRDefinitionT, arguments.CompileTimeArgs],
-    ] = dataclasses.field(default_factory=adapted_jit_to_aot_args_factory)
+    ] = aotify_args_step
 
     func_to_foast: workflow.Workflow[
         ffront_stages.ConcreteDSLFieldOperatorDef, ffront_stages.ConcreteFOASTOperatorDef
@@ -101,33 +105,27 @@ class Transforms(
             steps.append("aotify_args")
         match inp.data:
             case ffront_stages.DSLFieldOperatorDef():
-                steps.extend(
-                    [
-                        "func_to_foast",
-                        "field_view_op_to_prog",
-                        "past_lint",
-                        "field_view_prog_args_transform",
-                        "past_to_itir",
-                    ]
-                )
+                steps.extend([
+                    "func_to_foast",
+                    "field_view_op_to_prog",
+                    "past_lint",
+                    "field_view_prog_args_transform",
+                    "past_to_itir",
+                ])
             case ffront_stages.FOASTOperatorDef():
-                steps.extend(
-                    [
-                        "field_view_op_to_prog",
-                        "past_lint",
-                        "field_view_prog_args_transform",
-                        "past_to_itir",
-                    ]
-                )
+                steps.extend([
+                    "field_view_op_to_prog",
+                    "past_lint",
+                    "field_view_prog_args_transform",
+                    "past_to_itir",
+                ])
             case ffront_stages.DSLProgramDef():
-                steps.extend(
-                    [
-                        "func_to_past",
-                        "past_lint",
-                        "field_view_prog_args_transform",
-                        "past_to_itir",
-                    ]
-                )
+                steps.extend([
+                    "func_to_past",
+                    "past_lint",
+                    "field_view_prog_args_transform",
+                    "past_to_itir",
+                ])
             case ffront_stages.PASTProgramDef():
                 steps.extend(["past_lint", "field_view_prog_args_transform", "past_to_itir"])
             case itir.Program():
@@ -138,6 +136,31 @@ class Transforms(
 
 
 DEFAULT_TRANSFORMS: Transforms = Transforms()
+
+
+PAST_TO_ITIR_STEPS: tuple[workflow.Step, ...] = (
+    past_to_itir.past_to_gtir_factory(),
+    past_process_args.transform_program_args_factory(),
+    past_to_itir.past_to_gtir_factory(),
+)
+DSL_PROG_TO_ITIR_STEPS: tuple[workflow.Step, ...] = (
+    (func_to_past.adapted_func_to_past_factory(), *PAST_TO_ITIR_STEPS),
+)
+FOAST_TO_ITIR_STEPS: tuple[workflow.Step, ...] = (
+    (foast_to_gtir.adapted_foast_to_gtir_factory(), *PAST_TO_ITIR_STEPS),
+)
+DSL_OP_TO_ITIR_STEPS: tuple[workflow.Step, ...] = (
+    func_to_foast.adapted_func_to_foast_factory(),
+    *PAST_TO_ITIR_STEPS,
+)
+
+FRONTEND_TRANSFORMS = types.MappingProxyType({
+    itir.Program: workflow.StepSequence.from_steps(),
+    ffront_stages.PASTProgramDef: workflow.StepSequence.from_steps(*PAST_TO_ITIR_STEPS),
+    ffront_stages.DSLProgramDef: workflow.StepSequence.from_steps(*DSL_PROG_TO_ITIR_STEPS),
+    ffront_stages.FOASTOperatorDef: workflow.StepSequence.from_steps(*FOAST_TO_ITIR_STEPS),
+    ffront_stages.DSLFieldOperatorDef: workflow.StepSequence.from_steps(*DSL_OP_TO_ITIR_STEPS),
+})
 
 
 # TODO(tehrengruber): Rename class and `executor` & `transforms` attribute. Maybe:

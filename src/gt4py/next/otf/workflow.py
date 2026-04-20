@@ -74,6 +74,7 @@ class Workflow(
 
 class ChainableWorkflowMixin(Workflow[StartT, EndT_co]):
     __slots__ = ()
+
     def chain(self, next_step: Transform[EndT_co, NewEndT]) -> StepSequence[StartT, NewEndT]:
         return make_step(self).chain(next_step)
 
@@ -166,6 +167,20 @@ class CachedStep(
 
 
 @dataclasses.dataclass(frozen=True)
+class DispatchingWorkflow(Workflow[StartT, EndT]):
+    """
+    Workflow that dispatches on the input type.
+    """
+
+    dispatcher: eve_utils.TypeMapping[Workflow[StartT, EndT]]
+
+    def __call__(self, inp: StartT) -> EndT:
+        """Dispatch the input to the correct sequence of steps based on its type."""
+        workflow = self.dispatcher[type(inp)]
+        return workflow(inp)
+
+
+@dataclasses.dataclass(frozen=True)
 class MultiStepWorkflow(Workflow[StartT, EndT]):
     """A flexible workflow, where the sequence of steps depends on the input type."""
 
@@ -220,6 +235,10 @@ class StepSequence(MultiStepWorkflow[StartT, EndT]):
     @classmethod
     def start(cls, step: Transform[StartT, EndT]) -> StepSequence[StartT, EndT]:
         return cls((step,))
+
+    @classmethod
+    def from_steps(cls, *steps: Transform) -> StepSequence:
+        return cls(steps)
 
 
 @dataclasses.dataclass(frozen=True)

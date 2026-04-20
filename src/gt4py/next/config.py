@@ -14,6 +14,8 @@ import os
 import pathlib
 from typing import Final
 
+from gt4py import __version__ as gt4py_version
+
 
 class BuildCacheLifetime(enum.Enum):
     SESSION = 1
@@ -73,11 +75,16 @@ VERBOSE_EXCEPTIONS: bool = env_flag_to_bool(
     "GT4PY_VERBOSE_EXCEPTIONS", default=True if DEBUG else False
 )
 
+#: Version string to be included in the build cache dir
+BUILD_CACHE_VERSION: Final[str] = os.environ.get("GT4PY_BUILD_CACHE_VERSION", gt4py_version)
+
 
 #: Where generated code projects should be persisted.
 #: Only active if BUILD_CACHE_LIFETIME is set to PERSISTENT
 BUILD_CACHE_DIR: pathlib.Path = (
-    pathlib.Path(os.environ.get("GT4PY_BUILD_CACHE_DIR", pathlib.Path.cwd())) / ".gt4py_cache"
+    pathlib.Path(os.environ.get("GT4PY_BUILD_CACHE_DIR", pathlib.Path.cwd()))
+    / BUILD_CACHE_VERSION
+    / ".gt4py_cache"
 )
 
 
