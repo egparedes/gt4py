@@ -10,13 +10,15 @@ from __future__ import annotations
 import os
 import pathlib
 import pickle
-from typing import Any, Hashable
+from typing import Any, Hashable, Generic, TypeVar, TYPE_CHECKING
 
 from gt4py._core import locking
 from gt4py.eve import utils as eve_utils
 
+T = TypeVar("T")
 
-class FileCache:
+
+class FileCache(Generic[T]):
     """
     Dictionary-like object for persistently caching objects on disk.
     """
@@ -33,14 +35,14 @@ class FileCache:
         path = self.path / f"{key}.pkl"
         return path
 
-    def __getitem__(self, key: Hashable) -> Any:
+    def __getitem__(self, key: Hashable) -> T:
         if key not in self:
             raise KeyError(key)
         with locking.lock(path := self._get_path(key)):
             with open(path, "rb") as f:
                 return pickle.load(f)
 
-    def __setitem__(self, key: Hashable, value: Any) -> None:
+    def __setitem__(self, key: Hashable, value: T) -> None:
         with locking.lock(path := self._get_path(key)):
             with open(path, "wb") as f:
                 pickle.dump(value, f, protocol=5)
@@ -53,3 +55,9 @@ class FileCache:
 
     def __contains__(self, key: Hashable) -> bool:
         return self._get_path(key).exists()
+
+
+if TYPE_CHECKING:
+    from gt4py.eve.extended_typing import OpaqueMutableMapping
+
+    _FC: type[OpaqueMutableMapping[Hashable, int]] = FileCache[int]

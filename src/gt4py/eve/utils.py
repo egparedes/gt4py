@@ -568,6 +568,84 @@ def with_fluid_partial(
     return _decorator(func) if func is not None else _decorator
 
 
+class TypeMapping(collections.abc.Mapping[type, _T]):
+    """
+    A mapping from types to values supporting complex type-based dispatching.
+
+    The mapping supports registering values for specific types, and
+    retrieving values based on the type key, supporting subtyping
+    relationship exactly in the same way as `functools.singledispatch()` works.
+    For example, if a value is registered for a base class, it will be returned
+    for instances of derived classes unless a more specific type is registered.
+
+    Examples:
+        >>> mapping = TypeMapping(lambda type_: f"Default for {type_}")
+        >>> mapping[int] = "Integer handler"
+        >>> mapping[int]
+        'Integer handler'
+        >>> mapping[float]
+        "Default for <class 'float'>"
+
+        >>> import collections
+        >>> mapping[tuple] = "Tuple handler"
+        >>> mapping[tuple]
+        'Tuple handler'
+        >>> mapping[collections.namedtuple("Point", ["x", "y"])]
+        'Tuple handler'
+    """
+
+    def __init__(self, fallback_factory: Callable[[type], _T]) -> None:
+        self._fallback_factory = fallback_factory
+        self._dispatcher = functools.singledispatch(self._fallback_factory)
+
+    def __getitem__(self, type_: type) -> _T:
+        dispatched = self._dispatcher.dispatch(type_)
+        return (
+            self._fallback_factory(type_)
+            if dispatched is self._fallback_factory
+            else cast(_T, dispatched)
+        )
+
+    def __setitem__(self, type_: type, value: _T) -> None:
+        self._dispatcher.register(type_, value)  # type: ignore[call-overload]  # abusine singledispatch to register any value, not just callables
+        self.clear_cache()
+
+    def __iter__(self) -> Iterator[type]:
+        return iter(self._dispatcher.registry)
+
+    def __len__(self) -> int:
+        return len(self._dispatcher.registry)
+
+    def __contains__(self, type_: object) -> bool:
+        """Check if a type is registered in the mapping (including via superclasses)."""
+        return self._dispatcher.dispatch(type_) is not self._fallback_factory
+
+    @overload
+    def register(self, type_: type, value: _T) -> _T: ...
+
+    @overload
+    def register(self, type_: type, value: NothingType = NOTHING) -> Callable[[_T], _T]: ...
+
+    def register(self, type_: type, value: _T | NothingType = NOTHING) -> _T | Callable[[_T], _T]:
+        """Return a decorator to register a value for the given type."""
+
+        if value is not NOTHING:
+            assert not isinstance(value, NothingType)
+            self[type_] = value
+            return value
+        else:
+
+            def _decorator(value: _T) -> _T:
+                self[type_] = value
+                return value
+
+            return _decorator
+
+    def clear_cache(self) -> None:
+        """Clear the type dispatching cache."""
+        self._dispatcher._clear_cache()
+
+
 def register_subclasses(*subclasses: Type) -> Callable[[Type], Type]:
     """Class decorator to automatically register virtual subclasses.
 
@@ -617,6 +695,32 @@ def noninstantiable(cls: Type[_T]) -> Type[_T]:
 def is_noninstantiable(cls: Type[_T]) -> bool:
     """Return True if `model` is a non-instantiable class."""
     return "__noninstantiable__" in cls.__dict__
+
+
+DataclassT = TypeVar("DataclassT", bound=xtyping.DataclassABC)
+
+
+def dataclass_mapper(**kwargs: Callable[[T], S]) -> Callable[[DataclassT], DataclassT]:
+    return lambda instance: dataclasses.replace(
+        instance, **{k: map_fn(getattr(instance, k)) for k, map_fn in kwargs.items()}
+    )
+
+
+@overload
+def map_over_dataclass(
+    instance: None = None, **kwargs: Callable[[T], S]
+) -> Callable[[DataclassT], DataclassT]: ...
+
+
+@overload
+def map_over_dataclass(instance: DataclassT, **kwargs: Callable[[T], S]) -> DataclassT: ...
+
+
+def map_over_dataclass(
+    instance: DataclassT | None = None, **kwargs: Callable[[T], S]
+) -> DataclassT | Callable[[DataclassT], DataclassT]:
+    mapper = dataclass_mapper(**kwargs)
+    return mapper(instance) if instance is not None else mapper
 
 
 def content_hash(
@@ -1215,14 +1319,12 @@ class XIterable(Iterable[T]):
             >>> list(it.getitem(0))
             ['a', 'b', 'c']
 
-            >>> it = xiter(
-            ...     [
-            ...         dict(name="AA", age=20, country="US"),
-            ...         dict(name="BB", age=30, country="UK"),
-            ...         dict(name="CC", age=40, country="EU"),
-            ...         dict(country="CH"),
-            ...     ]
-            ... )
+            >>> it = xiter([
+            ...     dict(name="AA", age=20, country="US"),
+            ...     dict(name="BB", age=30, country="UK"),
+            ...     dict(name="CC", age=40, country="EU"),
+            ...     dict(country="CH"),
+            ... ])
             >>> list(it.getitem("name", "age", default=None))
             [('AA', 20), ('BB', 30), ('CC', 40), (None, None)]
 

@@ -15,21 +15,21 @@ import functools
 import inspect
 import itertools
 import types
+from collections.abc import Callable, Hashable, Sequence
 from typing import (
     Any,
-    Callable,
     ClassVar,
     Final,
     Optional,
     ParamSpec,
     Protocol,
-    Sequence,
     TypeAlias,
     TypeGuard,
     TypeVar,
     cast,
     overload,
     runtime_checkable,
+    TYPE_CHECKING,
 )
 
 from typing_extensions import Self
@@ -143,8 +143,7 @@ class ModelPicklerMixin:
     #  implementation.
 
 
-@runtime_checkable
-class FingerprintableProtocol(Protocol):
+class Fingerprinted(Protocol):
     """
     Protocol for objects that can be fingerprinted with a custom function.
 
@@ -154,24 +153,37 @@ class FingerprintableProtocol(Protocol):
     __slots__ = ()
 
     @property
-    def fingerprint(self) -> str: ...
+    def fingerprint(self) -> str:
+        """Get the fingerprint of the object."""
+        ...
 
     @property
-    def fingerprinter(self) -> Callable[[FingerprintableProtocol], str]: ...
+    def fingerprinter(self) -> Callable[[Fingerprinted], str]:
+        """Get the fingerprinting function for the object."""
+        ...
 
 
-class FingerprintableABC(abc.ABC):
+Fingerprintable = Fingerprinted | Hashable
+
+
+class FingerprintedABC(abc.ABC):
     """
-    Protocol for objects that can be fingerprinted with a custom function.
+    ABC of objects implementing the fingerprinting protocol.
 
-    The fingerprint should be a stable hash string representing the state of the object.
+    It provides a custom subclass hook to recognize classes implementing the
+    protocol without inheriting from the ABC, without the performance problems
+    of using `isinstance` checks on runtime-checkable protocols directly.
     """
 
     __slots__ = ()
 
     @classmethod
-    def __subclasshook__(cls, C: type) -> bool | types.NotImplementedType:
-        if cls is FingerprintableABC and hasattr(C, "fingerprint") and hasattr(C, "fingerprinter"):
+    def __subclasshook__(cls, subclass: type) -> bool | types.NotImplementedType:
+        if (
+            cls is FingerprintedABC
+            and hasattr(subclass, "fingerprint")
+            and hasattr(subclass, "fingerprinter")
+        ):
             return True
 
         return NotImplemented
@@ -187,14 +199,21 @@ class FingerprintableABC(abc.ABC):
 
 fingerprinter: Callable[[Any], str] = functools.partial(
     eve_utils.content_hash,
-    pickler=eve_utils.custom_pickler_from_reducers(
-        {FingerprintableABC: lambda obj: (obj.__class__, (), (obj.fingerprint,))}
-    ),
+    pickler=eve_utils.custom_pickler_from_reducers({
+        FingerprintedABC: lambda obj: (obj.__class__, (), (obj.fingerprint,))
+    }),
 )
+"""
+Default fingerprinting function for GT4Py objects.
+
+It uses `eve_utils.content_hash` as fingerprinting function. If the object
+is an instance of a class implementing the `FingerprintedProtocol`, it will
+instead use the `fingerprint` property of the object as its content hash.
+"""
 
 
-class FingerprintableMixin:
-    """Mixin for adding fingerprinting to objects following the `Fingerprintable` protocol."""
+class FingerprintedMixin:
+    """General mixin to add support for the Fingerprinted protocol to any class."""
 
     __slots__ = ()
 
@@ -203,37 +222,30 @@ class FingerprintableMixin:
         return fingerprinter(self)
 
     @property
-    def fingerprinter(self) -> Callable[[FingerprintableProtocol], str]:
+    def fingerprinter(self) -> Callable[[Fingerprinted], str]:
         return fingerprinter
 
 
-class CachedFingerprintableMixin:
-    """Mixin for adding fingerprinting to objects following the `Fingerprintable` protocol."""
+assert issubclass(FingerprintedMixin, FingerprintedABC)
+if TYPE_CHECKING:
+    _FM: type[Fingerprinted] = FingerprintedMixin
 
-    @functools.cached_property
+
+class CachedFingerprintedMixin:
+    """Mixin to add an optimized implementation of the Fingerprinted protocol to frozen classes."""
+
+    @(functools.cached_property if not TYPE_CHECKING else property)
     def fingerprint(self) -> str:
         return fingerprinter(self)
 
     @property
-    def fingerprinter(self) -> Callable[[FingerprintableProtocol], str]:
+    def fingerprinter(self) -> Callable[[Fingerprinted], str]:
         return fingerprinter
 
-    # @classmethod
-    # def __subclasshook__(cls, C: type) -> bool | types.NotImplementedType:
-    #     if issubclass(C, FingerprintableABC) and C.__setattr__ is not object.__setattr__:
-    #         return True
 
-    #     return NotImplemented
-
-
-# assert issubclass(FingerprintableMixin, FingerprintableABC)
-# if TYPE_CHECKING:
-#     __F: FingerprintableProtocol = FingerprintableMixin()
-
-
-# assert issubclass(CachedFingerprintableMixin, FingerprintableABC)
-# if TYPE_CHECKING:
-#     __F: FingerprintableProtocol = CachedFingerprintableMixin()
+assert issubclass(CachedFingerprintedMixin, FingerprintedABC)
+if TYPE_CHECKING:
+    _CFM: type[Fingerprinted] = CachedFingerprintedMixin
 
 
 class RecursionGuard:
