@@ -12,273 +12,292 @@ import abc
 import collections.abc
 import dataclasses
 import functools
-import inspect
-import types
 import typing
 from collections.abc import Callable, Hashable, Sequence
-from typing import Any, Generic, Protocol, TypeVar, cast, runtime_checkable
+from typing import (
+    Any,
+    Generic,
+    Protocol,
+    TypeAlias,
+    TypeVar,
+    cast,
+    runtime_checkable,
+    overload,
+    TYPE_CHECKING,
+)
 
 from typing_extensions import Self
+from zmq import TYPE
 
 from gt4py.eve import utils as eve_utils
 from gt4py.eve.extended_typing import OpaqueMutableMapping
 from gt4py.next import utils
 
 
-StartT = TypeVar("StartT")
-StartT_contra = TypeVar("StartT_contra", contravariant=True)
-EndT = TypeVar("EndT")
-EndT_co = TypeVar("EndT_co", covariant=True)
-NewEndT = TypeVar("NewEndT")
+InT = TypeVar("InT")
+InT_contra = TypeVar("InT_contra", contravariant=True)
+OutT = TypeVar("OutT")
+OutT_co = TypeVar("OutT_co", covariant=True)
+NewOutT = TypeVar("NewOutT")
+NewOutT_co = TypeVar("NewOutT_co", covariant=True)
 IntermediateT = TypeVar("IntermediateT")
 HashT = TypeVar("HashT", bound=collections.abc.Hashable)
 DataT = TypeVar("DataT")
 ArgT = TypeVar("ArgT")
 
 
-@runtime_checkable
-class Transform(utils.FingerprintableProtocol, Protocol[StartT_contra, EndT_co]):
-    """
-    Transform protocol.
+class _WorkflowCall(Protocol[InT_contra, OutT_co]):
+    def __call__(self, inp: InT_contra, /) -> OutT_co: ...
 
-    Anything that implements this interface can be a transform of one or more steps.
-    - callable
-    - take a single input argument
-    """
 
-    __slots__ = ()
+class _FingerprintedWorkflow(
+    _WorkflowCall[InT_contra, OutT_co], utils.Fingerprinted, Protocol[InT_contra, OutT_co]
+): ...
 
-    def __call__(self, inp: StartT_contra) -> EndT_co: ...
+
+class _HashableWorkflow(
+    _WorkflowCall[InT_contra, OutT_co], Hashable, Protocol[InT_contra, OutT_co]
+): ...
+
+
+Workflow: TypeAlias = (
+    _FingerprintedWorkflow[InT_contra, OutT_co] | _HashableWorkflow[InT_contra, OutT_co]
+)
+
+
+class _MultiWorkflowSteps(Protocol):
+    @property
+    def steps(self) -> Sequence[Workflow]: ...
+
+
+class _FingerprintedMultiWorkflow(
+    _MultiWorkflowSteps, _FingerprintedWorkflow[InT_contra, OutT_co], Protocol[InT_contra, OutT_co]
+): ...
+
+
+class _HashableMultiWorkflow(
+    _MultiWorkflowSteps, _HashableWorkflow[InT_contra, OutT_co], Protocol[InT_contra, OutT_co]
+): ...
+
+
+MultiWorkflow: TypeAlias = (
+    _FingerprintedMultiWorkflow[InT_contra, OutT_co] | _HashableMultiWorkflow[InT_contra, OutT_co]
+)
 
 
 @dataclasses.dataclass(frozen=True)
-class Workflow(
-    utils.CachedFingerprintableMixin, utils.ModelPicklerMixin, Generic[StartT_contra, EndT_co]
+class WorkflowABC(
+    utils.CachedFingerprintedMixin, utils.ModelPicklerMixin, Generic[InT_contra, OutT_co]
 ):
-    __slots__ = ()
+    """Base implementation of a workflow step, with caching and optimized fingerprinting."""
 
     @classmethod
-    def __subclasshook__(cls, C: type) -> bool | types.NotImplementedType:
-        if issubclass(C, utils.CachedFingerprintableMixin) and (
+    def __subclasshook__(cls, subclass: type) -> bool:
+        if (
             cls is Workflow
-            and callable(getattr(C, "__call__", None))
-            and inspect.signature(C.__call__).parameters.keys() == ["inp"]
+            and issubclass(subclass, (Hashable, utils.FingerprintedABC))
+            and issubclass(subclass, collections.abc.Callable)
         ):
             return True
 
         return NotImplemented
 
     @abc.abstractmethod
-    def __call__(self, inp: StartT_contra) -> EndT_co: ...
+    def __call__(self, inp: InT_contra, /) -> OutT_co: ...
 
-
-class ChainableWorkflowMixin(Workflow[StartT, EndT_co]):
-    __slots__ = ()
-
-    def chain(self, next_step: Transform[EndT_co, NewEndT]) -> StepSequence[StartT, NewEndT]:
-        return make_step(self).chain(next_step)
-
-
-def make_step(function: Transform[StartT, EndT]) -> StepSequence[StartT, EndT]:
-    """
-    Wrap a function in the workflow step convenience wrapper.
-
-    Examples:
-    ---------
-    >>> @make_step
-    ... def times_two(x: int) -> int:
-    ...     return x * 2
-
-    >>> def stringify(x: int) -> str:
-    ...     return str(x)
-
-    >>> # create a workflow int -> int -> str
-    >>> times_two.chain(stringify)(3)
-    '6'
-    """
-    return StepSequence.start(function)
-
-
-class ReplaceEnabledWorkflowMixin(Workflow[StartT_contra, EndT_co]):
-    """
-    Subworkflow replacement mixin.
-
-    Any subclass MUST be a dataclass for `.replace` to work
-    """
-
-    __slots__ = ()
-
-    def replace(self, **kwargs: Any) -> Self:
-        """Build a new instance with replaced substeps."""
-        if not dataclasses.is_dataclass(self):
-            raise TypeError(
-                f"'{self.__class__.__name__}' must be a dataclass to use ReplaceEnabledWorkflowMixin."
-            )
-        return dataclasses.replace(self, **kwargs)
+    @abc.abstractmethod
+    def chain(self, next_step: Workflow[OutT_co, NewOutT]) -> WorkflowABC[InT, NewOutT]: ...
 
 
 @dataclasses.dataclass(frozen=True)
-class CachedStep(
-    ReplaceEnabledWorkflowMixin[StartT, EndT],
-    ChainableWorkflowMixin[StartT, EndT],
-    Workflow[StartT, EndT],
-):
+class Step(WorkflowABC[InT, OutT]):
+    """Convenience base class for workflow steps, with chaining and replacement support."""
+
+    wf: Workflow[InT, OutT]
+    name: str = dataclasses.field(default="<unnamed>", kw_only=True)
+
+    def __call__(self, inp: InT) -> OutT:
+        return self.wf(inp)
+
+    def chain(self, next_step: Workflow[OutT_co, NewOutT]) -> StepSequence[InT, NewOutT]:
+        return StepSequence.from_steps(self, make_step(next_step))
+
+
+if TYPE_CHECKING:
+    _WF: type[Workflow] = Step
+
+
+def make_step(wf: Workflow[InT, OutT], *, cached: bool = False) -> Step[InT, OutT]:
     """
-    Cached workflow of single input callables.
+    Wrap any workflow as a Step instance.
 
     Examples:
-    ---------
-    >>> def heavy_computation(x: int) -> int:
-    ...     print("This might take a while...")
-    ...     return x
+        >>> @Step.from_workflow
+        ... def times_two(x: int) -> int:
+        ...     return x * 2
+        ...
+        ...
+        ... times_two(3)
+        6
 
-    >>> cached_step = CachedStep(step=heavy_computation)
+        >>> times_two.chain(lambda x: x * 3)(3)
+        18
+    """
+    if isinstance(wf, WorkflowABC):
+        wf = Step(wf)
 
-    >>> cached_step(42)
-    This might take a while...
-    42
+    if isinstance(wf, Step):
+        if cached and not isinstance(wf, CachedStep):
+            wf = CachedStep.from_workflow(wf)
 
-    The next invocation for the same argument will be cached:
-    >>> cached_step(42)
-    42
+        return wf
 
-    >>> cached_step(1)
-    This might take a while...
-    1
+    # assert False, (wf, callable(wf), isinstance(wf, WorkflowABC), isinstance(wf, WorkflowABC))
+
+    raise TypeError(f"Expected a Workflow, got type '{type(wf)}' with value '{wf!r}'")
+
+
+@dataclasses.dataclass(frozen=True)
+class CachedStep(Step[InT, OutT]):
+    """
+    Concrete implementation of a cached workflow.
+
+    Examples:
+        >>> def heavy_computation(x: int) -> int:
+        ...     print("This might take a while...")
+        ...     return x
+
+        >>> cached_step = CachedStep(heavy_computation)
+
+        >>> cached_step(42)
+        This might take a while...
+        42
+
+        >>> cached_step(42)  # result is cached, so no print statement
+        42
+
+        >>> cached_step(1)
+        This might take a while...
+        1
     """
 
-    step: Workflow[StartT, EndT]
-    hash_function: Callable[[StartT], Hashable] = dataclasses.field(default=eve_utils.content_hash)
-    cache: OpaqueMutableMapping[Hashable, EndT] = dataclasses.field(
-        repr=False, default_factory=dict, metadata=utils.gt4py_metadata(pickle=False)
+    hash_function: Callable[[InT], Hashable] = dataclasses.field(
+        default=eve_utils.content_hash, kw_only=True
+    )
+    cache: OpaqueMutableMapping[Hashable, OutT] = dataclasses.field(
+        kw_only=True,
+        repr=False,
+        default_factory=dict[Hashable, OutT],
+        metadata=utils.gt4py_metadata(pickle=False),
     )
 
-    def __call__(self, inp: StartT) -> EndT:
+    @classmethod
+    def from_workflow(
+        cls, wf: Workflow[InT, OutT], hash_function: Callable[[InT], Hashable] | None = None
+    ) -> CachedStep[InT, OutT]:
+        """Wrap any workflow as a CachedStep instance."""
+        if isinstance(wf, CachedStep):
+            if hash_function is not None and wf.hash_function != hash_function:
+                raise ValueError("Cannot change hash function of an existing CachedStep")
+            return wf
+        if isinstance(wf, WorkflowABC):
+            return cls(wf, hash_function=hash_function or eve_utils.content_hash)
+
+    def __call__(self, inp: InT) -> OutT:
         """Run the step only if the input is not cached, else return from cache."""
         key = self.cache_key(inp)
         try:
             result = self.cache[key]
         except KeyError:
-            result = self.cache[key] = self.step(inp)
+            result = self.cache[key] = self.wf(inp)
         return result
 
-    def cache_key(self, inp: StartT) -> str:
+    def cache_key(self, inp: InT) -> str:
         return eve_utils.content_hash(self.fingerprint, self.hash_function(inp))
 
 
 @dataclasses.dataclass(frozen=True)
-class DispatchingWorkflow(Workflow[StartT, EndT]):
-    """
-    Workflow that dispatches on the input type.
-    """
-
-    dispatcher: eve_utils.TypeMapping[Workflow[StartT, EndT]]
-
-    def __call__(self, inp: StartT) -> EndT:
-        """Dispatch the input to the correct sequence of steps based on its type."""
-        workflow = self.dispatcher[type(inp)]
-        return workflow(inp)
-
-
-@dataclasses.dataclass(frozen=True)
-class MultiStepWorkflow(Workflow[StartT, EndT]):
-    """A flexible workflow, where the sequence of steps depends on the input type."""
-
-    def __call__(self, inp: StartT) -> EndT:
-        """Compose the steps in the order defined in the `.step_order` class attribute."""
-        result: Any = inp
-        for step in self.steps:
-            result = step(result)
-        return result
-
-    @property
-    @abc.abstractmethod
-    def steps(self) -> Sequence[Transform]: ...
-
-    @property
-    def fingerprinter(self) -> Callable[[utils.FingerprintableProtocol], str]:
-        return lambda x: utils.fingerprinter(getattr(x, "steps", x))
-
-
-@dataclasses.dataclass(frozen=True)
-class StepSequence(MultiStepWorkflow[StartT, EndT]):
+class StepSequence(WorkflowABC[InT, OutT], Sequence[Workflow]):
     """
     Composable workflow of single input callables.
 
     Examples:
-    ---------
-    >>> def plus_one(x: int) -> int:
-    ...     return x + 1
+        >>> def plus_one(x: int) -> int:
+        ...     return x + 1
 
-    >>> def plus_half(x: int) -> float:
-    ...     return x + 0.5
+        >>> def plus_half(x: int) -> float:
+        ...     return x + 0.5
 
-    >>> def stringify(x: float) -> str:
-    ...     return str(x)
-
-    >>> StepSequence.start(plus_one).chain(plus_half).chain(stringify)(73)
-    '74.5'
+        >>> StepSequence.from_steps(plus_one, plus_half, str)(73)
+        '74.5'
 
     """
 
-    steps: tuple[Transform[StartT, EndT]] | tuple[Transform[Any, Any], ...] = dataclasses.field()
+    steps: tuple[Step[InT, OutT]] | tuple[Step, ...] = dataclasses.field()
 
-    def __call__(self, inp: StartT) -> EndT:
+    def __call__(self, inp: InT) -> OutT:
         step_result: Any = inp
         for step in self.steps:
             step_result = step(step_result)
         return step_result
 
-    def chain(self, next_step: Transform[EndT, NewEndT]) -> StepSequence[StartT, NewEndT]:
-        return cast(StepSequence[StartT, NewEndT], self.__class__((*self.steps, next_step)))
+    def chain(self, next_step: Workflow[OutT, NewOutT]) -> StepSequence[InT, NewOutT]:
+        return StepSequence((*self.steps, make_step(next_step)))
+
+    @overload
+    def __getitem__(self, index: int) -> Workflow: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Self: ...
+
+    def __getitem__(self, index: int | slice) -> Workflow | Self:
+        return self.steps[index]
+
+    def __len__(self) -> int:
+        return len(self.steps)
 
     @classmethod
-    def start(cls, step: Transform[StartT, EndT]) -> StepSequence[StartT, EndT]:
-        return cls((step,))
-
-    @classmethod
-    def from_steps(cls, *steps: Transform) -> StepSequence:
-        return cls(steps)
+    def from_steps(cls, *steps: Workflow) -> StepSequence:
+        return cls(tuple(make_step(step) for step in steps))
 
 
 @dataclasses.dataclass(frozen=True)
-class NamedStepSequence(MultiStepWorkflow[StartT, EndT]):
+class NamedStepSequence(WorkflowABC[InT, OutT]):
     """
-    Workflow with linear succession of named steps.
+    Dataclass definining steps as dataclass fields.
 
     Examples:
-    ---------
-    >>> import dataclasses
+        >>> import dataclasses
 
-    >>> def parse(x: str) -> int:
-    ...     return int(x)
+        >>> def parse_fn(x: str) -> int:
+        ...     return int(x)
 
-    >>> def plus_half(x: int) -> float:
-    ...     return x + 0.5
+        >>> def plus_half_fn(x: int) -> float:
+        ...     return x + 0.5
 
-    >>> def stringify(x: float) -> str:
-    ...     return str(x)
+        >>> def stringify_fn(x: float) -> str:
+        ...     return str(x)
 
-    >>> @dataclasses.dataclass(frozen=True)
-    ... class ParseOpPrint(NamedStepSequence[str, str]):
-    ...     parse: Workflow[str, int]
-    ...     op: Workflow[int, float]
-    ...     print: Workflow[float, str]
+        >>> @dataclasses.dataclass(frozen=True)
+        ... class ParseOpPrint(NamedStepSequence[str, str]):
+        ...     parse: Workflow[str, int]
+        ...     op: Workflow[int, float]
+        ...     print: Workflow[float, str]
 
-    >>> pop = ParseOpPrint(parse=parse, op=plus_half, print=stringify)
+        >>> composite = ParseOpPrint(parse=parse_fn, op=plus_half_fn, print=stringify_fn)
 
-    >>> pop.ordered_step_names
-    ['parse', 'op', 'print']
+        >>> composite.steps == (parse_fn, plus_half_fn, stringify_fn)
+        True
 
-    >>> pop(73)
-    '73.5'
+        >>> composite(73)
+        '73.5'
 
-    >>> def plus_tenth(x: int) -> float:
-    ...     return x + 0.1
+        >>> def plus_tenth_fn(x: int) -> float:
+        ...     return x + 0.1
 
 
-    >>> pop.replace(op=plus_tenth)(73)
-    '73.1'
+        >>> composite.replace(op=plus_tenth_fn)(73)
+        '73.1'
     """
 
     @functools.cached_property
@@ -289,11 +308,19 @@ class NamedStepSequence(MultiStepWorkflow[StartT, EndT]):
         Only attributes who are type hinted to be of a type that
         conforms to the Workflow protocol are considered steps.
         """
-        result: list[Workflow] = []
-        annotations = typing.get_type_hints(self.__class__)
-        for field in dataclasses.fields(self):
-            field_type = annotations[field.name]
-            field_type = typing.get_origin(field_type) or field_type
-            if issubclass(field_type, Workflow):
-                result.append(getattr(self, field.name))
-        return tuple(result)
+        cls = type(self)
+        if not hasattr(cls, "_cached_step_names_"):
+            result: list[str] = []
+            annotations = typing.get_type_hints(self.__class__)
+            for field in dataclasses.fields(self):
+                field_type = annotations[field.name]
+                field_type = typing.get_origin(field_type) or field_type
+                if issubclass(field_type, WorkflowABC):
+                    result.append(field.name)
+            cls._cached_step_names_ = tuple(result)  # type: ignore[attr-defined]
+
+        return tuple(getattr(self, name) for name in cls._cached_step_names_)  # type: ignore[attr-defined]
+
+    def replace(self, **kwargs: Any) -> Self:
+        """Build a new instance with replaced steps."""
+        return dataclasses.replace(self, **kwargs)
