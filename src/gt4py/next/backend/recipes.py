@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import dataclasses
 
-from gt4py.next.otf import definitions, stages, workflow
+from gt4py.next.backend import definitions, stages
+from gt4py.next.otf import workflow
 
 
 @dataclasses.dataclass(frozen=True)

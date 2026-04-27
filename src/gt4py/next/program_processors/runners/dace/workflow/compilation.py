@@ -19,7 +19,8 @@ import factory
 
 from gt4py._core import definitions as core_defs, locking
 from gt4py.next import common, config
-from gt4py.next.otf import code_specs, definitions, stages, workflow
+from gt4py.next.backend import definitions, stages
+from gt4py.next.otf import code_specs, workflow
 from gt4py.next.otf.compilation import cache as gtx_cache
 from gt4py.next.program_processors.runners.dace.workflow import common as gtx_wfdcommon
 

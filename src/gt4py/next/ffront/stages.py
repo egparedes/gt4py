@@ -28,14 +28,24 @@ import functools
 import hashlib
 import types
 import typing
-from typing import Any, Optional, TypeVar
+from typing import Any, Generic, Optional, TypeVar
 
 import xxhash
 
 from gt4py.eve import extended_typing as xtyping
 from gt4py.next import common
 from gt4py.next.ffront import field_operator_ast as foast, program_ast as past, source_utils
-from gt4py.next.otf import arguments, toolchain
+from gt4py.next.otf import arguments
+
+
+DefT = typing.TypeVar("DefT")
+ArgsT = typing.TypeVar("ArgsT")
+
+
+@dataclasses.dataclass
+class ConcreteArtifact(Generic[DefT, ArgsT]):
+    data: DefT
+    args: ArgsT
 
 
 @dataclasses.dataclass(frozen=True)
@@ -47,7 +57,7 @@ class DSLFieldOperatorDef:
     debug: bool = False
 
 
-ConcreteDSLFieldOperatorDef: typing.TypeAlias = toolchain.ConcreteArtifact[
+ConcreteDSLFieldOperatorDef: typing.TypeAlias = ConcreteArtifact[
     DSLFieldOperatorDef, arguments.CompileTimeArgs
 ]
 
@@ -61,7 +71,7 @@ class FOASTOperatorDef:
     debug: bool = False
 
 
-ConcreteFOASTOperatorDef: typing.TypeAlias = toolchain.ConcreteArtifact[
+ConcreteFOASTOperatorDef: typing.TypeAlias = ConcreteArtifact[
     FOASTOperatorDef, arguments.CompileTimeArgs
 ]
 
@@ -73,9 +83,7 @@ class DSLProgramDef:
     debug: bool = False
 
 
-ConcreteDSLProgramDef: typing.TypeAlias = toolchain.ConcreteArtifact[
-    DSLProgramDef, arguments.CompileTimeArgs
-]
+ConcreteDSLProgramDef: typing.TypeAlias = ConcreteArtifact[DSLProgramDef, arguments.CompileTimeArgs]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -86,7 +94,7 @@ class PASTProgramDef:
     debug: bool = False
 
 
-ConcretePASTProgramDef: typing.TypeAlias = toolchain.ConcreteArtifact[
+ConcretePASTProgramDef: typing.TypeAlias = ConcreteArtifact[
     PASTProgramDef, arguments.CompileTimeArgs
 ]
 
@@ -120,7 +128,7 @@ for t in (str, int):
 @add_content_to_fingerprint.register(FOASTOperatorDef)
 @add_content_to_fingerprint.register(DSLProgramDef)
 @add_content_to_fingerprint.register(PASTProgramDef)
-@add_content_to_fingerprint.register(toolchain.ConcreteArtifact)
+@add_content_to_fingerprint.register(ConcreteArtifact)
 @add_content_to_fingerprint.register(arguments.CompileTimeArgs)
 def add_stage_to_fingerprint(obj: Any, hasher: xtyping.HashlibAlgorithm) -> None:
     add_content_to_fingerprint(obj.__class__, hasher)

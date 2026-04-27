@@ -13,7 +13,7 @@ import pathlib
 import tempfile
 
 from gt4py.next import config
-from gt4py.next.otf import stages
+from gt4py.next.backend import stages
 from gt4py.next.otf.binding import interface
 
 

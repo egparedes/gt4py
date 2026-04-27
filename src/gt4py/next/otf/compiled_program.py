@@ -24,6 +24,7 @@ from typing import Any, Generic, TypeAlias, TypeVar
 from gt4py._core import definitions as core_defs
 from gt4py.eve import extended_typing as xtyping, utils as eve_utils
 from gt4py.next import backend as gtx_backend, common, config, errors, utils as gtx_utils
+from gt4py.next.backend import stages
 from gt4py.next.ffront import (
     stages as ffront_stages,
     type_info as ffront_type_info,
@@ -31,7 +32,7 @@ from gt4py.next.ffront import (
     type_translation,
 )
 from gt4py.next.instrumentation import hook_machinery, metrics
-from gt4py.next.otf import arguments, stages
+from gt4py.next.otf import arguments
 from gt4py.next.type_system import type_specifications as ts
 from gt4py.next.utils import tree_map
 

@@ -13,10 +13,11 @@ from typing import Any, Final
 
 import factory
 
+from gt4py.next.backend import stages
 import gt4py.next.custom_layout_allocators as next_allocators
 from gt4py._core import definitions as core_defs
 from gt4py.next import backend, common, config
-from gt4py.next.otf import stages, workflow
+from gt4py.next.otf import workflow
 from gt4py.next.program_processors.runners.dace.workflow.factory import DaCeWorkflowFactory
 
 

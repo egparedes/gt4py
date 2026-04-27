@@ -18,10 +18,11 @@ import numpy as np
 from gt4py._core import definitions as core_defs
 from gt4py.eve import codegen
 from gt4py.next import common
+from gt4py.next.backend import definitions, stages
 from gt4py.next.ffront import fbuiltins
 from gt4py.next.iterator import ir as itir
 from gt4py.next.iterator.transforms import pass_manager
-from gt4py.next.otf import code_specs, definitions, stages, workflow
+from gt4py.next.otf import code_specs, workflow
 from gt4py.next.otf.binding import cpp_interface, interface
 from gt4py.next.program_processors.codegens.gtfn.codegen import GTFNCodegen, GTFNIMCodegen
 from gt4py.next.program_processors.codegens.gtfn.gtfn_ir_to_gtfn_im_ir import GTFN_IM_lowering

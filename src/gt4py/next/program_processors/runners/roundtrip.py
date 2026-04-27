@@ -26,9 +26,10 @@ from gt4py.next import (
     config,
     custom_layout_allocators as next_allocators,
 )
+from gt4py.next.backend import definitions, stages
 from gt4py.next.ffront import foast_to_gtir, foast_to_past, past_to_itir
 from gt4py.next.iterator import ir as itir, transforms as itir_transforms
-from gt4py.next.otf import definitions, stages, workflow
+from gt4py.next.otf import workflow
 from gt4py.next.type_system import type_info, type_specifications as ts
 
 

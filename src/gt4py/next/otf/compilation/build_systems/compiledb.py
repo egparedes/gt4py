@@ -18,7 +18,8 @@ from typing import Optional, TypeVar
 
 from gt4py._core import locking
 from gt4py.next import config, errors
-from gt4py.next.otf import code_specs, stages
+from gt4py.next.backend import stages
+from gt4py.next.otf import code_specs
 from gt4py.next.otf.binding import interface
 from gt4py.next.otf.compilation import build_data, cache, compiler
 from gt4py.next.otf.compilation.build_systems import cmake

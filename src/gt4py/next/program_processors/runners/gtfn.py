@@ -13,12 +13,13 @@ import factory
 import numpy as np
 
 import gt4py._core.definitions as core_defs
+from gt4py.next.backend import recipes, stages
 import gt4py.next.custom_layout_allocators as next_allocators
 from gt4py._core import filecache
 from gt4py.next import backend, common, config, field_utils
 from gt4py.next.embedded import nd_array_field
 from gt4py.next.instrumentation import metrics
-from gt4py.next.otf import recipes, stages, workflow
+from gt4py.next.otf import workflow
 from gt4py.next.otf.binding import nanobind
 from gt4py.next.otf.compilation import compiler
 from gt4py.next.otf.compilation.build_systems import compiledb

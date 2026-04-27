@@ -13,7 +13,8 @@ from typing import Final
 import dace
 
 from gt4py.eve import codegen
-from gt4py.next.otf import code_specs, stages
+from gt4py.next.backend import stages
+from gt4py.next.otf import code_specs
 from gt4py.next.program_processors.runners.dace import sdfg_args as gtx_dace_args
 from gt4py.next.type_system import type_specifications as ts
 

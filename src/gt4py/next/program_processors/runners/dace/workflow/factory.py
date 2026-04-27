@@ -15,7 +15,8 @@ import factory
 
 from gt4py._core import definitions as core_defs, filecache
 from gt4py.next import config
-from gt4py.next.otf import recipes, stages, workflow
+from gt4py.next.backend import recipes, stages
+from gt4py.next.otf import workflow
 from gt4py.next.program_processors.runners.dace.workflow import (
     bindings as bindings_step,
     decoration as decoration_step,

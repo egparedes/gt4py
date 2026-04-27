@@ -17,7 +17,8 @@ from typing import TypeVar
 
 from gt4py._core import definitions as core_defs
 from gt4py.next import config, errors
-from gt4py.next.otf import code_specs, stages
+from gt4py.next.backend import stages
+from gt4py.next.otf import code_specs
 from gt4py.next.otf.compilation import build_data, cache, common, compiler
 from gt4py.next.otf.compilation.build_systems import cmake_lists
 

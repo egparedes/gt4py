@@ -16,7 +16,8 @@ import factory
 
 from gt4py._core import locking
 from gt4py.next import config
-from gt4py.next.otf import code_specs, definitions, stages, workflow
+from gt4py.next.backend import definitions, stages
+from gt4py.next.otf import code_specs, workflow
 from gt4py.next.otf.compilation import build_data, cache, importer
 
 

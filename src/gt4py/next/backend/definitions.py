@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from typing import Protocol, TypeAlias, TypeVar
 
+from gt4py.next.backend import stages
 from gt4py.next.ffront import stages as ffront_stages
 from gt4py.next.iterator import ir as itir
-from gt4py.next.otf import arguments, code_specs, stages, toolchain, workflow
+from gt4py.next.otf import arguments, code_specs, workflow
 
 
 CodeSpecT = TypeVar("CodeSpecT", bound=code_specs.SourceCodeSpec)
@@ -29,12 +30,12 @@ IRDefinitionT = TypeVar(
 )
 ArgsDefinitionT = TypeVar("ArgsDefinitionT", arguments.JITArgs, arguments.CompileTimeArgs)
 
-ConcreteProgramDef: TypeAlias = toolchain.ConcreteArtifact[IRDefinitionT, ArgsDefinitionT]
+ConcreteProgramDef: TypeAlias = ffront_stages.ConcreteArtifact[IRDefinitionT, ArgsDefinitionT]
 CompilableProgramDef: TypeAlias = ConcreteProgramDef[itir.Program, arguments.CompileTimeArgs]
 
 
 class TranslationStep(
-    workflow.Transform[CompilableProgramDef, stages.ProgramSource[CodeSpecT]],
+    workflow.Workflow[CompilableProgramDef, stages.ProgramSource[CodeSpecT]],
     Protocol[CodeSpecT],
 ):
     """Translate a GT4Py program to source code (ProgramCall -> ProgramSource)."""
@@ -56,7 +57,7 @@ class BindingStep(Protocol[CodeSpecT, TargetCodeSpecT]):
 
 
 class CompilationStep(
-    workflow.Transform[
+    workflow.Workflow[
         stages.CompilableProject[CodeSpecT, TargetCodeSpecT], stages.ExecutableProgram
     ],
     Protocol[CodeSpecT, TargetCodeSpecT],

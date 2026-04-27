@@ -12,11 +12,13 @@ import functools
 import numpy as np
 import pytest
 
+from gt4py.next.backend import stages
+
 dace = pytest.importorskip("dace")
 
 from gt4py import next as gtx
 from gt4py.next import common as gtx_common, int32
-from gt4py.next.otf import code_specs, stages
+from gt4py.next.otf import code_specs
 from gt4py.next.program_processors.runners import dace as dace_runner
 from gt4py.next.program_processors.runners.dace import workflow as dace_workflow
 from gt4py.next import neighbor_sum

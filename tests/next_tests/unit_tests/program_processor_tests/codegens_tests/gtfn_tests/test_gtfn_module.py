@@ -13,9 +13,10 @@ import numpy as np
 import pytest
 
 import gt4py.next as gtx
+from gt4py.next.backend import definitions, stages
 from gt4py.next.iterator import builtins, ir as itir
 from gt4py.next.iterator.ir_utils import ir_makers as im
-from gt4py.next.otf import arguments, code_specs, stages, definitions
+from gt4py.next.otf import arguments, code_specs
 from gt4py.next.program_processors.codegens.gtfn import gtfn_module
 from gt4py.next.program_processors.runners import gtfn
 from gt4py.next.type_system import type_translation

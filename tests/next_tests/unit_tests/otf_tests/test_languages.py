@@ -8,7 +8,8 @@
 
 import pytest
 
-from gt4py.next.otf import code_specs, stages
+from gt4py.next.backend import stages
+from gt4py.next.otf import code_specs
 from gt4py.next.otf.binding import interface
 
 

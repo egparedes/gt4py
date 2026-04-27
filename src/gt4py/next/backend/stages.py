@@ -14,8 +14,9 @@ from typing import Generic, Optional, Protocol, TypeAlias, TypeVar
 
 from gt4py.eve import utils
 from gt4py.next import common
+from gt4py.next.backend import definitions
 from gt4py.next.iterator import ir as itir
-from gt4py.next.otf import code_specs, definitions
+from gt4py.next.otf import code_specs
 from gt4py.next.otf.binding import interface
 
 

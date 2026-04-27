@@ -12,9 +12,10 @@ import jinja2
 import pytest
 
 import gt4py.next as gtx
+from gt4py.next.backend import stages
 import gt4py.next.type_system.type_specifications as ts
 from gt4py.next import config
-from gt4py.next.otf import code_specs, stages
+from gt4py.next.otf import code_specs
 from gt4py.next.otf.binding import cpp_interface, interface, nanobind
 from gt4py.next.otf.compilation import cache
 
