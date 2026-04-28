@@ -7,13 +7,8 @@ exact = true
 #   gt4py.cartesian and gt4py.storage
 
 
-layers = [
-    "public",
-    "logic",       #    { name = "logic", closed = true },
-    "scaffolding",
-    "core",
-    "utility",
-]
+layers = ["public", "logic", "core", "utility"]
+
 
 [[modules]]
 path = "gt4py.cartesian"
@@ -38,28 +33,28 @@ paths = [
     "gt4py.next.backend",
     "gt4py.next.embedded",
     "gt4py.next.ffront",
-    "gt4py.next.instrumentation",
     "gt4py.next.iterator",
     "gt4py.next.program_processors",
+    "gt4py.next.toolchain",
 ]
 layer = "logic"
 
-[[modules]]
-paths = [
-    "gt4py.next.common",
-    "gt4py.next.field_utils",
-    "gt4py.next.named_collections",
-    "gt4py.next.otf",
-    "gt4py.next.type_system",
-    "gt4py.next.utils",
-]
-layer = "scaffolding"
 
 [[modules]]
-paths = ["gt4py._core", "gt4py.next.config", "gt4py.next.errors"]
+paths = [
+    "gt4py._core",
+    "gt4py.next.config",
+    "gt4py.next.errors",
+    "gt4py.next.common",
+    "gt4py.next.field_utils",
+    "gt4py.next.instrumentation",
+    "gt4py.next.named_collections",
+    "gt4py.next.type_system",
+
+]
 layer = "core"
 
 [[modules]]
-path = "gt4py.eve"
+paths = ["gt4py.eve", "gt4py.next.utils"]
 depends_on = []
 layer = "utility"
