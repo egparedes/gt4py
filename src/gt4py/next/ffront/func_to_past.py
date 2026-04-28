@@ -70,29 +70,6 @@ def func_to_past(inp: DSLProgramDef) -> PASTProgramDef:
     )
 
 
-def func_to_past_factory(cached: bool = True) -> workflow.Workflow[DSLProgramDef, PASTProgramDef]:
-    """
-    Wrap `func_to_past` in a chainable and optionally cached workflow step.
-
-    Caching is switched off by default, because whether recompiling is necessary can only be known after
-    the closure variables have been collected (which is done in this step). In special cases where it can
-    be guaranteed that the closure variables do not change, switching caching on should be safe.
-    """
-    wf = workflow.make_step(func_to_past)
-    if cached:
-        wf = workflow.CachedStep(wf, hash_function=ffront_stages.fingerprint_stage)
-    return wf
-
-
-def adapted_func_to_past_factory(
-    **kwargs: Any,
-) -> workflow.Workflow[ConcreteDSLProgramDef, ConcretePASTProgramDef]:
-    """
-    Wrap an adapter around the DSL definition -> PAST definition step to fit into transform toolchains.
-    """
-    return toolchain.DataOnlyAdapter(func_to_past_factory(**kwargs))
-
-
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class ProgramParser(DialectParser[past.Program]):
     """Parse program definition from Python source code into PAST."""
@@ -252,3 +229,19 @@ class ProgramParser(DialectParser[past.Program]):
     def visit_Constant(self, node: ast.Constant) -> past.Constant:
         symbol_type = type_translation.from_value(node.value)
         return past.Constant(value=node.value, type=symbol_type, location=self.get_location(node))
+
+
+def func_to_past_factory(
+    cached: bool = True,
+) -> workflow.Workflow[ConcreteDSLProgramDef, ConcretePASTProgramDef]:
+    """
+    Wrap `func_to_past` in a chainable and optionally cached workflow step.
+
+    Caching is switched off by default, because whether recompiling is necessary can only be known after
+    the closure variables have been collected (which is done in this step). In special cases where it can
+    be guaranteed that the closure variables do not change, switching caching on should be safe.
+    """
+    wf = workflow.make_step(
+        eve_utils.dataclass_mapper(data=func_to_past.func_to_past), cached=cached
+    )
+    return wf

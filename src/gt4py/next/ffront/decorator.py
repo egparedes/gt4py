@@ -47,7 +47,7 @@ from gt4py.next.ffront import (
 from gt4py.next.ffront.gtcallable import GTCallable
 from gt4py.next.instrumentation import hook_machinery, metrics
 from gt4py.next.iterator import ir as itir
-from gt4py.next.otf import arguments, compiled_program, options, toolchain
+from gt4py.next.otf import arguments, compiled_program, options
 from gt4py.next.type_system import type_info, type_specifications as ts, type_translation
 
 
@@ -253,10 +253,10 @@ class Program(_CompilableGTEntryPointMixin[ffront_stages.DSLProgramDef]):
 
     # TODO(ricoh): linting should become optional, up to the backend.
     def __post_init__(self) -> None:
-        no_args_past = toolchain.ConcreteArtifact(
+        no_args_past = ffront_stages.ConcreteArtifact(
             self.past_stage, arguments.CompileTimeArgs.empty()
         )
-        _ = self._frontend_transforms.past_lint(no_args_past).data
+        _ = self._frontend_transforms.past_lint(no_args_past).body
 
     @property
     def __name__(self) -> str:
@@ -278,10 +278,10 @@ class Program(_CompilableGTEntryPointMixin[ffront_stages.DSLProgramDef]):
     @functools.cached_property
     def past_stage(self) -> ffront_stages.PASTProgramDef:
         # backwards compatibility for backends that do not support the full toolchain
-        no_args_def = toolchain.ConcreteArtifact(
+        no_args_def = ffront_stages.ConcreteArtifact(
             self.definition_stage, arguments.CompileTimeArgs.empty()
         )
-        return self._frontend_transforms.func_to_past(no_args_def).data
+        return self._frontend_transforms.func_to_past(no_args_def).body
 
     @property
     def _frontend_transforms(self) -> next_backend.Transforms:
@@ -298,7 +298,7 @@ class Program(_CompilableGTEntryPointMixin[ffront_stages.DSLProgramDef]):
 
     @functools.cached_property
     def gtir(self) -> itir.Program:
-        no_args_past = toolchain.ConcreteArtifact(
+        no_args_past = ffront_stages.ConcreteArtifact(
             data=ffront_stages.PASTProgramDef(
                 past_node=self.past_stage.past_node,
                 closure_vars=self.past_stage.closure_vars,
@@ -598,10 +598,10 @@ class FieldOperator(_CompilableGTEntryPointMixin[ffront_stages.DSLFieldOperatorD
     @functools.cached_property
     def foast_stage(self) -> ffront_stages.FOASTOperatorDef:
         return self._frontend_transforms.func_to_foast(
-            toolchain.ConcreteArtifact(
+            ffront_stages.ConcreteArtifact(
                 data=self.definition_stage, args=arguments.CompileTimeArgs.empty()
             )
-        ).data
+        ).body
 
     @property
     def __name__(self) -> str:

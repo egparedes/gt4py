@@ -16,6 +16,7 @@ from typing import Generic
 from gt4py._core import definitions as core_defs
 from gt4py.eve import utils as eve_utils
 from gt4py.next import custom_layout_allocators as next_allocators
+from gt4py.next.backend import definitions, stages
 from gt4py.next.ffront import (
     foast_to_gtir,
     foast_to_past,
@@ -27,7 +28,7 @@ from gt4py.next.ffront import (
 )
 from gt4py.next.ffront.past_passes import linters as past_linters
 from gt4py.next.iterator import ir as itir
-from gt4py.next.otf import arguments, definitions, stages, toolchain, workflow
+from gt4py.next.otf import arguments, toolchain, workflow
 
 
 @workflow.make_step
@@ -138,14 +139,14 @@ class Transforms(
 DEFAULT_TRANSFORMS: Transforms = Transforms()
 
 
+
+
 PAST_TO_ITIR_STEPS: tuple[workflow.Step, ...] = (
     past_to_itir.past_to_gtir_factory(),
     past_process_args.transform_program_args_factory(),
     past_to_itir.past_to_gtir_factory(),
 )
-DSL_PROG_TO_ITIR_STEPS: tuple[workflow.Step, ...] = (
-    (func_to_past.adapted_func_to_past_factory(), *PAST_TO_ITIR_STEPS),
-)
+DSL_PROG_TO_ITIR_STEPS: tuple[workflow.Step, ...] = ((func_to_past_factory(), *PAST_TO_ITIR_STEPS),)
 FOAST_TO_ITIR_STEPS: tuple[workflow.Step, ...] = (
     (foast_to_gtir.adapted_foast_to_gtir_factory(), *PAST_TO_ITIR_STEPS),
 )
@@ -154,7 +155,7 @@ DSL_OP_TO_ITIR_STEPS: tuple[workflow.Step, ...] = (
     *PAST_TO_ITIR_STEPS,
 )
 
-FRONTEND_TRANSFORMS = types.MappingProxyType({
+LOWERING_TRANSFORMS_FROM = types.MappingProxyType({
     itir.Program: workflow.StepSequence.from_steps(),
     ffront_stages.PASTProgramDef: workflow.StepSequence.from_steps(*PAST_TO_ITIR_STEPS),
     ffront_stages.DSLProgramDef: workflow.StepSequence.from_steps(*DSL_PROG_TO_ITIR_STEPS),

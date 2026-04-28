@@ -16,6 +16,7 @@ import devtools
 
 from gt4py.eve import NodeTranslator, traits
 from gt4py.next import common, config, errors, utils
+from gt4py.next.backend import definitions
 from gt4py.next.ffront import (
     fbuiltins,
     gtcallable,
@@ -25,23 +26,24 @@ from gt4py.next.ffront import (
     type_info as ffront_ti,
     type_specifications as ts_ffront,
 )
-from gt4py.next.ffront.stages import ConcretePASTProgramDef
+from gt4py.next.ffront import stages as ffront_stages
 from gt4py.next.iterator import ir as itir
 from gt4py.next.iterator.ir_utils import ir_makers as im
 from gt4py.next.iterator.transforms import remap_symbols, replace_get_domain_range_with_constants
-from gt4py.next.otf import arguments, definitions, workflow
+from gt4py.next.otf import arguments, workflow
 from gt4py.next.type_system import type_info, type_specifications as ts
 
 
 # FIXME[#1582](tehrengruber): This should only depend on the program not the arguments. Remove
 #  dependency as soon as column axis can be deduced from ITIR in consumers of the CompilableProgram.
-def past_to_gtir(inp: ConcretePASTProgramDef) -> definitions.CompilableProgramDef:
+def past_to_gtir(inp: ffront_stages.ConcretePASTProgramDef) -> definitions.CompilableProgramDef:
     """
     Lower a PAST program definition to Iterator IR.
 
     Example:
         >>> from gt4py import next as gtx
-        >>> from gt4py.next.otf import arguments, toolchain
+        >>> from gt4py.next.otf import arguments
+        >>> from gt4py.next.ffront import stages as ffront_stages
         >>> IDim = gtx.Dimension("I")
 
         >>> @gtx.field_operator
@@ -63,7 +65,7 @@ def past_to_gtir(inp: ConcretePASTProgramDef) -> definitions.CompilableProgramDe
         ... )
 
         >>> itir_copy = past_to_gtir(
-        ...     toolchain.ConcreteArtifact(copy_program.past_stage, compile_time_args)
+        ...     ffront_stages.ConcreteArtifact(copy_program.past_stage, compile_time_args)
         ... )
 
         >>> print(itir_copy.data.id)
@@ -72,12 +74,12 @@ def past_to_gtir(inp: ConcretePASTProgramDef) -> definitions.CompilableProgramDe
         >>> print(type(itir_copy.data))
         <class 'gt4py.next.iterator.ir.Program'>
     """
-    all_closure_vars = transform_utils._get_closure_vars_recursively(inp.data.closure_vars)
+    all_closure_vars = transform_utils._get_closure_vars_recursively(inp.body.closure_vars)
     offsets_and_dimensions = transform_utils._filter_closure_vars_by_type(
         all_closure_vars, fbuiltins.FieldOffset, common.Dimension
     )
     grid_type = transform_utils._deduce_grid_type(
-        inp.data.grid_type, offsets_and_dimensions.values()
+        inp.body.grid_type, offsets_and_dimensions.values()
     )
 
     gt_callables = transform_utils._filter_closure_vars_by_type(
@@ -94,7 +96,7 @@ def past_to_gtir(inp: ConcretePASTProgramDef) -> definitions.CompilableProgramDe
         lowered_funcs.append(gt_callable.__gt_gtir__())
 
     itir_program = ProgramLowering.apply(
-        inp.data.past_node, function_definitions=lowered_funcs, grid_type=grid_type
+        inp.body.past_node, function_definitions=lowered_funcs, grid_type=grid_type
     )
 
     # TODO(tehrengruber): Put this in a dedicated transformation step.
@@ -141,7 +143,7 @@ def past_to_gtir(inp: ConcretePASTProgramDef) -> definitions.CompilableProgramDe
         inp.args, args=args, kwargs=kwargs, column_axis=_column_axis(all_closure_vars)
     )
 
-    if config.DEBUG or inp.data.debug:
+    if config.DEBUG or inp.body.debug:
         devtools.debug(itir_program)
 
     return definitions.CompilableProgramDef(data=itir_program, args=compile_time_args)
@@ -149,7 +151,7 @@ def past_to_gtir(inp: ConcretePASTProgramDef) -> definitions.CompilableProgramDe
 
 def past_to_gtir_factory(
     cached: bool = True,
-) -> workflow.Workflow[ConcretePASTProgramDef, definitions.CompilableProgramDef]:
+) -> workflow.Workflow[ffront_stages.ConcretePASTProgramDef, definitions.CompilableProgramDef]:
     wf = workflow.make_step(past_to_gtir)
     if cached:
         wf = workflow.CachedStep(wf, hash_function=ffront_stages.fingerprint_stage)
