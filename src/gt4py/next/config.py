@@ -14,7 +14,7 @@ import os
 import pathlib
 from typing import Final
 
-from gt4py import __version__ as gt4py_version
+from gt4py.__about__ import __version__ as gt4py_version
 
 
 class BuildCacheLifetime(enum.Enum):
