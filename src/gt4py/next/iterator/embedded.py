@@ -567,7 +567,12 @@ def execute_shift(
                 if tag == builtins.ConstList.tag:
                     new_entry[i] = 0
                 else:
-                    offset_implementation = common.get_offset(offset_provider, tag)
+                    # NOTE: the sparse tag is the local dimension's; the table over it may be
+                    # keyed by a connectivity sharing it (see `common.connectivity_key_over`).
+                    offset_implementation = common.get_offset(
+                        offset_provider,
+                        common.connectivity_key_over(offset_provider, tag),
+                    )
                     assert common.is_neighbor_table(offset_implementation)
                     source_dim = offset_implementation.__gt_type__().source_dim
                     cur_index = pos[source_dim.tag]
@@ -998,7 +1003,7 @@ class NDArrayLocatedFieldWrapper(MutableLocatedField):
             if isinstance(value, _List):
                 for i, v in enumerate(value):  # type:ignore[var-annotated, arg-type]
                     self._ndarrayfield[
-                        self._translate_named_indices({**named_indices, value.offset.value: i})  # type: ignore[dict-item]
+                        self._translate_named_indices({**named_indices, value.local_dim.tag: i})
                     ] = v
             elif isinstance(value, _ConstList):
                 self._ndarrayfield[
@@ -1408,16 +1413,26 @@ class _List(Generic[DT]):
         return self.values[i]
 
     def __gt_type__(self) -> ts.ListType:
-        offset_tag = self.offset.value
-        assert isinstance(offset_tag, str)
         element_type = type_translation.from_value(self.values[0])
         assert isinstance(element_type, ts.DataType)
+        return ts.ListType(element_type=element_type, offset_type=self.local_dim)
+
+    @property
+    def local_dim(self) -> common.Dimension:
+        """
+        The local dimension the list runs along.
+
+        The neighbor dimension of the connectivity the list was built with, which is not
+        necessarily named like its offset: a connectivity can share another one's local
+        dimension.
+        """
+        offset_tag = self.offset.value
+        assert isinstance(offset_tag, str)
         offset_provider = embedded_context.get_offset_provider()
         assert offset_provider is not None
         connectivity = common.get_offset(offset_provider, offset_tag)
         assert common.is_neighbor_table(connectivity)
-        local_dim = connectivity.__gt_type__().neighbor_dim
-        return ts.ListType(element_type=element_type, offset_type=local_dim)
+        return connectivity.__gt_type__().neighbor_dim
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1520,7 +1535,10 @@ class SparseListIterator:
             )
         offset_provider = embedded_context.get_offset_provider()
         assert offset_provider is not None
-        connectivity = common.get_offset(offset_provider, self.list_offset)
+        # NOTE: `list_offset` is the local dimension's tag; the table over it may be keyed by a
+        # connectivity sharing it (see `common.connectivity_key_over`).
+        connectivity_key = common.connectivity_key_over(offset_provider, self.list_offset)
+        connectivity = common.get_offset(offset_provider, connectivity_key)
         assert common.is_neighbor_table(connectivity)
         return _List(
             values=tuple(
@@ -1530,7 +1548,7 @@ class SparseListIterator:
                     shifted := self.it.shift(*self.offsets, SparseTag(self.list_offset), i)
                 ).can_deref()
             ),
-            offset=runtime.Offset(value=self.list_offset),
+            offset=runtime.Offset(value=connectivity_key),
         )
 
     def can_deref(self) -> bool:
@@ -1777,7 +1795,9 @@ def _fieldspec_list_to_value(
             offset_provider = embedded_context.get_offset_provider()
             offset_type = type_.offset_type
             assert isinstance(offset_type, common.DimensionRef)
-            connectivity = common.get_offset(offset_provider, offset_type.tag)
+            connectivity = common.get_offset(
+                offset_provider, common.connectivity_key_over(offset_provider, offset_type)
+            )
             assert common.is_neighbor_table(connectivity)
             # NOTE: the type carries a ref; the embedded field needs the class, which the
             # connectivity (a runtime object) has.
