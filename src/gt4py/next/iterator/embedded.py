@@ -1001,9 +1001,10 @@ class NDArrayLocatedFieldWrapper(MutableLocatedField):
     def field_setitem(self, named_indices: NamedFieldIndices, value: Any):
         if isinstance(self._ndarrayfield, common.MutableField):
             if isinstance(value, _List):
+                local_tag = value.local_dim.tag
                 for i, v in enumerate(value):  # type:ignore[var-annotated, arg-type]
                     self._ndarrayfield[
-                        self._translate_named_indices({**named_indices, value.local_dim.tag: i})
+                        self._translate_named_indices({**named_indices, local_tag: i})
                     ] = v
             elif isinstance(value, _ConstList):
                 self._ndarrayfield[
@@ -1477,12 +1478,14 @@ def list_get(i, lst: _List[Optional[DT]]) -> Optional[DT] | Undefined:
 
 
 def _get_offset(*lists: _List | _ConstList) -> Optional[runtime.Offset]:
-    offsets = set((lst.offset for lst in lists if hasattr(lst, "offset")))
-    if len(offsets) == 0:
+    neighbor_lists = [lst for lst in lists if isinstance(lst, _List)]
+    if len(neighbor_lists) == 0:
         return None
-    if len(offsets) == 1:
-        return offsets.pop()
-    raise AssertionError("All lists must have the same offset.")
+    # NOTE: compared by local dimension, not by offset: a connectivity and one sharing its local
+    # dimension build lists along the same axis.
+    if len({lst.local_dim for lst in neighbor_lists}) != 1:
+        raise AssertionError("All lists must run along the same local dimension.")
+    return neighbor_lists[0].offset
 
 
 @builtins.map_list.register(EMBEDDED)
