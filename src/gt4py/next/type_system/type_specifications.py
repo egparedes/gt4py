@@ -88,10 +88,17 @@ class IndexType(TypeSpec):
         return f"Index[{self.dim}]"
 
 
-class OffsetType(TypeSpec):
-    # TODO(havogt): replace by ConnectivityType
-    source: common.DimensionRef = dimension_field()
-    target: tuple[common.DimensionRef] | tuple[common.DimensionRef, common.DimensionRef] = (
+class ShiftType(TypeSpec):
+    """
+    The type of a shift: it takes a field over `codomain` to a field over `domain`.
+
+    `domain` has one dimension for a Cartesian shift (`KDim + 1`) and for a single neighbor
+    (`V2E[i]`), and two -- the connectivity's domain and its local dimension -- for all
+    neighbors (`V2E`).
+    """
+
+    codomain: common.DimensionRef = dimension_field()
+    domain: tuple[common.DimensionRef] | tuple[common.DimensionRef, common.DimensionRef] = (
         eve_datamodels.field(converter=_dims_tuple)
     )
     #: The offset-provider key; `None` for the untagged Cartesian `Dim + offset`.
@@ -99,7 +106,12 @@ class OffsetType(TypeSpec):
 
     def __str__(self) -> str:
         tag = "" if self.tag is None else f"{self.tag}: "
-        return f"Offset[{tag}{self.source}, {self.target}]"
+        domain = (
+            str(self.domain[0])
+            if len(self.domain) == 1
+            else f"({', '.join(str(dim) for dim in self.domain)})"
+        )
+        return f"Shift[{tag}{self.codomain} -> {domain}]"
 
 
 class ScalarKind(eve_types.IntEnum):

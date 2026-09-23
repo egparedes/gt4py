@@ -135,7 +135,7 @@ class CompileTimeArgs:
 
     args: tuple[ts.TypeSpec, ...]
     kwargs: dict[str, ts.TypeSpec]
-    offset_provider: common.OffsetProvider  # TODO(havogt): replace with common.OffsetProviderType once the temporary pass doesn't require the runtime information
+    offset_provider: common.OffsetProvider  # TODO(havogt): replace with common.TableTypes once the temporary pass doesn't require the runtime information
     #: A `DimensionRef`; a dimension class passed to the constructor is converted.
     column_axis: Optional[common.DimensionRef]
     #: A mapping from an argument descriptor type to a context containing the actual descriptors.
@@ -151,7 +151,7 @@ class CompileTimeArgs:
         )
 
     @property
-    def offset_provider_type(self) -> common.OffsetProviderType:
+    def offset_provider_type(self) -> common.TableTypes:
         return common.offset_provider_to_type(self.offset_provider)
 
     @classmethod

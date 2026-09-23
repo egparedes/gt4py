@@ -76,7 +76,7 @@ def connectivity_offset(name: str) -> Optional[str]:
 
 
 def is_connectivity_identifier(
-    name: str, offset_provider_type: gtx_common.OffsetProviderType | None = None
+    name: str, offset_provider_type: gtx_common.TableTypes | None = None
 ) -> bool:
     if (offset := connectivity_offset(name)) is None:
         return False
@@ -92,7 +92,7 @@ def _field_symbol(
     field_name: str,
     dim: gtx_common.DimensionLike,
     sym: Literal["size", "stride"],
-    offset_provider_type: gtx_common.OffsetProviderType | None,
+    offset_provider_type: gtx_common.TableTypes | None,
 ) -> dace.symbol:
     dim = gtx_common.dimension_ref(dim)  # orchestration passes the connectivity's classes
     if (offset := connectivity_offset(field_name)) is None:
@@ -101,10 +101,10 @@ def _field_symbol(
         assert offset_provider_type is not None
         assert offset in offset_provider_type
         conn_type = offset_provider_type[offset]
-        assert isinstance(conn_type, gtx_common.NeighborConnectivityType)
-        if dim == conn_type.source_dim:
+        assert isinstance(conn_type, gtx_common.NeighborTableType)
+        if dim == conn_type.domain[0]:
             name = f"__{field_name}_source_{sym}"
-        elif dim == conn_type.neighbor_dim:
+        elif dim == conn_type.domain[1]:
             name = f"__{field_name}_neighbor_{sym}"
         else:
             raise ValueError(f"Unexpect dimension '{dim}' for '{offset}' connectivity.")
@@ -114,7 +114,7 @@ def _field_symbol(
 def field_size_symbol(
     field_name: str,
     dim: gtx_common.DimensionLike,
-    offset_provider_type: gtx_common.OffsetProviderType,
+    offset_provider_type: gtx_common.TableTypes,
 ) -> dace.symbol:
     return _field_symbol(field_name, dim, "size", offset_provider_type)
 
@@ -122,7 +122,7 @@ def field_size_symbol(
 def field_stride_symbol(
     field_name: str,
     dim: gtx_common.DimensionLike,
-    offset_provider_type: gtx_common.OffsetProviderType | None = None,
+    offset_provider_type: gtx_common.TableTypes | None = None,
 ) -> dace.symbol:
     return _field_symbol(field_name, dim, "stride", offset_provider_type)
 
@@ -130,7 +130,7 @@ def field_stride_symbol(
 def local_dimension_size(
     field_name: str,
     dim: gtx_common.DimensionLike,
-    neighbor_table_types: dict[str, gtx_common.NeighborConnectivityType],
+    neighbor_table_types: dict[str, gtx_common.NeighborTableType],
 ) -> int:
     """
     Number of neighbors along the local dimension `dim` of the field or connectivity table.
@@ -142,7 +142,7 @@ def local_dimension_size(
     dim = gtx_common.dimension_ref(dim)
     if (offset := connectivity_offset(field_name)) is not None:
         own_type = neighbor_table_types[offset]
-        if own_type.neighbor_dim == dim:
+        if own_type.domain[1] == dim:
             return own_type.max_neighbors
     return neighbor_table_types[
         gtx_common.connectivity_key_over(neighbor_table_types, dim)
@@ -168,15 +168,15 @@ def range_stop_symbol(field_name: str, dim: gtx_common.DimensionLike) -> dace.sy
 
 
 def filter_connectivity_types(
-    offset_provider_type: gtx_common.OffsetProviderType,
-) -> dict[str, gtx_common.NeighborConnectivityType]:
+    offset_provider_type: gtx_common.TableTypes,
+) -> dict[str, gtx_common.NeighborTableType]:
     """
-    Filter offset provider types of type `NeighborConnectivityType`.
+    Filter offset provider types of type `NeighborTableType`.
 
     In other words, filter out the cartesian offset providers.
     """
     return {
         offset: conn
         for offset, conn in offset_provider_type.items()
-        if isinstance(conn, gtx_common.NeighborConnectivityType)
+        if isinstance(conn, gtx_common.NeighborTableType)
     }

@@ -452,7 +452,7 @@ def from_value(value: Any) -> ts.TypeSpec:
             for key in named_collections.elements_keys(type(value)):
                 from_value(getattr(value, key))  # type: ignore[arg-type] # str keys
 
-    if isinstance(symbol_type, (ts.DataType, ts.CallableType, ts.OffsetType, ts.DimensionType)):
+    if isinstance(symbol_type, (ts.DataType, ts.CallableType, ts.ShiftType, ts.DimensionType)):
         return symbol_type
     else:
         raise ValueError(f"Impossible to map '{value}' value to a 'Symbol'.")

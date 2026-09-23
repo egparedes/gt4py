@@ -35,7 +35,7 @@ def _broadcast_to(expr: itir.Expr, target_dims: list[common.DimensionRef]) -> it
 def _concat_where_with_explicit_broadcast(
     node: itir.FunCall,
     *,
-    offset_provider: common.OffsetProvider | common.OffsetProviderType,
+    offset_provider: common.OffsetProvider | common.TableTypes,
     symbolic_domain_sizes: Optional[dict[str, itir.Expr]] = None,
 ) -> itir.FunCall:
     """
@@ -106,7 +106,7 @@ class _PruneEmptyConcatWhere(PreserveLocationVisitor, NodeTranslator):
 
     PRESERVED_ANNEX_ATTRS = ("domain",)
 
-    offset_provider: common.OffsetProvider | common.OffsetProviderType
+    offset_provider: common.OffsetProvider | common.TableTypes
     symbolic_domain_sizes: Optional[dict[str, itir.Expr]] = None
 
     @classmethod
@@ -114,7 +114,7 @@ class _PruneEmptyConcatWhere(PreserveLocationVisitor, NodeTranslator):
         cls: type[Self],
         node: PRG,
         *,
-        offset_provider: common.OffsetProvider | common.OffsetProviderType,
+        offset_provider: common.OffsetProvider | common.TableTypes,
         symbolic_domain_sizes: Optional[dict[str, itir.Expr]] = None,
     ) -> PRG:
         return cls(

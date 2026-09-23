@@ -283,7 +283,7 @@ def value_from_literal(literal: itir.Literal) -> core_defs.Scalar:
 
 def check_program_dimension_refs(
     program: itir.Program,
-    offset_provider_type: common.OffsetProviderType,
+    offset_provider_type: common.TableTypes,
     column_axis: Optional[common.DimensionRef] = None,
 ) -> None:
     """
