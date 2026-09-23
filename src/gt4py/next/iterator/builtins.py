@@ -68,12 +68,13 @@ def map_tuple(*args):
     raise BackendNotSelectedError()
 
 
-class ConstList(common.DimensionIndex, kind=common.DimensionKind.LOCAL):
+class ConstList(common.LocalDimensionIndex, size=1):
     """
     The local dimension of a list of one repeated value (`make_const_list`).
 
-    The value is broadcast against the neighbor lists it is combined with, and a materialized
-    constant list has extent 1 along it. It indexes no table, so it is never in an offset provider.
+    An owner-less local dimension of size 1: the value is broadcast against the neighbor lists it
+    is combined with, and a materialized constant list has extent 1 along it. It indexes no table,
+    so it is never in an offset provider.
     """
 
     __slots__ = ()
