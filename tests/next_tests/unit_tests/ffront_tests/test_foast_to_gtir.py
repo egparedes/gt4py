@@ -55,7 +55,7 @@ TOff = gtx.FieldOffset("TDim", source=TDim, target=(TDim,))
 
 #: An offset whose tag differs from the name of the Python variable it is bound to, and
 #: from the name of its local dimension. Lowering must emit the *tag*.
-class RenamedV2EDim(gtx.DimensionIndex, kind=gtx.DimensionKind.LOCAL): ...
+class RenamedV2EDim(gtx.LocalDimensionIndex): ...
 
 
 renamed_v2e = gtx.FieldOffset("RenamedTag", source=Edge, target=(Vertex, RenamedV2EDim))

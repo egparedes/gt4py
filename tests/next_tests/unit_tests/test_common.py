@@ -26,6 +26,7 @@ from gt4py.next.common import (
     CartesianAxisIndex,
     Dimension,
     DimensionIndex,
+    LocalDimensionIndex,
     DimensionKind,
     DimensionRange,
     Domain,
@@ -63,19 +64,19 @@ class I(common.CartesianAxisIndex): ...
 class I_half(common.CartesianAxisIndex): ...
 
 
-class C2E(DimensionIndex, kind=DimensionKind.LOCAL): ...
+class C2E(LocalDimensionIndex): ...
 
 
-class V2E(DimensionIndex, kind=DimensionKind.LOCAL): ...
+class V2E(LocalDimensionIndex): ...
 
 
-class E2V(DimensionIndex, kind=DimensionKind.LOCAL): ...
+class E2V(LocalDimensionIndex): ...
 
 
-class E2C(DimensionIndex, kind=DimensionKind.LOCAL): ...
+class E2C(LocalDimensionIndex): ...
 
 
-class E2C2V(DimensionIndex, kind=DimensionKind.LOCAL): ...
+class E2C2V(LocalDimensionIndex): ...
 
 
 class ECDim(DimensionIndex): ...
@@ -738,7 +739,7 @@ def dimension_promotion_cases() -> list[
         (
             [[JDim, V2E], [IDim, E2C2V, KDim]],
             None,
-            "There are more than one dimension with DimensionKind 'LOCAL'.",
+            "There is more than one local dimension.",
         ),
         ([[JDim, V2E], [IDim, KDim]], [IDim, JDim, V2E, KDim], None),
         # a dimension and its staggered counterpart must not be promoted into the same field
@@ -1096,7 +1097,7 @@ class TestDimensionRef:
         assert ref.kind is common.DimensionKind.HORIZONTAL
         with pytest.raises(ValueError):
             common.DimensionRef(ref.module, ref.qualname, "sideways", "cartesian_axis")
-        with pytest.raises(ValueError, match="must have kind 'local'"):
+        with pytest.raises(ValueError, match="only a local dimension, has no kind"):
             common.DimensionRef(ref.module, ref.qualname, "horizontal", "local")
         assert ref.kind is common.DimensionKind.HORIZONTAL
         assert ref.category is common.DimensionCategory.CARTESIAN_AXIS

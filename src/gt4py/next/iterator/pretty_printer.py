@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import types as _types
 from collections.abc import Iterator, Mapping, Sequence
-from typing import Final
+from typing import Final, Optional
 
 from gt4py.eve import NodeTranslator
 from gt4py.next import common
@@ -135,10 +135,11 @@ DEFAULT_INDENT: Final = 2
 DEFAULT_WIDTH: Final = 100
 
 
-_AXIS_KIND_SUFFIX: Final = {
+#: A local dimension has no kind (`None`, ADR 0030); its suffix is the one `LOCAL` used to have.
+_AXIS_KIND_SUFFIX: Final[dict[Optional[common.DimensionKind], str]] = {
     common.DimensionKind.HORIZONTAL: "ₕ",
     common.DimensionKind.VERTICAL: "ᵥ",
-    common.DimensionKind.LOCAL: "ₗ",
+    None: "ₗ",
 }
 #: Printed after the kind suffix; the default category prints nothing. Together with the tag
 #: and the kind it is enough to rebuild the `DimensionRef` without importing anything.

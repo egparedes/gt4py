@@ -72,15 +72,42 @@ Tag: TypeAlias = str
 
 @enum.unique
 class DimensionKind(StrEnum):
+    """
+    The role of a non-local dimension: a field's layout sort key, and the scan axis.
+
+    There is no `LOCAL` member: whether a dimension is local is a fact about its class
+    (`is_local_dimension`), and a local dimension's `kind` is `None` (ADR 0030).
+    """
+
     HORIZONTAL = "horizontal"
     VERTICAL = "vertical"
-    LOCAL = "local"
 
     def __str__(self) -> str:
         return self.value
 
 
-_DIM_KIND_ORDER = {DimensionKind.HORIZONTAL: 0, DimensionKind.LOCAL: 1, DimensionKind.VERTICAL: 2}
+def is_local_dimension(dim: Any) -> bool:
+    """
+    Return whether `dim` is a local dimension: a subclass of `LocalDimensionIndex`, or a ref to one.
+
+    Anything else, including a value that is not a dimension at all, is not local.
+    """
+    if isinstance(dim, DimensionRef):
+        return dim.category is DimensionCategory.LOCAL
+    return isinstance(dim, DimensionMeta) and issubclass(dim, LocalDimensionIndex)
+
+
+def _dimension_rank(dim: Dimension | DimensionRef) -> int:
+    # NOTE: an explicit rank rather than a sort on `kind`: a local dimension's `kind` is `None`,
+    # which does not order against the enum. Horizontal, then local, then vertical -- the order
+    # `kind` used to encode; changing it would change the memory layout of sparse fields.
+    if is_local_dimension(dim):
+        return 1
+    return 2 if dim.kind is DimensionKind.VERTICAL else 0
+
+
+def _kind_label(dim: DimensionMeta | DimensionRef) -> str:
+    return "local" if is_local_dimension(dim) else str(dim.kind)
 
 
 @enum.unique
@@ -98,9 +125,8 @@ class DimensionCategory(StrEnum):
 
     #: Either cell class of a Cartesian axis: a `CartesianAxisIndex` or a `Staggered[...]`.
     CARTESIAN_AXIS = "cartesian_axis"
-    #: A local (neighbor) dimension, including `iterator.builtins.ConstList`.
-    #: TODO: derived from `kind is LOCAL` in this version; a `LocalDimensionIndex` level in the
-    #: class hierarchy (later in the stack) will decide it instead.
+    #: A local (neighbor) dimension, a `LocalDimensionIndex`, including
+    #: `iterator.builtins.ConstList`. Its `kind` is `None` (ADR 0030).
     LOCAL = "local"
     #: Any other direct `DimensionIndex` subclass: mesh locations and index spaces without
     #: geometry.
@@ -135,7 +161,7 @@ class _InternedDimensionRefMeta(type):
         cls,
         module: str,
         qualname: str,
-        kind: DimensionKind | str,
+        kind: Optional[DimensionKind | str],
         category: DimensionCategory | str,
         base: Optional[DimensionRef] = None,
     ) -> DimensionRef:
@@ -143,7 +169,13 @@ class _InternedDimensionRefMeta(type):
             raise TypeError(f"Invalid dimension module or qualname: {module!r}, {qualname!r}.")
         if base is not None and not isinstance(base, DimensionRef):
             raise TypeError(f"Invalid staggered base: {base!r}.")
-        key = (module, qualname, DimensionKind(kind), DimensionCategory(category), base)
+        key = (
+            module,
+            qualname,
+            None if kind is None else DimensionKind(kind),
+            DimensionCategory(category),
+            base,
+        )
         with _DIMENSION_REF_INTERN_LOCK:
             if (ref := _DIMENSION_REF_INTERN.get(key)) is None:
                 ref = super().__call__(*key)  # validates in `__post_init__`, then registered
@@ -182,14 +214,17 @@ class DimensionRef(metaclass=_InternedDimensionRefMeta):
 
     module: str
     qualname: str
-    kind: DimensionKind
+    #: `None` for a local dimension, as on the class.
+    kind: Optional[DimensionKind]
     category: DimensionCategory
     #: The base dimension of a staggered dimension, `None` otherwise.
     base: Optional[DimensionRef] = None
 
     def __post_init__(self) -> None:
-        if self.category is DimensionCategory.LOCAL and self.kind is not DimensionKind.LOCAL:
-            raise ValueError(f"A local dimension must have kind 'local': '{self!r}'.")
+        if (self.category is DimensionCategory.LOCAL) != (self.kind is None):
+            raise ValueError(
+                f"A local dimension, and only a local dimension, has no kind: '{self!r}'."
+            )
         if self.base is not None:
             base = self.base
             if base.base is not None or base.category is not DimensionCategory.CARTESIAN_AXIS:
@@ -246,12 +281,12 @@ class DimensionRef(metaclass=_InternedDimensionRefMeta):
 
     def __str__(self) -> str:
         # the display form, same as `str()` of the class
-        return f"{self.qualname}[{self.kind}]"
+        return f"{self.qualname}[{_kind_label(self)}]"
 
     def __repr__(self) -> str:
         # Distinct from a class's repr (`pkg:IDim[horizontal]`), so a message mixing the two does
         # not read "IDim vs IDim".
-        return f"DimensionRef({self.tag}, {self.kind}, {self.category})"
+        return f"DimensionRef({self.tag}, {_kind_label(self)}, {self.category})"
 
     def __copy__(self) -> Self:
         return self
@@ -260,7 +295,9 @@ class DimensionRef(metaclass=_InternedDimensionRefMeta):
         return self
 
     @classmethod
-    def from_tag(cls, tag: Tag, kind: DimensionKind, category: DimensionCategory) -> DimensionRef:
+    def from_tag(
+        cls, tag: Tag, kind: Optional[DimensionKind], category: DimensionCategory
+    ) -> DimensionRef:
         """
         Rebuild a ref from its tag plus the two fields a tag does not spell, without importing.
 
@@ -324,7 +361,7 @@ def dimension_ref(dim: Dimension | DimensionRef) -> DimensionRef:
         else:
             if issubclass(dim, AnyCartesianAxisIndex):
                 category = DimensionCategory.CARTESIAN_AXIS
-            elif dim.kind is DimensionKind.LOCAL:
+            elif issubclass(dim, LocalDimensionIndex):
                 category = DimensionCategory.LOCAL
             else:
                 category = DimensionCategory.OTHER
@@ -407,7 +444,8 @@ class DimensionMeta(type):
     so this is the only place they can live.
     """
 
-    kind: DimensionKind
+    #: `None` for a local dimension, whose localness is its class (see `is_local_dimension`).
+    kind: Optional[DimensionKind]
 
     # NOTE: mandatory, not redundant. Python sets `__hash__ = None` on any class body that
     # defines `__eq__` without it -- metaclasses included -- and `__eq__` below stays for the
@@ -442,12 +480,12 @@ class DimensionMeta(type):
         )
 
     def __repr__(cls) -> str:
-        return f"{cls.tag}[{cls.kind}]"
+        return f"{cls.tag}[{_kind_label(cls)}]"
 
     def __str__(cls) -> str:
         # NOTE: the unqualified name, so diagnostics stay readable. `tag` is identity, not a
         # display name; `repr` carries the module and disambiguates when it matters.
-        return f"{cls.__qualname__}[{cls.kind}]"
+        return f"{cls.__qualname__}[{_kind_label(cls)}]"
 
     # The self-type is an unbounded `TypeVar`, as in typeshed's `EnumMeta.__iter__`: a bound
     # (`type[_D]` with `_D: DimensionIndex`) is not a supertype of the metaclass, which mypy
@@ -601,7 +639,7 @@ class DimensionIndex(metaclass=DimensionMeta):
         False
     """
 
-    kind: ClassVar[DimensionKind] = DimensionKind.HORIZONTAL
+    kind: ClassVar[Optional[DimensionKind]] = DimensionKind.HORIZONTAL
 
     __slots__ = ("value",)
 
@@ -1829,7 +1867,7 @@ def is_neighbor_table(obj: Any) -> TypeGuard[NeighborTable]:
     return (
         len(domain_dims) == 2
         and domain_dims[0].kind is DimensionKind.HORIZONTAL
-        and domain_dims[1].kind is DimensionKind.LOCAL
+        and is_local_dimension(domain_dims[1])
     )
 
 
@@ -2122,13 +2160,13 @@ def _dimension_order_key(dim: Dimension | DimensionRef) -> tuple[int, str, str]:
     # the ordering a property of the dimensions themselves; `tag` only breaks ties between
     # same-named dimensions from different modules, so the order stays total.
     base = as_non_staggered(dimension_ref(dim))
-    return (_DIM_KIND_ORDER[base.kind], base.qualname, base.tag)
+    return (_dimension_rank(base), base.qualname, base.tag)
 
 
 def order_dimensions(dims: Iterable[_AnyDimT]) -> list[_AnyDimT]:
     """Find the canonical ordering of the dimensions in `dims` (classes or refs)."""
-    if sum(1 for dim in dims if dim.kind == DimensionKind.LOCAL) > 1:
-        raise ValueError("There are more than one dimension with DimensionKind 'LOCAL'.")
+    if sum(1 for dim in dims if is_local_dimension(dim)) > 1:
+        raise ValueError("There is more than one local dimension.")
     return sorted(dims, key=_dimension_order_key)
 
 
@@ -2156,7 +2194,7 @@ def promote_dims(*dims_list: Sequence[_AnyDimT]) -> list[_AnyDimT]:
     Find an ordering of multiple lists of dimensions.
 
     The resulting list contains all unique dimensions from the input lists,
-    sorted first by dims_kind_order, i.e., `Dimension.kind` (`HORIZONTAL` < `LOCAL` < `VERTICAL`) and then
+    sorted first by horizontal < local < vertical (see `order_dimensions`) and then
     lexicographically by `Dimension.tag`.
 
     Examples:
@@ -2164,8 +2202,8 @@ def promote_dims(*dims_list: Sequence[_AnyDimT]) -> list[_AnyDimT]:
         >>> class I(CartesianAxisIndex, kind=DimensionKind.HORIZONTAL): ...
         >>> class J(CartesianAxisIndex, kind=DimensionKind.HORIZONTAL): ...
         >>> class K(CartesianAxisIndex, kind=DimensionKind.VERTICAL): ...
-        >>> class E2V(DimensionIndex, kind=DimensionKind.LOCAL): ...
-        >>> class E2C(DimensionIndex, kind=DimensionKind.LOCAL): ...
+        >>> class E2V(LocalDimensionIndex): ...
+        >>> class E2C(LocalDimensionIndex): ...
         >>> promote_dims([J, K], [I, K]) == [I, J, K]
         True
         >>> promote_dims([K, J], [I, K])
@@ -2177,7 +2215,7 @@ def promote_dims(*dims_list: Sequence[_AnyDimT]) -> list[_AnyDimT]:
         >>> promote_dims([I, E2C], [E2V, K])
         Traceback (most recent call last):
         ...
-        ValueError: There are more than one dimension with DimensionKind 'LOCAL'.
+        ValueError: There is more than one local dimension.
     """
 
     for dims in dims_list:
@@ -2258,8 +2296,6 @@ class StaggeredMeta(DimensionMeta):
             )
         if not isinstance(base, DimensionMeta):
             raise TypeError(f"'Staggered' expects a dimension, got '{base!r}'.")
-        if base.kind is DimensionKind.LOCAL:
-            raise TypeError(f"'{base.__qualname__}' is a local dimension and cannot be staggered.")
         if is_staggered(base):
             raise TypeError(
                 f"'{base.__qualname__}' is already staggered; a dimension cannot be staggered twice."
@@ -2401,11 +2437,6 @@ def is_cartesian_axis(dim: Dimension | DimensionRef) -> bool:
     return dimension_ref(dim).category is DimensionCategory.CARTESIAN_AXIS
 
 
-def is_local_dimension(dim: Dimension | DimensionRef) -> bool:
-    """Return whether `dim` (a class or a ref) is a local (neighbor) dimension."""
-    return dimension_ref(dim).category is DimensionCategory.LOCAL
-
-
 def connectivity_for_cartesian_shift(dim: Dimension, offset: int | float) -> CartesianConnectivity:
     """
     Build the connectivity that shifts `dim` by `offset`.
@@ -2447,7 +2478,7 @@ def cartesian_shift(
         return int(integral_offset), dim
 
 
-class LocalDimensionIndex(DimensionIndex, kind=DimensionKind.LOCAL):
+class LocalDimensionIndex(DimensionIndex):
     """
     A local dimension: the axis that runs over the neighbors of one element.
 
@@ -2456,14 +2487,19 @@ class LocalDimensionIndex(DimensionIndex, kind=DimensionKind.LOCAL):
     coefficients of a fixed-size stencil:
 
         >>> class LsqCoeff(LocalDimensionIndex, size=3): ...
-        >>> LsqCoeff.kind, LsqCoeff.owner, LsqCoeff.max_neighbors
-        (<DimensionKind.LOCAL: 'local'>, None, 3)
+        >>> LsqCoeff.owner, LsqCoeff.max_neighbors, str(LsqCoeff)
+        (None, 3, 'LsqCoeff[local]')
+
+    A local dimension has no `kind`: it is `None`, and `is_local_dimension` reads localness
+    from the class.
 
     Neighbor counts are optional. A declared count is a constraint the bound table has to
     satisfy (see `check_neighbor_table`); an undeclared one is taken from the table.
     """
 
     __slots__ = ()
+
+    kind: ClassVar[Optional[DimensionKind]] = None
 
     #: The connectivity this dimension is the local axis of, or `None` if it indexes no table.
     #: Set by `NeighborConnectivity` when the connectivity is declared.
@@ -2488,9 +2524,9 @@ class LocalDimensionIndex(DimensionIndex, kind=DimensionKind.LOCAL):
         kind: Optional[DimensionKind] = None,
         **kwargs: Any,
     ) -> None:
-        if kind is not None and kind is not DimensionKind.LOCAL:
+        if kind is not None:
             raise TypeError(
-                f"'{cls.__qualname__}' is a local dimension and cannot have kind '{kind}'."
+                f"'{cls.__qualname__}' is a local dimension and has no kind; got '{kind}'."
             )
         super().__init_subclass__(**kwargs)
         # NOTE: reset rather than inherited: a subclass of an owned local dimension is a
@@ -2654,7 +2690,7 @@ class NeighborConnectivity[Domain: DimensionIndex, Codomain: DimensionIndex](
             )
         domain, codomain = params[0]
         for role, dim in (("Domain", domain), ("Codomain", codomain)):
-            if not isinstance(dim, DimensionMeta) or dim.kind is DimensionKind.LOCAL:
+            if not isinstance(dim, DimensionMeta) or is_local_dimension(dim):
                 raise TypeError(f"'{name}': '{role}' must be a non-local dimension, got '{dim}'.")
 
         local = cls.__dict__.get("Local")

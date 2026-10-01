@@ -94,7 +94,7 @@ ROUNDTRIP_CASES = [
             dim=common.DimensionRef(
                 module="not.imported",
                 qualname="Outer.Local",
-                kind=common.DimensionKind.LOCAL,
+                kind=None,
                 category=common.DimensionCategory.LOCAL,
             )
         ),

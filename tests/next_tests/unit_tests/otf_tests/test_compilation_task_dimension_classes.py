@@ -41,7 +41,7 @@ NbIDim = _notebook_dim("NbIDim", gtx.CartesianAxisIndex)
 NbKDim = _notebook_dim("NbKDim", gtx.CartesianAxisIndex, kind=gtx.DimensionKind.VERTICAL)
 NbVertex = _notebook_dim("NbVertex", gtx.DimensionIndex)
 NbEdge = _notebook_dim("NbEdge", gtx.DimensionIndex)
-NbV2EDim = _notebook_dim("NbV2EDim", gtx.DimensionIndex, kind=gtx.DimensionKind.LOCAL)
+NbV2EDim = _notebook_dim("NbV2EDim", gtx.LocalDimensionIndex)
 NbKHalfDim = common.Staggered[NbKDim]
 
 NbV2E = gtx.FieldOffset("NbV2E", source=NbEdge, target=(NbVertex, NbV2EDim))

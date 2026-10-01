@@ -410,7 +410,7 @@ class ProgramLowering(
                     dim_stop,
                 )
 
-            if dim.kind == common.DimensionKind.LOCAL:
+            if common.is_local_dimension(dim):
                 raise ValueError(f"common.DimensionRef '{dim.qualname}' must not be local.")
             domain_args.append(
                 itir.FunCall(

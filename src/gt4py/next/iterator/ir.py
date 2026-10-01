@@ -101,7 +101,8 @@ class AxisLiteral(Expr):
         return self.dim.tag
 
     @property
-    def kind(self) -> common.DimensionKind:
+    def kind(self) -> Optional[common.DimensionKind]:
+        # NOTE: `None` for a local dimension, see `common.is_local_dimension`.
         return self.dim.kind
 
 

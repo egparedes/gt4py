@@ -185,10 +185,15 @@ class ToIrTransformer(lark_visitors.Transformer):
         # NOTE: the suffixes are the kind and (optionally) the category; with the tag they
         # rebuild the `DimensionRef` without importing the declaring module.
         text = value.value
-        category = _AXIS_CATEGORY_FROM_SUFFIX.get(text[-1], common.DimensionCategory.OTHER)
-        if text[-1] in _AXIS_CATEGORY_FROM_SUFFIX:
+        category = _AXIS_CATEGORY_FROM_SUFFIX.get(text[-1])
+        if category is not None:
             text = text[:-1]
         kind, tag = _AXIS_KIND_FROM_SUFFIX[text[-1]], text[:-1]
+        if category is None:
+            # a kind-less axis is local; the category suffix is redundant for it
+            category = (
+                common.DimensionCategory.LOCAL if kind is None else common.DimensionCategory.OTHER
+            )
         return ir.AxisLiteral(dim=common.DimensionRef.from_tag(tag, kind, category))
 
     def lam(self, *args: ir.Node) -> ir.Lambda:

@@ -276,7 +276,7 @@ def test_axis_literal_spec_from_suffixes_without_import():
                 dim=common.DimensionRef(
                     module="not.imported",
                     qualname="Outer.Local",
-                    kind=common.DimensionKind.LOCAL,
+                    kind=None,
                     category=common.DimensionCategory.LOCAL,
                 )
             ),

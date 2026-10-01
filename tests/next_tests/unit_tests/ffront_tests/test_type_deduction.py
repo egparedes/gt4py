@@ -18,6 +18,7 @@ from gt4py.next import (
     Dimension,
     CartesianAxisIndex,
     DimensionIndex,
+    LocalDimensionIndex,
     DimensionKind,
     Field,
     FieldOffset,
@@ -51,7 +52,7 @@ class X(CartesianAxisIndex): ...
 class Y(CartesianAxisIndex): ...
 
 
-class Y2XDim(DimensionIndex, kind=DimensionKind.LOCAL): ...
+class Y2XDim(LocalDimensionIndex): ...
 
 
 class K(CartesianAxisIndex, kind=DimensionKind.VERTICAL): ...
