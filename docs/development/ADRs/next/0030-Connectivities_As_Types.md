@@ -7,7 +7,7 @@ tags: []
 - **Status**: proposed
 - **Authors**: Enrique González Paredes (@egparedes)
 - **Created**: 2026-09-21
-- **Updated**: 2026-10-02
+- **Updated**: 2026-10-29
 
 A neighbor connectivity is declared as a **class**, and its local dimension as a
 class **nested** in it:
@@ -23,9 +23,10 @@ def f(a: Field[Dims[Edge], float]) -> Field[Dims[Vertex], float]:
 ```
 
 The declaration is written in DSL code, owns its local dimension, and states the
-constraints a neighbor table bound to it has to satisfy. It holds no data. It builds on [ADR 0029](0029-Dimensions_As_Nominal_Types.md): the
-connectivity, like a dimension, is identified by its type, and `V2E.Local` is an
-ordinary dimension class with the tag `<module>.V2E.Local`.
+constraints a neighbor table bound to it has to satisfy. It holds no data. It builds on
+[ADR 0029](0029-Dimensions_As_Nominal_Types.md): the connectivity, like a dimension, is
+identified by its type at the Python edge and by a value, its `ConnectivityRef`, below it,
+and `V2E.Local` is an ordinary dimension class with the tag `<module>:V2E.Local`.
 
 ## Context
 
@@ -57,6 +58,10 @@ and skip values were never checked against the `FieldOffset` declaration.
   stencil, is declared on its own: `class LsqCoeff(LocalDimensionIndex, size=3)`.
   Its `owner` is `None`. A declaration can also *adopt* such a module-level local
   dimension, written `Local: TypeAlias = LsqCoeff`, which then keeps its own tag.
+  A local dimension that belongs to no connectivity by construction says so with
+  the class variable `adoptable = False`; `iterator.builtins.ConstList`, the local
+  dimension of `make_const_list` results, does, and `common` reads the marker
+  without importing the module that declares it.
 - A connectivity can *share* another one's local dimension,
   `Local: TypeAlias = C2E.Local`.
   This is the flattened sparse pattern, e.g. cell-to-cell-edge (`C2CE: Cell -> CellEdge`) indexing the same neighbor axis as `C2E`, so that its results
@@ -89,10 +94,10 @@ buffer (`__gt_origin__`).
 
 Transformations and code generation see types, never tables (ADR 0019). The type
 of a table bound to a declaration is a `common.NeighborTableType`:
-`connectivity` (the declaration), `dtype`, `skip_value` and `max_neighbors`. Its
-`domain` and `codomain` are derived from the declaration,
-`(connectivity.domain, local_dimension_of(connectivity))` and
-`connectivity.codomain`, so they cannot disagree with it. The mapping from
+`connectivity` (the declaration's `ConnectivityRef`, below), `dtype`, `skip_value`
+and `max_neighbors`. Its `domain` and `codomain` are derived from the ref,
+`(connectivity.domain, connectivity.local)` and `connectivity.codomain`, so they
+cannot disagree with it. The mapping from
 offset-provider keys to these records is `common.TableTypes`, and it can be
 given instead of the tables for ahead-of-time compilation.
 
@@ -115,6 +120,36 @@ A `NeighborTableType` is fingerprinted through its fields, so the declaration
 takes part in the fingerprint of everything compiled for it: the owner's and a
 sharer's tables, identical as tables, produce different artifact keys.
 
+### Classes at the Python edge, `ConnectivityRef` below it
+
+The two levels of ADR 0029 apply to declarations too. `common.connectivity_ref(V2E)`
+converts a declaration class into a `ConnectivityRef`: an immutable, interned value
+holding the declaration's module and qualname (its `tag`), its `offset_tag`, its
+domain, codomain and local dimension as `DimensionRef`s, and the neighbor counts
+of its local dimension (the owner's, for a sharer; `None` where the table decides).
+It follows `DimensionRef`: equal refs are the identical object, the cached hash is
+neither pickled nor fingerprinted, its `repr` differs from the class's, and it
+never compares equal to the class (raising under
+`config.STRICT_DIMENSION_REF_COMPARISON`). The conversion is not memoized on the
+class, since an owner redefined later rewrites the counts of an adopted local
+dimension.
+
+Below the edge only the ref appears: `NeighborTableType.connectivity` (a class
+passed to it is converted), the `ts.ShiftType` of `V2E.__gt_type__()`, which is
+built from the ref, and the table types `offset_provider_to_type` produces. A
+declaration is fingerprinted through its ref, so a fingerprint no longer requires
+the declaration to be importable. The runtime keeps the classes where it acts on
+user objects: embedded execution (`a(V2E)`, `V2E[i]`), `check_neighbor_table`
+called with a class, and the owner and sharers bookkeeping on the local dimension
+that finds the declaration a table is bound to (`common.bound_declaration`).
+
+A re-run notebook cell gives an equal ref for a new class, so the call-time
+identity check of ADR 0029 covers declarations: `connectivity_ref` records the
+class like `dimension_ref` does, on the definition side for the declarations among
+its closure variables and on the argument side for the declaration each provided
+table is bound to. A program written with a previous `C2CE`, called with a table
+bound to the current one, is rejected, even though no dimension class changed.
+
 ### `NeighborConnectivity` is not a `Connectivity`
 
 `common.Connectivity` is a *data* protocol (`ndarray`, `domain`, `asnumpy`); a
@@ -136,9 +171,11 @@ declared Cartesian axis (ADR 0029).
 ### Localness is the class, and `DimensionKind.LOCAL` is removed
 
 A dimension is local if and only if it subclasses `LocalDimensionIndex`
-(`common.is_local_dimension(dim)`), so `DimensionKind.LOCAL` is removed and
+(`common.is_local_dimension(dim)`, which also takes a ref: the ref's
+`DimensionCategory.LOCAL` is derived from that subclass), so `DimensionKind.LOCAL` is removed and
 `DimensionKind` is `HORIZONTAL | VERTICAL`. A local dimension's `kind` is `None`,
-and declaring one with `kind=` is a `TypeError`. `None` rather than `HORIZONTAL`
+and declaring one with `kind=` is a `TypeError`; on a `DimensionRef` too, `kind`
+is `None` exactly for the `LOCAL` category. `None` rather than `HORIZONTAL`
 keeps every `kind == HORIZONTAL` / `kind != VERTICAL` comparison in the backends
 meaning what it meant: with `HORIZONTAL`, a sparse field would silently count its
 local axis as horizontal. Two consequences:
@@ -206,11 +243,13 @@ metaclass, which forwards type-parameter subscription (`NeighborConnectivity[V, 
 - A table bound to a connectivity can be checked against its declaration.
 - `V2E.Local` in DSL code is resolved from the shift type, because the type of
   `V2E` is not the class.
-- Code generation sees which declaration a table is bound to, not only its
-  shape; a table without a declaration is typed by its structure.
-- A declaration is fingerprinted by its name *and* its declared dimensions and
-  counts, so redefining it under the same name (e.g. re-running a notebook
-  cell) does not reuse artifacts compiled for the old declaration.
+- Code generation sees which declaration a table is bound to, by its
+  `ConnectivityRef`, not only its shape; a table without a declaration is typed by
+  its structure. Nothing below the Python edge holds a declaration class.
+- A declaration is fingerprinted through its ref, i.e. by its name *and* its
+  declared dimensions and counts, so redefining it under the same name (e.g.
+  re-running a notebook cell) does not reuse artifacts compiled for the old
+  declaration, and a call mixing the old and the new declaration is rejected.
 - `FieldOffset` remains during migration; a `FieldOffset` and a
   `NeighborConnectivity` sharing a local dimension are interchangeable.
 

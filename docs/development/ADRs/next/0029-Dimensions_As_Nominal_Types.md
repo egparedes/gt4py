@@ -363,6 +363,7 @@ dimension class is unhashable and `ts.DimensionType` fails at *import*.
   [ADR 0026](0026-Staggered_Dimensions.md); the indexing convention there is
   unchanged.
 - Consequence for the build cache of [ADR 0023](0023-Fingerprinting.md).
+- Connectivity declarations follow the same two levels (`ConnectivityRef`), see [ADR 0030](0030-Connectivities_As_Types.md).
 - The Cartesian axis levels follow the specification in gt4py_knowledge#36.
 - An alternative to #2844 (closed, superseded), which implemented the same
   class-shaped dimension with value identity.
