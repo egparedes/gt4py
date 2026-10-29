@@ -181,6 +181,11 @@ def _run_compilation_task_in_worker(
     return executor(compilable)
 
 
+def _discarded_scan_reduction(*args: object) -> None:
+    """Reconstructor of the scan surrogates: referenced by `_interactive_main_reference` only."""
+    raise AssertionError("A pickle written by `_interactive_main_reference` was unpickled.")
+
+
 def _interactive_main_reference(obj: object) -> str | None:
     """
     Return the name of a class from an interactive `__main__` that `obj` references, if any.
@@ -193,6 +198,11 @@ def _interactive_main_reference(obj: object) -> str | None:
     notebooks.
 
     Only scans when `__main__` is interactive, so ordinary scripts pay nothing.
+
+    The scan must not have side effects, since the task may then be compiled in the calling
+    thread instead. An object whose reduction has side effects (e.g. a connectivity reference
+    that dumps its table to a file) defines `__gt_pickle_scan_surrogate__`, returning what to
+    scan in its place: the objects its pickle would carry, without triggering the side effects.
     """
     main = sys.modules.get("__main__")
     if main is None or getattr(main, "__file__", None):
@@ -202,8 +212,12 @@ def _interactive_main_reference(obj: object) -> str | None:
     class _Scanner(pickle.Pickler):
         # `reducer_override` is consulted for classes too, before the by-reference default
         def reducer_override(self, o: object) -> Any:
-            if not found and isinstance(o, type) and o.__module__ == "__main__":
-                found.append(o.__qualname__)
+            if isinstance(o, type):
+                if not found and o.__module__ == "__main__":
+                    found.append(o.__qualname__)
+                return NotImplemented
+            if (surrogate := getattr(type(o), "__gt_pickle_scan_surrogate__", None)) is not None:
+                return (_discarded_scan_reduction, (surrogate(o),))
             return NotImplemented
 
     try:

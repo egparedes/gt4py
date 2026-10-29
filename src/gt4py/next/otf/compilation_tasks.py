@@ -58,16 +58,15 @@ class _ConnectivityFileRef:
 
     connectivity: common.Connectivity
 
+    def _metadata(self) -> tuple[common.Domain, common.Dimension, core_defs.IntegralScalar | None]:
+        return (self.connectivity.domain, self.connectivity.codomain, self.connectivity.skip_value)
+
     def __reduce__(self) -> tuple[Callable, tuple]:
-        return (
-            _connectivity_from_file,
-            (
-                _dump_connectivity(self.connectivity),
-                self.connectivity.domain,
-                self.connectivity.codomain,
-                self.connectivity.skip_value,
-            ),
-        )
+        return (_connectivity_from_file, (_dump_connectivity(self.connectivity), *self._metadata()))
+
+    def __gt_pickle_scan_surrogate__(self) -> tuple:
+        """What the pickle carries besides the table file, for `runners` to scan without dumping."""
+        return self._metadata()
 
 
 #: Files already written for a connectivity, keyed by its id (validated against

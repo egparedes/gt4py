@@ -13,13 +13,14 @@ import multiprocessing
 import os
 import pickle
 import sys
+import types
 import unittest.mock as mock
 
 import numpy as np
 import pytest
 
 import gt4py.next as gtx
-from gt4py.next import backend as next_backend, config
+from gt4py.next import backend as next_backend, common, config
 from gt4py.next.otf import arguments, compilation_tasks, compiled_program, runners
 
 from next_tests.fixtures import compilation as fixtures_compilation
@@ -381,3 +382,59 @@ class TestInteractiveMainReference:
     def test_ignored_for_classes_from_ordinary_modules(self, monkeypatch):
         monkeypatch.setitem(sys.modules, "__main__", type(sys)("__main__"))
         assert runners._interactive_main_reference([dataclasses.dataclass, int]) is None
+
+    @pytest.fixture
+    def connectivity_dump_dir(self, monkeypatch, tmp_path):
+        """Redirect connectivity dumps to an empty directory, to observe any file written."""
+        monkeypatch.setattr(
+            compilation_tasks, "_dump_dir", types.SimpleNamespace(name=str(tmp_path))
+        )
+        return tmp_path
+
+    @staticmethod
+    def _notebook_connectivity(monkeypatch) -> common.Connectivity:
+        interactive_main = type(sys)("__main__")
+        notebook_edge = common.DimensionMeta(
+            "NotebookEdge",
+            (gtx.DimensionIndex,),
+            {"__module__": "__main__", "__qualname__": "NotebookEdge", "__slots__": ()},
+        )
+        interactive_main.NotebookEdge = notebook_edge
+        monkeypatch.setitem(sys.modules, "__main__", interactive_main)
+        return gtx.as_connectivity(
+            [Vertex, V2EDim], notebook_edge, np.array([[0, 1], [1, 2], [2, 0]])
+        )
+
+    def test_found_through_a_connectivity_without_dumping_it(
+        self, monkeypatch, connectivity_dump_dir
+    ):
+        conn = self._notebook_connectivity(monkeypatch)
+        ref = compilation_tasks._ConnectivityFileRef(conn)
+
+        assert runners._interactive_main_reference({"offset_provider": ref}) == "NotebookEdge"
+        assert list(connectivity_dump_dir.iterdir()) == []
+        assert id(conn) not in compilation_tasks._connectivity_files
+
+    def test_process_runner_fallback_dumps_no_connectivity(
+        self, monkeypatch, connectivity_dump_dir, process_runner
+    ):
+        conn = self._notebook_connectivity(monkeypatch)
+        backend = next_backend.Backend(
+            name="test_backend",
+            executor=_RecursingExecutor(depth=0),
+            allocator=None,
+            transforms=lambda inp: inp,
+        )
+        task = compilation_tasks.make_compilation_task(
+            backend,
+            definition_stage=None,
+            compile_time_args=dataclasses.replace(
+                arguments.CompileTimeArgs.empty(), offset_provider={V2EDim.tag: conn}
+            ),
+        )
+
+        with pytest.warns(UserWarning, match="'NotebookEdge', declared in an interactive"):
+            future = process_runner.submit(task)
+
+        assert callable(future.result().load())
+        assert list(connectivity_dump_dir.iterdir()) == []
