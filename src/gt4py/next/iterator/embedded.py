@@ -1454,7 +1454,7 @@ def neighbors(offset: runtime.Offset, it: ItIterator) -> _List:
     return _List(
         values=tuple(
             shifted.deref()
-            for i in range(len(connectivity.domain[1].unit_range))
+            for i in range(len(connectivity.domain[1].value))
             if (shifted := it.shift(offset_str, i)).can_deref()
         ),
         offset=offset,
@@ -1537,7 +1537,7 @@ class SparseListIterator:
         return _List(
             values=tuple(
                 shifted.deref()
-                for i in range(len(connectivity.domain[1].unit_range))
+                for i in range(len(connectivity.domain[1].value))
                 if (
                     shifted := self.it.shift(*self.offsets, SparseTag(self.list_offset), i)
                 ).can_deref()
