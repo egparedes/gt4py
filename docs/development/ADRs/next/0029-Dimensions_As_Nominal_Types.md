@@ -95,7 +95,8 @@ self-contained -- an `AxisLiteral` carries its ref, so kind, category and stagge
 base need no import -- and a compile task ships no user classes (except, for now,
 inside the runtime offset provider, see below). The pretty printer and the backends read
 kind, category and staggered base off the ref, so neither tag parsing nor an
-import-free lookup is needed.
+import-free lookup is needed. The printed IR names dimensions by short name and
+spells each one in full once, in a `dim` header the parser rebuilds the refs from.
 
 Because a re-run notebook cell gives an *equal* ref for a *new* class, the Python
 edge still compares by class, in the same `__debug__`-only argument check as the type

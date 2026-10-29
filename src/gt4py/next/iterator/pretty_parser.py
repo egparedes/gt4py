@@ -6,6 +6,7 @@
 # Please, refer to the LICENSE file in the root directory.
 # SPDX-License-Identifier: BSD-3-Clause
 
+from collections.abc import Mapping
 from typing import Union
 
 from lark import (
@@ -26,7 +27,8 @@ _AXIS_CATEGORY_FROM_SUFFIX = {v: k for k, v in pretty_printer._AXIS_CATEGORY_SUF
 
 
 GRAMMAR = r"""
-    start: fencil_definition
+    start: dim_decl* _root
+    _root: fencil_definition
         | function_definition
         | declaration
         | stencil_closure
@@ -35,13 +37,17 @@ GRAMMAR = r"""
         | program
         | prec0
 
+    // Header entry giving a short dimension name its full spelling (see `pretty_printer`).
+    dim_decl: "dim" TAG "=" AXIS_LITERAL ";"
+
     SYM: CNAME
     SYM_REF: CNAME
     TYPE_LITERAL: CNAME
     INT_LITERAL: SIGNED_INT
     FLOAT_LITERAL: SIGNED_FLOAT
     // A dimension tag is `module:qualname` (ADR 0029), and -- for a parametrized dimension
-    // such as `Staggered[pkg:K]` -- with one bracketed tag. An offset tag is a (dotted) name.
+    // such as `Staggered[pkg:K]` -- with one bracketed tag. A short dimension name (declared
+    // in the header) and an offset tag are the same without the module part.
     // Unambiguous here: a tag starts with a letter (a float does not), and the literal's
     // suffix terminates it.
     TAG: /[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?::[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)?(?:\[[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?::[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)?\])?/
@@ -122,6 +128,28 @@ GRAMMAR = r"""
 """  # noqa: RUF001 [ambiguous-unicode-character-string]
 
 
+def _split_axis_literal(
+    text: str,
+) -> tuple[str, common.DimensionKind, common.DimensionCategory | None]:
+    """Split an axis literal into its name, kind and category (`None` if not spelled)."""
+    category = _AXIS_CATEGORY_FROM_SUFFIX.get(text[-1])
+    if category is not None:
+        text = text[:-1]
+    return text[:-1], _AXIS_KIND_FROM_SUFFIX[text[-1]], category
+
+
+def _is_full_tag(name: str) -> bool:
+    # Only a full tag has a module part; a short name is a (dotted) qualname.
+    return ":" in name
+
+
+def _full_dimension_ref(text: str) -> common.DimensionRef:
+    # NOTE: the suffixes are the kind and the category (if absent: the default); with the tag
+    # they rebuild the `DimensionRef` without importing the declaring module.
+    tag, kind, category = _split_axis_literal(text)
+    return common.DimensionRef.from_tag(tag, kind, category or common.DimensionCategory.OTHER)
+
+
 def _bare_literal(value: str) -> ir.Literal:
     """A literal written without a type annotation."""
     return ir.Literal(value=value, type=pretty_printer.implied_literal_type(value))
@@ -129,6 +157,14 @@ def _bare_literal(value: str) -> ir.Literal:
 
 @lark_visitors.v_args(inline=True)
 class ToIrTransformer(lark_visitors.Transformer):
+    def __init__(self, dimensions: Mapping[str, common.DimensionRef]) -> None:
+        """
+        Args:
+            dimensions: The short dimension names the header declares.
+        """
+        super().__init__(visit_tokens=True)
+        self.dimensions = dimensions
+
     def SYM(self, value: lark_lexer.Token) -> ir.Sym:
         return ir.Sym(id=value.value)
 
@@ -182,14 +218,24 @@ class ToIrTransformer(lark_visitors.Transformer):
         return ir.InfinityLiteral.POSITIVE
 
     def AXIS_LITERAL(self, value: lark_lexer.Token) -> ir.AxisLiteral:
-        # NOTE: the suffixes are the kind and (optionally) the category; with the tag they
-        # rebuild the `DimensionRef` without importing the declaring module.
-        text = value.value
-        category = _AXIS_CATEGORY_FROM_SUFFIX.get(text[-1], common.DimensionCategory.OTHER)
-        if text[-1] in _AXIS_CATEGORY_FROM_SUFFIX:
-            text = text[:-1]
-        kind, tag = _AXIS_KIND_FROM_SUFFIX[text[-1]], text[:-1]
-        return ir.AxisLiteral(dim=common.DimensionRef.from_tag(tag, kind, category))
+        name, kind, category = _split_axis_literal(value.value)
+        if _is_full_tag(name):
+            return ir.AxisLiteral(dim=_full_dimension_ref(value.value))
+        if (dim := self.dimensions.get(name)) is None:
+            raise ValueError(
+                f"Dimension '{name}' is not declared. A short dimension name needs a header entry"
+                f" '{pretty_printer.DIMENSION_HEADER_KEYWORD} {name} = <module>:<qualname>"
+                "<kind><category>;'; otherwise spell the full tag 'module:qualname' in place."
+            )
+        if dim.kind != kind or (category is not None and dim.category != category):
+            raise ValueError(
+                f"'{value.value}' does not match the declaration of '{name}':"
+                f" '{pretty_printer.format_full_axis_literal(dim)}'."
+            )
+        return ir.AxisLiteral(dim=dim)
+
+    def dim_decl(self, *args: object) -> None:
+        return None  # read by `pparse` before the transformation
 
     def lam(self, *args: ir.Node) -> ir.Lambda:
         *params, expr = args
@@ -337,14 +383,45 @@ class ToIrTransformer(lark_visitors.Transformer):
             declarations=declarations,
         )
 
-    def start(self, arg: ir.Node) -> ir.Node:
-        return arg
+    def start(self, *args: ir.Node | None) -> ir.Node:
+        *_header, root = args
+        assert root is not None
+        return root
+
+
+def _dimension_header(tree: lark_tree.Tree) -> dict[str, common.DimensionRef]:
+    dimensions: dict[str, common.DimensionRef] = {}
+    for decl in tree.children:
+        if not (isinstance(decl, lark_tree.Tree) and decl.data == "dim_decl"):
+            continue
+        name, literal = (str(token) for token in decl.children)
+        if _is_full_tag(name):
+            raise ValueError(f"Invalid short dimension name '{name}': it has a module part.")
+        if not _is_full_tag(_split_axis_literal(literal)[0]):
+            raise ValueError(
+                f"The declaration of '{name}' must spell the full tag, got '{literal}'."
+            )
+        if name in dimensions:
+            raise ValueError(f"Dimension '{name}' is declared twice.")
+        dimensions[name] = _full_dimension_ref(literal)
+    return dimensions
 
 
 def pparse(pretty_str: str) -> ir.Node:
+    """
+    Parse the text `pretty_printer.pformat` prints back to the IR node.
+
+    A dimension is either spelled in full in place (`module:qualname` with its kind and
+    category suffixes, e.g. `my.dims:IDimₕᵃ`), which keeps hand-written IR easy, or by a short
+    name with its kind suffix (`IDimₕ`) declared in the header (`dim IDim = my.dims:IDimₕᵃ;`).
+    A short name that the header does not declare is an error: nothing is imported to guess it.
+
+    Raises:
+        ValueError: If a dimension is malformed, undeclared or does not match its declaration.
+    """
     parser = lark.Lark(GRAMMAR, parser="earley")
     tree = parser.parse(pretty_str)
     try:
-        return ToIrTransformer(visit_tokens=True).transform(tree)
+        return ToIrTransformer(_dimension_header(tree)).transform(tree)
     except lark_exceptions.VisitError as e:
         raise e.orig_exc from None

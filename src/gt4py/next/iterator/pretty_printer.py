@@ -9,15 +9,31 @@
 """A pretty printer for the functional IR.
 
 Inspired by P. Yelland, “A New Approach to Optimal Code Formatting”, 2015
+
+Dimensions are printed by a short name followed by their kind suffix (`ₕ` horizontal, `ᵥ`
+vertical, `ₗ` local). A header at the top of the printed root node maps each short name to the
+dimension's full spelling: its tag `module:qualname`, kind suffix and category suffix (`ᵃ`
+Cartesian axis, `ˡ` local, none otherwise). `pretty_parser` rebuilds the exact
+`DimensionRef`s from it, without importing anything:
+
+    dim IDim = my.model.dims:IDimₕᵃ;
+    dim Staggered[KDim] = gt4py.next.common:Staggered[my.model.dims:KDim]ᵥᵃ;
+    c⟨ IDimₕ: [0, 10[, Staggered[KDim]ᵥ: [0, 81[ ⟩
+
+The short name is the qualname. Different dimensions sharing one are told apart by the
+shortest module suffix that distinguishes them (`dims.IDim`, `other.dims.IDim`). Dimensions
+that share their whole tag (they differ only in kind or category) have no distinguishing
+short name and are printed in full in place.
 """
 
 # TODO(tehrengruber): add support for printing the types of itir.Sym nodes
 from __future__ import annotations
 
 import types as _types
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from typing import Final
 
+from gt4py import eve
 from gt4py.eve import NodeTranslator
 from gt4py.next import common
 from gt4py.next.iterator import ir
@@ -148,6 +164,57 @@ _AXIS_CATEGORY_SUFFIX: Final = {
     common.DimensionCategory.OTHER: "",
 }
 
+#: Keyword of a dimension header entry: `dim <short name> = <full axis literal>;`.
+DIMENSION_HEADER_KEYWORD: Final = "dim"
+
+
+def format_full_axis_literal(dim: common.DimensionRef) -> str:
+    """The self-contained spelling of a dimension: tag, kind suffix and category suffix."""
+    return dim.tag + _AXIS_KIND_SUFFIX[dim.kind] + _AXIS_CATEGORY_SUFFIX[dim.category]
+
+
+def _module_depth(dim: common.DimensionRef) -> int:
+    # A staggered dimension is told apart by its base: its own module is always `common`.
+    return _module_depth(dim.base) if dim.base is not None else dim.module.count(".") + 1
+
+
+def _short_name(dim: common.DimensionRef, depth: int) -> str:
+    """The qualname, prefixed by the last `depth` components of the module path."""
+    if dim.base is not None:
+        owner = dim.qualname.partition("[")[0]
+        return f"{owner}[{_short_name(dim.base, depth)}]"
+    module_suffix = dim.module.split(".")[-depth:] if depth else []
+    return ".".join([*module_suffix, dim.qualname])
+
+
+def short_dimension_names(dims: Iterable[common.DimensionRef]) -> dict[common.DimensionRef, str]:
+    """
+    Assign each of `dims` a distinct short name for printing.
+
+    The short name is the qualname. Where several dimensions would share one, each of them is
+    prefixed by one more component of its module path, until the names differ or the module
+    paths are exhausted. Dimensions that still share a name (their tags are equal, they differ
+    in kind or category only) get none.
+
+    Returns:
+        The short name of each dimension that has one; deterministic for a given set of `dims`.
+    """
+    unique = sorted(set(dims), key=lambda dim: (dim.tag, dim.kind.value, dim.category.value))
+    depths = dict.fromkeys(unique, 0)
+    while True:
+        groups: dict[str, list[common.DimensionRef]] = {}
+        for dim in unique:
+            groups.setdefault(_short_name(dim, depths[dim]), []).append(dim)
+        deepened = False
+        for group in groups.values():
+            if len(group) > 1:
+                for dim in group:
+                    if depths[dim] < _module_depth(dim):
+                        depths[dim] += 1
+                        deepened = True
+        if not deepened:
+            return {group[0]: name for name, group in groups.items() if len(group) == 1}
+
 
 class PrettyPrinter(NodeTranslator):
     def __init__(
@@ -158,6 +225,8 @@ class PrettyPrinter(NodeTranslator):
         super().__init__()
         self.indent: int = indent
         self.width: int = width
+        #: Dimensions printed by short name; any other is printed in full in place.
+        self.short_names: Mapping[common.DimensionRef, str] = {}
 
     @staticmethod
     def _hmerge(*blocks: list[str]) -> list[str]:
@@ -240,10 +309,12 @@ class PrettyPrinter(NodeTranslator):
         return [f"{domain}→{codomain}"]
 
     def visit_AxisLiteral(self, node: ir.AxisLiteral, *, prec: int) -> list[str]:
-        # NOTE: the literal carries its `DimensionRef`, so printing needs no import, and the
-        # suffixes make the printed form complete: the parser rebuilds the ref from them.
+        # NOTE: the literal carries its `DimensionRef`, so printing needs no import. A short
+        # name stands for the full spelling given in the header (see `apply`).
         dim = node.dim
-        return [dim.tag + _AXIS_KIND_SUFFIX[dim.kind] + _AXIS_CATEGORY_SUFFIX[dim.category]]
+        if (short_name := self.short_names.get(dim)) is not None:
+            return [short_name + _AXIS_KIND_SUFFIX[dim.kind]]
+        return [format_full_axis_literal(dim)]
 
     def visit_SymRef(self, node: ir.SymRef, *, prec: int) -> list[str]:
         return [node.id]
@@ -420,7 +491,15 @@ class PrettyPrinter(NodeTranslator):
 
     @classmethod
     def apply(cls, node: ir.Node, indent: int, width: int) -> str:
-        return "\n".join(cls(indent=indent, width=width).visit(node, prec=0))
+        """Print `node`, preceded by the header declaring the short dimension names it uses."""
+        printer = cls(indent=indent, width=width)
+        dims = eve.walk_values(node).if_isinstance(ir.AxisLiteral).getattr("dim")
+        printer.short_names = short_dimension_names(dims)
+        header = [
+            f"{DIMENSION_HEADER_KEYWORD} {name} = {format_full_axis_literal(dim)};"
+            for dim, name in sorted(printer.short_names.items(), key=lambda item: item[1])
+        ]
+        return "\n".join([*header, *printer.visit(node, prec=0)])
 
 
 def pformat(x: ir.Node, indent: int = DEFAULT_INDENT, width: int = DEFAULT_WIDTH) -> str:

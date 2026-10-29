@@ -261,10 +261,9 @@ class FuseAsFieldOp(
     ...     im.ref("inp3", field_type),
     ... )
     >>> print(nested_as_fieldop)
-    as_fieldop(λ(__arg0, __arg1) → ·__arg0 + ·__arg1,
-               c⟨ gt4py.next.iterator.transforms.fuse_as_fieldop:IDimₕᵃ: [0, 1[ ⟩)(
-      as_fieldop(λ(__arg0, __arg1) → ·__arg0 × ·__arg1,
-                 c⟨ gt4py.next.iterator.transforms.fuse_as_fieldop:IDimₕᵃ: [0, 1[ ⟩)(inp1, inp2), inp3
+    dim IDim = gt4py.next.iterator.transforms.fuse_as_fieldop:IDimₕᵃ;
+    as_fieldop(λ(__arg0, __arg1) → ·__arg0 + ·__arg1, c⟨ IDimₕ: [0, 1[ ⟩)(
+      as_fieldop(λ(__arg0, __arg1) → ·__arg0 × ·__arg1, c⟨ IDimₕ: [0, 1[ ⟩)(inp1, inp2), inp3
     )
     >>> print(
     ...     FuseAsFieldOp.apply(
@@ -274,8 +273,8 @@ class FuseAsFieldOp(
     ...         uids=utils.IDGeneratorPool(),
     ...     )
     ... )
-    as_fieldop(λ(inp1, inp2, inp3) → ·inp1 × ·inp2 + ·inp3,
-               c⟨ gt4py.next.iterator.transforms.fuse_as_fieldop:IDimₕᵃ: [0, 1[ ⟩)(inp1, inp2, inp3)
+    dim IDim = gt4py.next.iterator.transforms.fuse_as_fieldop:IDimₕᵃ;
+    as_fieldop(λ(inp1, inp2, inp3) → ·inp1 × ·inp2 + ·inp3, c⟨ IDimₕ: [0, 1[ ⟩)(inp1, inp2, inp3)
     """  # noqa: RUF002  # ignore ambiguous multiplication character
 
     class Transformation(enum.Flag):

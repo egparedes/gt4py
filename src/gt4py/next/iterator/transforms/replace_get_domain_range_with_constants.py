@@ -88,9 +88,10 @@ class ReplaceGetDomainRangeWithConstants(PreserveLocationVisitor, NodeTranslator
         ... )
         >>> result = ReplaceGetDomainRangeWithConstants.apply(ir, sizes=sizes)
         >>> print(result)
+        dim KDim = gt4py.next.iterator.transforms.replace_get_domain_range_with_constants:KDimᵥᵃ;
+        dim Vertex = gt4py.next.iterator.transforms.replace_get_domain_range_with_constants:Vertexₕ;
         test(inp, out) {
-          out @ u⟨ gt4py.next.iterator.transforms.replace_get_domain_range_with_constants:Vertexₕ: [{0, 10}[0], {0, 10}[1][, gt4py.next.iterator.transforms.replace_get_domain_range_with_constants:KDimᵥᵃ: [{0, 20}[0], {0, 20}[1][ ⟩
-               ← (⇑deref)(inp);
+          out @ u⟨ Vertexₕ: [{0, 10}[0], {0, 10}[1][, KDimᵥ: [{0, 20}[0], {0, 20}[1][ ⟩ ← (⇑deref)(inp);
         }
     """
 

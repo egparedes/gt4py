@@ -40,6 +40,25 @@ class Vertex(gtx.DimensionIndex): ...
 _SET_AT = ir.SetAt(expr=im.ref("x"), domain=im.call("cartesian_domain")(), target=im.ref("y"))
 
 
+def _ref(
+    module: str,
+    qualname: str,
+    kind: common.DimensionKind = common.DimensionKind.VERTICAL,
+    category: common.DimensionCategory = common.DimensionCategory.CARTESIAN_AXIS,
+) -> common.DimensionRef:
+    return common.DimensionRef(module=module, qualname=qualname, kind=kind, category=category)
+
+
+def _axes(*dims: common.DimensionRef | type) -> ir.FunCall:
+    return im.make_tuple(*(ir.AxisLiteral(dim=dim) for dim in dims))
+
+
+def _staggered(base: common.DimensionRef) -> common.DimensionRef:
+    return common.DimensionRef.from_tag(
+        f"gt4py.next.common:Staggered[{base.tag}]", base.kind, base.category
+    )
+
+
 _LONG_NAME = (
     "very_loooooooooooooooooooong_condition_to_force_a_line_break_and_test_alignment_of_branches"
 )
@@ -100,6 +119,19 @@ ROUNDTRIP_CASES = [
         ),
         id="axis_literal_not_importable",
     ),
+    pytest.param(_axes(_ref("a.dims", "K"), _ref("b.dims", "K"), KDim), id="colliding_qualnames"),
+    pytest.param(
+        _axes(*(_staggered(_ref(module, "K")) for module in ("a.dims", "b.dims"))),
+        id="colliding_staggered_qualnames",
+    ),
+    pytest.param(
+        _axes(_ref("a", "K"), _ref("a", "K", common.DimensionKind.HORIZONTAL)),
+        id="dimensions_sharing_their_tag",
+    ),
+    pytest.param(
+        im.domain(common.GridType.CARTESIAN, {I: (0, 1), common.Staggered[KDim]: ("x", "y")}),
+        id="cartesian_domain_with_dimensions",
+    ),
     pytest.param(im.named_range(ir.AxisLiteral(dim=I), "x", "y"), id="named_range"),
     pytest.param(im.call("cartesian_domain")("x"), id="cartesian_domain"),
     pytest.param(im.call("unstructured_domain")("x"), id="unstructured_domain"),
@@ -146,6 +178,22 @@ ROUNDTRIP_CASES = [
             body=[_SET_AT],
         ),
         id="program",
+    ),
+    pytest.param(
+        ir.Program(
+            id="f",
+            function_definitions=[],
+            params=[im.sym("x"), im.sym("y")],
+            declarations=[],
+            body=[
+                ir.SetAt(
+                    expr=im.ref("x"),
+                    domain=im.domain(common.GridType.UNSTRUCTURED, {Vertex: (0, 1), KDim: (0, 2)}),
+                    target=im.ref("y"),
+                )
+            ],
+        ),
+        id="program_with_dimensions",
     ),
     pytest.param(im.literal("1.0", "float32"), id="literal_float32"),
     pytest.param(im.literal("1", "int64"), id="literal_int64"),

@@ -293,6 +293,33 @@ def test_staggered_axis_literal():
     assert pparse(testee) == ir.AxisLiteral(dim=common.Staggered[KDim])
 
 
+def test_short_dimension_names_from_the_header():
+    testee = f"""
+        dim IDim = {IDim.tag}ₕᵃ;
+        dim Staggered[KDim] = {common.Staggered[KDim].tag}ᵥᵃ;
+        c⟨ IDimₕ: [0, 1[, Staggered[KDim]ᵥ: [0, 2[ ⟩
+    """
+    assert pparse(testee) == im.domain(
+        common.GridType.CARTESIAN, {IDim: (0, 1), common.Staggered[KDim]: (0, 2)}
+    )
+
+
+def test_short_dimension_name_in_a_program():
+    testee = f"""
+        dim IDim = {IDim.tag}ₕᵃ;
+        f(x, y) {{
+          y @ c⟨ IDimₕ: [0, 1[ ⟩ ← x;
+        }}
+    """
+    program = pparse(testee)
+    assert isinstance(program, ir.Program)
+    assert program.body[0].domain == im.domain(common.GridType.CARTESIAN, {IDim: (0, 1)})
+
+
+def test_header_entries_do_not_have_to_be_used():
+    assert pparse(f"dim IDim = {IDim.tag}ₕᵃ; x") == im.ref("x")
+
+
 def test_cartesian_domain():
     testee = "c⟨ x, y ⟩"
     expected = ir.FunCall(
@@ -449,9 +476,34 @@ def test_transformer_error_is_not_wrapped():
 
 
 @pytest.mark.parametrize("testee", ["IDimₕ", "pkg.mod.IDimₕ"])
-def test_axis_literal_without_module_is_rejected(testee):
-    # a bare name cannot be rebuilt into a `DimensionRef`
-    with pytest.raises(ValueError, match="is not a dimension tag"):
+def test_short_dimension_name_without_header_is_rejected(testee):
+    # a short name means nothing without its declaration: nothing is imported to guess it
+    with pytest.raises(ValueError, match="is not declared"):
+        pparse(testee)
+
+
+@pytest.mark.parametrize(
+    "testee",
+    [
+        pytest.param(f"dim IDim = {IDim.tag}ₕᵃ; IDimᵥ", id="kind"),
+        pytest.param(f"dim IDim = {IDim.tag}ₕᵃ; IDimₕˡ", id="category"),
+    ],
+)
+def test_short_dimension_name_contradicting_its_declaration_is_rejected(testee):
+    with pytest.raises(ValueError, match="does not match the declaration"):
+        pparse(testee)
+
+
+@pytest.mark.parametrize(
+    "testee, message",
+    [
+        (f"dim IDim = {IDim.tag}ₕᵃ; dim IDim = {IDim.tag}ₕᵃ; x", "declared twice"),
+        ("dim IDim = Iₕ; x", "must spell the full tag"),
+        (f"dim pkg:IDim = {IDim.tag}ₕᵃ; x", "has a module part"),
+    ],
+)
+def test_malformed_dimension_header_is_rejected(testee, message):
+    with pytest.raises(ValueError, match=message):
         pparse(testee)
 
 

@@ -35,10 +35,9 @@ class RemoveBroadcast(PreserveLocationVisitor, NodeTranslator):
     >>> expr.annex.domain = domain_utils.SymbolicDomain.from_expr(domain)
     >>> transformed = RemoveBroadcast.apply(expr)
     >>> print(transformed)
-    as_fieldop(
-      deref,
-      c⟨ gt4py.next.iterator.transforms.remove_broadcast:IDimₕᵃ: [0, 10[, gt4py.next.iterator.transforms.remove_broadcast:JDimₕᵃ: [0, 10[ ⟩
-    )(inp)
+    dim IDim = gt4py.next.iterator.transforms.remove_broadcast:IDimₕᵃ;
+    dim JDim = gt4py.next.iterator.transforms.remove_broadcast:JDimₕᵃ;
+    as_fieldop(deref, c⟨ IDimₕ: [0, 10[, JDimₕ: [0, 10[ ⟩)(inp)
     """
 
     PRESERVED_ANNEX_ATTRS = ("domain",)

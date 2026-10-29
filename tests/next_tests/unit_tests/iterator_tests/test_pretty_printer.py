@@ -238,7 +238,7 @@ def test_shift():
 
 def test_cartesian_offset():
     testee = ir.CartesianOffset(domain=ir.AxisLiteral(dim=IDim), codomain=ir.AxisLiteral(dim=JDim))
-    expected = f"{IDim.tag}ₕᵃ→{JDim.tag}ₕᵃ"
+    expected = f"dim IDim = {IDim.tag}ₕᵃ;\ndim JDim = {JDim.tag}ₕᵃ;\nIDimₕ→JDimₕ"
     actual = pformat(testee)
     assert actual == expected
 
@@ -279,8 +279,14 @@ class LocalDim(gtx.DimensionIndex, kind=gtx.DimensionKind.LOCAL): ...
     "dim, suffix", [(IDim, "ₕᵃ"), (KDim, "ᵥᵃ"), (Vertex, "ₕ"), (LocalDim, "ₗˡ")]
 )
 def test_axis_literal(dim, suffix):
-    # the suffixes are the spec's kind and category
-    assert pformat(ir.AxisLiteral(dim=dim)) == f"{dim.tag}{suffix}"
+    # the body names the dimension and its kind; the header spells the tag, kind and category
+    expected = f"dim {dim.__qualname__} = {dim.tag}{suffix};\n{dim.__qualname__}{suffix[0]}"
+    assert pformat(ir.AxisLiteral(dim=dim)) == expected
+
+
+def test_axis_literal_without_header_is_printed_in_full():
+    # a printer not run through `apply` assigns no short names
+    assert PrettyPrinter().visit(ir.AxisLiteral(dim=IDim), prec=0) == [f"{IDim.tag}ₕᵃ"]
 
 
 def test_axis_literal_of_unimportable_spec():
@@ -291,7 +297,7 @@ def test_axis_literal_of_unimportable_spec():
         kind=common.DimensionKind.VERTICAL,
         category=common.DimensionCategory.CARTESIAN_AXIS,
     )
-    assert pformat(ir.AxisLiteral(dim=spec)) == "not.loaded:KDimᵥᵃ"
+    assert pformat(ir.AxisLiteral(dim=spec)) == "dim KDim = not.loaded:KDimᵥᵃ;\nKDimᵥ"
 
 
 def test_named_range_horizontal():
@@ -299,9 +305,79 @@ def test_named_range_horizontal():
         fun=ir.SymRef(id="named_range"),
         args=[ir.AxisLiteral(dim=IDim), ir.SymRef(id="x"), ir.SymRef(id="y")],
     )
-    expected = f"{IDim.tag}ₕᵃ: [x, y["
+    expected = f"dim IDim = {IDim.tag}ₕᵃ;\nIDimₕ: [x, y["
     actual = pformat(testee)
     assert actual == expected
+
+
+def test_dimension_header_is_printed_once_at_the_root():
+    testee = im.make_tuple(
+        im.domain(common.GridType.CARTESIAN, {IDim: (0, 10), common.Staggered[KDim]: (0, 5)}),
+        ir.AxisLiteral(dim=IDim),
+    )
+    expected = (
+        f"dim IDim = {IDim.tag}ₕᵃ;\n"
+        f"dim Staggered[KDim] = {common.Staggered[KDim].tag}ᵥᵃ;\n"
+        "{c⟨ IDimₕ: [0, 10[, Staggered[KDim]ᵥ: [0, 5[ ⟩, IDimₕ}"
+    )
+    assert pformat(testee) == expected
+
+
+def _ref(
+    module: str,
+    qualname: str,
+    kind: common.DimensionKind = common.DimensionKind.HORIZONTAL,
+    category: common.DimensionCategory = common.DimensionCategory.OTHER,
+) -> common.DimensionRef:
+    return common.DimensionRef(module=module, qualname=qualname, kind=kind, category=category)
+
+
+def test_short_names_are_qualnames_if_unique():
+    names = pretty_printer.short_dimension_names([_ref("a.b", "Vertex"), _ref("a.b", "Edge")])
+    assert names == {_ref("a.b", "Vertex"): "Vertex", _ref("a.b", "Edge"): "Edge"}
+
+
+def test_colliding_short_names_get_the_shortest_distinguishing_module_suffix():
+    dims = [_ref("pkg.x.dims", "Vertex"), _ref("pkg.y.dims", "Vertex"), _ref("dims", "Vertex")]
+    names = pretty_printer.short_dimension_names(dims)
+    assert names == {
+        _ref("dims", "Vertex"): "dims.Vertex",
+        _ref("pkg.x.dims", "Vertex"): "x.dims.Vertex",
+        _ref("pkg.y.dims", "Vertex"): "y.dims.Vertex",
+    }
+    # deterministic: independent of the order the dimensions are met in
+    assert pretty_printer.short_dimension_names(reversed(dims)) == names
+
+
+def test_colliding_staggered_short_names_are_told_apart_by_their_base():
+    vertical, axis = common.DimensionKind.VERTICAL, common.DimensionCategory.CARTESIAN_AXIS
+    k1, k2 = (_ref(module, "K", vertical, axis) for module in ("pkg.one", "pkg.two"))
+    k1_half, k2_half = (
+        common.DimensionRef.from_tag(f"gt4py.next.common:Staggered[{k.tag}]", vertical, axis)
+        for k in (k1, k2)
+    )
+    testee = im.make_tuple(*(ir.AxisLiteral(dim=dim) for dim in (k1, k2, k1_half, k2_half)))
+    assert pformat(testee).splitlines()[-1] == (
+        "{one.Kᵥ, two.Kᵥ, Staggered[one.K]ᵥ, Staggered[two.K]ᵥ}"
+    )
+
+
+def test_colliding_short_names_in_the_header():
+    testee = im.make_tuple(
+        ir.AxisLiteral(dim=_ref("pkg.dims", "I")), ir.AxisLiteral(dim=_ref("other.dims", "I"))
+    )
+    assert pformat(testee) == (
+        "dim other.dims.I = other.dims:Iₕ;\ndim pkg.dims.I = pkg.dims:Iₕ;\n"
+        "{pkg.dims.Iₕ, other.dims.Iₕ}"
+    )
+
+
+def test_dimensions_sharing_their_tag_are_printed_in_full():
+    # equal tags, different kinds: no short name tells them apart
+    horizontal = _ref("pkg", "X")
+    vertical = _ref("pkg", "X", common.DimensionKind.VERTICAL)
+    testee = im.make_tuple(ir.AxisLiteral(dim=horizontal), ir.AxisLiteral(dim=vertical))
+    assert pformat(testee) == "{pkg:Xₕ, pkg:Xᵥ}"
 
 
 def test_cartesian_domain():
