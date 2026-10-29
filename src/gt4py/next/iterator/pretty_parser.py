@@ -48,9 +48,11 @@ GRAMMAR = r"""
     // A dimension tag is `module:qualname` (ADR 0029), and -- for a parametrized dimension
     // such as `Staggered[pkg:K]` -- with one bracketed tag. A short dimension name (declared
     // in the header) and an offset tag are the same without the module part.
-    // Unambiguous here: a tag starts with a letter (a float does not), and the literal's
-    // suffix terminates it.
-    TAG: /[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?::[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)?(?:\[[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?::[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)?\])?/
+    // Its parts are Python identifiers, Unicode included (`[^\W\d]\w*`: a letter or `_`, then
+    // word characters). Unambiguous here: a tag starts with a letter (a float does not), and
+    // the literal's suffix terminates it. The suffixes are word characters too, but cannot
+    // occur in an identifier: Python NFKC-normalizes them (e.g. `ₕ` to `h`).
+    TAG: /[^\W\d]\w*(?:\.[^\W\d]\w*)*(?::[^\W\d]\w*(?:\.[^\W\d]\w*)*)?(?:\[[^\W\d]\w*(?:\.[^\W\d]\w*)*(?::[^\W\d]\w*(?:\.[^\W\d]\w*)*)?\])?/
     OFFSET_LITERAL: ( INT_LITERAL | TAG ) "ₒ"
     AXIS_LITERAL: TAG ("ᵥ" | "ₕ" | "ₗ") ("ᵃ" | "ˡ")?
     INFINITY_LITERAL: "∞" | "-∞"

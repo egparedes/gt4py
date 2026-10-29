@@ -129,6 +129,15 @@ ROUNDTRIP_CASES = [
         id="dimensions_sharing_their_tag",
     ),
     pytest.param(
+        _axes(
+            _ref("maillage.géo", "Δx"),
+            _ref("other.géo", "Δx"),  # collides: told apart by non-ASCII module parts
+            _staggered(_ref("maillage.géo", "Ωz")),
+            _ref("maillage.géo", "_Ñ1", common.DimensionKind.LOCAL, common.DimensionCategory.LOCAL),
+        ),
+        id="non_ascii_identifiers",
+    ),
+    pytest.param(
         im.domain(common.GridType.CARTESIAN, {I: (0, 1), common.Staggered[KDim]: ("x", "y")}),
         id="cartesian_domain_with_dimensions",
     ),
