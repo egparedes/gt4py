@@ -264,12 +264,13 @@ class DimensionRef(metaclass=_InternedDimensionRefMeta):
         Only `gt4py.next.common:Staggered[<base tag>]` is a staggered tag; its base has the same
         kind and is a Cartesian axis by construction.
         """
-        if (match := _STAGGERED_TAG_RE.match(tag)) is not None:
-            if match["owner"] != f"{_STAGGERED_MODULE}:Staggered":
+        if (parts := split_parametrized_tag(tag)) is not None:
+            owner_tag, base_tag = parts
+            if owner_tag != f"{_STAGGERED_MODULE}:Staggered":
                 raise ValueError(
                     f"'{tag}' is not a dimension tag: only 'Staggered' is parametrized."
                 )
-            base = cls.from_tag(match["base"], kind, DimensionCategory.CARTESIAN_AXIS)
+            base = cls.from_tag(base_tag, kind, DimensionCategory.CARTESIAN_AXIS)
             return _staggered_ref(base)
         module, sep, qualname = tag.partition(":")
         if not sep or not module or not qualname or ":" in qualname:
@@ -711,6 +712,24 @@ class CartesianAxisIndex(AnyCartesianAxisIndex):
 
 
 _STAGGERED_TAG_RE: Final = re.compile(r"^(?P<owner>[^\[\]]+)\[(?P<base>.+)\]$")
+
+
+def split_parametrized_tag(tag: Tag) -> tuple[Tag, Tag] | None:
+    """
+    Split a parametrized dimension tag `<owner tag>[<base tag>]` into its two tags.
+
+    Returns:
+        The owner and base tags, or `None` if `tag` is not parametrized.
+
+    Examples:
+        >>> split_parametrized_tag("gt4py.next.common:Staggered[my.module:K]")
+        ('gt4py.next.common:Staggered', 'my.module:K')
+        >>> split_parametrized_tag("my.module:K") is None
+        True
+    """
+    if (match := _STAGGERED_TAG_RE.match(tag)) is None:
+        return None
+    return match["owner"], match["base"]
 
 
 class Infinity(enum.Enum):

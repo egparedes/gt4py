@@ -153,13 +153,14 @@ def resolve(dim: Tag | DimensionRef) -> Dimension:
         bound := bindings.get(tag)
     ) is not None:
         return bound
-    if (match := common._STAGGERED_TAG_RE.match(tag)) is not None:
-        owner = resolve(match["owner"])
+    if (parts := common.split_parametrized_tag(tag)) is not None:
+        owner_tag, base_tag = parts
+        owner = resolve(owner_tag)
         if not isinstance(owner, common.StaggeredMeta):
             raise ValueError(
-                f"Cannot resolve tag '{tag}': '{match['owner']}' is not a parametrized dimension."
+                f"Cannot resolve tag '{tag}': '{owner_tag}' is not a parametrized dimension."
             )
-        return owner[resolve(match["base"])]  # type: ignore[index] # a StaggeredMeta, checked
+        return owner[resolve(base_tag)]  # type: ignore[index] # a StaggeredMeta, checked
 
     module_name, sep, qualname = tag.partition(":")
     if not sep:
