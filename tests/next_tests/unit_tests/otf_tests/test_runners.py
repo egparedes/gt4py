@@ -35,6 +35,9 @@ class Edge(gtx.DimensionIndex): ...
 class V2EDim(gtx.DimensionIndex, kind=gtx.DimensionKind.LOCAL): ...
 
 
+class IDim(gtx.CartesianAxisIndex): ...
+
+
 @pytest.fixture
 def process_runner(tmp_path):
     runner = runners.ProcessRunner(max_workers=1, shared_session_cache_dir=str(tmp_path))
@@ -192,6 +195,31 @@ def test_offloaded_task_ships_connectivities_as_file_refs():
     )
     pickle.dumps(task2.construct_compilable(True).args.offset_provider[V2EDim.tag])
     assert compilation_tasks._connectivity_files[id(conn)][1] == path
+
+
+def test_offloaded_task_ships_cartesian_connectivities_as_they_are(process_runner):
+    # an affine connectivity has no table to dump (its `asnumpy` raises): it is not wrapped
+    cartesian = common.CartesianConnectivity(IDim, 1)
+    compile_time_args = dataclasses.replace(
+        arguments.CompileTimeArgs.empty(), offset_provider={"Ioff": cartesian, "I": IDim}
+    )
+    backend = next_backend.Backend(
+        name="test_backend",
+        executor=_RecursingExecutor(depth=0),
+        allocator=None,
+        transforms=lambda inp: inp,
+    )
+    task = compilation_tasks.make_compilation_task(
+        backend, definition_stage=None, compile_time_args=compile_time_args
+    )
+
+    shipped = task.construct_compilable(True)
+    assert shipped.args.offset_provider["Ioff"] is cartesian
+    assert shipped.args.offset_provider["I"] is IDim
+    restored = pickle.loads(pickle.dumps(shipped)).args.offset_provider["Ioff"]
+    assert (restored.domain_dim, restored.codomain, restored.offset) == (IDim, IDim, 1)
+    future = process_runner.submit(task)  # offloaded to a worker, not compiled in the caller
+    assert callable(future.result(timeout=120).load())
 
 
 def test_connectivity_file_registry_prunes_on_gc():

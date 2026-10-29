@@ -114,10 +114,12 @@ def _dump_connectivity(value: common.Connectivity) -> str:
 def _offset_provider_with_file_refs(
     offset_provider: common.OffsetProvider,
 ) -> common.OffsetProvider:
+    # Only table-backed connectivities have a buffer to dump; others (a dimension, an affine
+    # `CartesianConnectivity`, whose `asnumpy` raises) are small and pickle as they are.
     return {
-        name: value
-        if isinstance(value, common.DimensionMeta)
-        else typing.cast(common.OffsetProviderElem, _ConnectivityFileRef(value))
+        name: typing.cast(common.OffsetProviderElem, _ConnectivityFileRef(value))
+        if common.is_neighbor_table(value) or isinstance(value, common.GatherConnectivity)
+        else value
         for name, value in offset_provider.items()
     }
 
