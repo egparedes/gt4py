@@ -40,7 +40,8 @@ class Node(eve.Node):
     def __str__(self) -> str:
         from gt4py.next.iterator.pretty_printer import pformat
 
-        return pformat(self)
+        # For display (e.g. embedded in messages): short dimension names, no header.
+        return pformat(self, dimension_header=False)
 
     def __hash__(self) -> int:
         return hash(

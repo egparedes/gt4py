@@ -59,7 +59,6 @@ def prune_unreferenced_fundefs(program: itir.Program) -> itir.Program:
     ...     ],
     ... )
     >>> print(prune_unreferenced_fundefs(program))
-    dim IDim = gt4py.next.iterator.transforms.inline_fundefs:IDimₕᵃ;
     testee(inp, out) {
       fun1 = λ(a) → ·a;
       out @ c⟨ IDimₕ: [0, 10[ ⟩ ← fun1(inp);

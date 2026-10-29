@@ -35,8 +35,6 @@ class RemoveBroadcast(PreserveLocationVisitor, NodeTranslator):
     >>> expr.annex.domain = domain_utils.SymbolicDomain.from_expr(domain)
     >>> transformed = RemoveBroadcast.apply(expr)
     >>> print(transformed)
-    dim IDim = gt4py.next.iterator.transforms.remove_broadcast:IDimₕᵃ;
-    dim JDim = gt4py.next.iterator.transforms.remove_broadcast:JDimₕᵃ;
     as_fieldop(deref, c⟨ IDimₕ: [0, 10[, JDimₕ: [0, 10[ ⟩)(inp)
     """
 

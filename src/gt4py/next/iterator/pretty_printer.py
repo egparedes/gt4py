@@ -24,6 +24,10 @@ The short name is the qualname. Different dimensions sharing one are told apart 
 shortest module suffix that distinguishes them (`dims.IDim`, `other.dims.IDim`). Dimensions
 that share their whole tag (they differ only in kind or category) have no distinguishing
 short name and are printed in full in place.
+
+`pformat` serializes: it prints the header, so its output parses back. `str(node)` displays:
+it prints the same short names without the header, to read well inside messages, and does not
+parse back.
 """
 
 # TODO(tehrengruber): add support for printing the types of itir.Sym nodes
@@ -490,21 +494,47 @@ class PrettyPrinter(NodeTranslator):
         )
 
     @classmethod
-    def apply(cls, node: ir.Node, indent: int, width: int) -> str:
-        """Print `node`, preceded by the header declaring the short dimension names it uses."""
+    def apply(cls, node: ir.Node, indent: int, width: int, *, dimension_header: bool = True) -> str:
+        """Print `node` with short dimension names, preceded by their header if requested."""
         printer = cls(indent=indent, width=width)
         dims = eve.walk_values(node).if_isinstance(ir.AxisLiteral).getattr("dim")
         printer.short_names = short_dimension_names(dims)
-        header = [
-            f"{DIMENSION_HEADER_KEYWORD} {name} = {format_full_axis_literal(dim)};"
-            for dim, name in sorted(printer.short_names.items(), key=lambda item: item[1])
-        ]
+        header = (
+            [
+                f"{DIMENSION_HEADER_KEYWORD} {name} = {format_full_axis_literal(dim)};"
+                for dim, name in sorted(printer.short_names.items(), key=lambda item: item[1])
+            ]
+            if dimension_header
+            else []
+        )
         return "\n".join([*header, *printer.visit(node, prec=0)])
 
 
-def pformat(x: ir.Node, indent: int = DEFAULT_INDENT, width: int = DEFAULT_WIDTH) -> str:
-    return PrettyPrinter.apply(x, indent, width)
+def pformat(
+    x: ir.Node,
+    indent: int = DEFAULT_INDENT,
+    width: int = DEFAULT_WIDTH,
+    *,
+    dimension_header: bool = True,
+) -> str:
+    """
+    Print `x` in the syntax `pretty_parser.pparse` reads back.
+
+    Args:
+        x: The node to print.
+        indent: Spaces per indentation level.
+        width: Preferred maximum line width.
+        dimension_header: Whether to declare the short dimension names in a header. Without
+            it (as in `str(node)`) the text is for display only and does not parse back.
+    """
+    return PrettyPrinter.apply(x, indent, width, dimension_header=dimension_header)
 
 
-def pprint(x: ir.Node, indent: int = DEFAULT_INDENT, width: int = DEFAULT_WIDTH) -> None:
-    print(pformat(x, indent, width))
+def pprint(
+    x: ir.Node,
+    indent: int = DEFAULT_INDENT,
+    width: int = DEFAULT_WIDTH,
+    *,
+    dimension_header: bool = True,
+) -> None:
+    print(pformat(x, indent, width, dimension_header=dimension_header))

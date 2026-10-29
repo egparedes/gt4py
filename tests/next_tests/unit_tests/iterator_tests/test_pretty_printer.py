@@ -380,6 +380,20 @@ def test_dimensions_sharing_their_tag_are_printed_in_full():
     assert pformat(testee) == "{pkg:Xₕ, pkg:Xᵥ}"
 
 
+def test_str_displays_short_names_without_header():
+    testee = im.domain(common.GridType.CARTESIAN, {IDim: (0, 10)})
+    assert str(testee) == "c⟨ IDimₕ: [0, 10[ ⟩"
+    assert pformat(testee, dimension_header=False) == str(testee)
+    assert pformat(testee) == f"dim IDim = {IDim.tag}ₕᵃ;\n{testee}"
+
+
+def test_str_displays_disambiguated_short_names():
+    testee = im.make_tuple(
+        ir.AxisLiteral(dim=_ref("pkg.dims", "I")), ir.AxisLiteral(dim=_ref("other.dims", "I"))
+    )
+    assert str(testee) == "{pkg.dims.Iₕ, other.dims.Iₕ}"
+
+
 def test_cartesian_domain():
     testee = ir.FunCall(
         fun=ir.SymRef(id="cartesian_domain"), args=[ir.SymRef(id="x"), ir.SymRef(id="y")]

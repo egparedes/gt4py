@@ -456,18 +456,13 @@ def domain(
     """
     >>> class IDim(common.CartesianAxisIndex, kind=common.DimensionKind.HORIZONTAL): ...
     >>> class JDim(common.CartesianAxisIndex, kind=common.DimensionKind.HORIZONTAL): ...
-    >>> ranges = {IDim: (0, 10), JDim: (0, 20)}
-    >>> print(domain(common.GridType.CARTESIAN, ranges))
-    dim IDim = gt4py.next.iterator.ir_utils.ir_makers:IDimₕᵃ;
-    dim JDim = gt4py.next.iterator.ir_utils.ir_makers:JDimₕᵃ;
-    c⟨ IDimₕ: [0, 10[, JDimₕ: [0, 20[ ⟩
-    >>> print(domain(common.GridType.UNSTRUCTURED, ranges))  # doctest: +ELLIPSIS
-    dim IDim = ...
-    u⟨ IDimₕ: [0, 10[, JDimₕ: [0, 20[ ⟩
+    >>> str(domain(common.GridType.CARTESIAN, {IDim: (0, 10), JDim: (0, 20)}))
+    'c⟨ IDimₕ: [0, 10[, JDimₕ: [0, 20[ ⟩'
+    >>> str(domain(common.GridType.UNSTRUCTURED, {IDim: (0, 10), JDim: (0, 20)}))
+    'u⟨ IDimₕ: [0, 10[, JDimₕ: [0, 20[ ⟩'
     >>> ij_domain = common.domain({IDim: (0, 10), JDim: (0, 20)})
-    >>> print(domain(common.GridType.UNSTRUCTURED, ij_domain))  # doctest: +ELLIPSIS
-    dim IDim = ...
-    u⟨ IDimₕ: [0, 10[, JDimₕ: [0, 20[ ⟩
+    >>> str(domain(common.GridType.UNSTRUCTURED, ij_domain))
+    'u⟨ IDimₕ: [0, 10[, JDimₕ: [0, 20[ ⟩'
     """
     if isinstance(ranges_or_domain, common.Domain):
         domain = ranges_or_domain
@@ -598,9 +593,8 @@ def broadcast(expr: ExprLike, dims: Iterable[common.DimensionLike]) -> itir.FunC
     Examples
     --------
     >>> class IDim(common.CartesianAxisIndex): ...
-    >>> print(broadcast("a", (IDim,)))
-    dim IDim = gt4py.next.iterator.ir_utils.ir_makers:IDimₕᵃ;
-    broadcast(a, {IDimₕ})
+    >>> str(broadcast("a", (IDim,)))
+    'broadcast(a, {IDimₕ})'
     """
     return call("broadcast")(expr, make_tuple(*(axis_literal(dim) for dim in dims)))
 
