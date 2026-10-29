@@ -2515,6 +2515,10 @@ class LocalDimensionIndex(DimensionIndex):
     min_neighbors: ClassVar[Optional[int]] = None
     #: The `size=` of this declaration, kept apart from the counts an owner writes below.
     declared_size: ClassVar[Optional[int]] = None
+    #: Whether a `NeighborConnectivity` may take this dimension as its `Local`. `False` for a
+    #: local dimension that belongs to no connectivity by construction (`ConstList`); a marker
+    #: rather than an identity check, so that `common` need not import where it is declared.
+    adoptable: ClassVar[bool] = True
 
     def __init_subclass__(
         cls,
@@ -2700,13 +2704,10 @@ class NeighborConnectivity[Domain: DimensionIndex, Codomain: DimensionIndex](
                 " ('class Local(LocalDimensionIndex): ...') or by adopting one"
                 " ('Local: TypeAlias = SomeLocalDim')."
             )
-        # NOTE: imported here, `iterator.builtins` imports this module.
-        from gt4py.next.iterator.builtins import ConstList
-
-        if local is ConstList:
+        if not local.adoptable:
             raise TypeError(
-                f"'{name}' cannot adopt '{ConstList.__qualname__}': it is the local dimension"
-                " of 'make_const_list' results and belongs to no connectivity."
+                f"'{name}' cannot adopt '{local.__qualname__}': it is declared as the local"
+                " dimension of no connectivity ('adoptable = False')."
             )
         max_neighbors = _check_neighbor_count(cls, "max_neighbors", max_neighbors)
         min_neighbors = _check_neighbor_count(cls, "min_neighbors", min_neighbors)

@@ -74,10 +74,12 @@ class ConstList(common.LocalDimensionIndex, size=1):
 
     An owner-less local dimension of size 1: the value is broadcast against the neighbor lists it
     is combined with, and a materialized constant list has extent 1 along it. It indexes no table,
-    so it is never in an offset provider.
+    so it is never in an offset provider, and no connectivity can adopt it.
     """
 
     __slots__ = ()
+
+    adoptable = False
 
 
 @builtin_dispatch

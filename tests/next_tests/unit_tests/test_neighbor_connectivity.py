@@ -629,11 +629,25 @@ class TestConnectivityKeyOver:
 
 
 def test_the_const_list_dimension_cannot_be_adopted():
-    with pytest.raises(TypeError, match="cannot adopt"):
+    assert itir_builtins.ConstList.adoptable is False
+    with pytest.raises(TypeError, match="cannot adopt 'ConstList'"):
         _declare(
             """
             class C(NeighborConnectivity[Vertex, Edge]):
                 Local: typing.TypeAlias = ConstList
+            """
+        )
+
+
+def test_a_local_dimension_marked_unadoptable_cannot_be_adopted():
+    with pytest.raises(TypeError, match="cannot adopt 'Unadoptable'"):
+        _declare(
+            """
+            class Unadoptable(LocalDimensionIndex, size=2):
+                adoptable = False
+
+            class C(NeighborConnectivity[Vertex, Edge]):
+                Local: typing.TypeAlias = Unadoptable
             """
         )
 
