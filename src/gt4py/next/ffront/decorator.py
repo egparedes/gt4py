@@ -93,10 +93,10 @@ def _capture_referenced_dimensions(definition_stage: Any, seen: set[int]) -> Non
     """
     Convert (and so capture) the dimensions a definition references beyond its annotations.
 
-    The scan axis, and the source and targets of each `FieldOffset` among the closure variables
-    of the definition and, recursively, of the field operators it calls -- e.g. a local
-    dimension no annotation names. Uses the *current* closure variables of each function, not
-    the (fingerprint-cached) frontend stages.
+    The scan axis, the source and targets of each `FieldOffset` and each connectivity declaration
+    among the closure variables of the definition and, recursively, of the field operators it
+    calls -- e.g. a local dimension no annotation names. Uses the *current* closure variables of
+    each function, not the (fingerprint-cached) frontend stages.
     """
     definition = getattr(definition_stage, "definition", None)
     if definition is None or id(definition) in seen:
@@ -108,6 +108,8 @@ def _capture_referenced_dimensions(definition_stage: Any, seen: set[int]) -> Non
         if isinstance(value, fbuiltins.FieldOffset):
             common.dimension_ref(value.source)
             common.dimension_refs(value.target)
+        elif isinstance(value, common.ConnectivityMeta) and "Local" in value.__dict__:
+            common.connectivity_ref(typing.cast(type[common.NeighborConnectivity], value))
         elif (stage := getattr(value, "definition_stage", None)) is not None:
             _capture_referenced_dimensions(stage, seen)
 
@@ -149,9 +151,13 @@ class _CompilableGTEntryPointMixin(Generic[ffront_stages.DSLDefinitionT]):
         )
 
     @functools.cached_property
-    def _declared_dimension_classes(self) -> dict[common.DimensionRef, common.Dimension]:
+    def _declared_dimension_classes(
+        self,
+    ) -> dict[common.DimensionRef | common.ConnectivityRef, common.Dimension | type]:
         """
         The dimension classes the definition declares, by ref (the Python edge).
+
+        Connectivity declarations, by `ConnectivityRef`, are included the same way.
 
         Captured from the very conversions the frontend does (`type_translation.from_type_hint`
         of each annotation), so every annotation form is covered by construction, plus the
@@ -176,7 +182,7 @@ class _CompilableGTEntryPointMixin(Generic[ffront_stages.DSLDefinitionT]):
         return {ref: cls for ref, cls in reversed(captured)}  # first declaration wins
 
     def _check_dimension_identity(
-        self, name: str, captured: Sequence[tuple[common.DimensionRef, common.Dimension]]
+        self, name: str, captured: Sequence[common.CapturedClass]
     ) -> None:
         """
         Compare the argument dimensions `captured` while translating the arguments (see
@@ -189,27 +195,24 @@ class _CompilableGTEntryPointMixin(Generic[ffront_stages.DSLDefinitionT]):
         declared = self._declared_dimension_classes
         for ref, cls in captured:
             if (expected := declared.get(ref)) is not None and expected is not cls:
+                what = "connectivity" if isinstance(ref, common.ConnectivityRef) else "dimension"
                 raise errors.DSLError(
                     None,
                     f"Invalid argument types in call to '{name}'.\n"
-                    f"An argument uses dimension '{cls.__qualname__}', and the definition uses"
+                    f"An argument uses {what} '{cls.__qualname__}', and the definition uses"
                     f" '{expected.__qualname__}': they are two different classes named"
-                    f" '{ref.tag}'. Was the dimension redefined (e.g. a notebook cell re-run)?"
+                    f" '{ref.tag}'. Was the {what} redefined (e.g. a notebook cell re-run)?"
                     " Re-create the argument, or re-define the program, with the current class.",
                 )
 
     def _capture_argument_dimensions(
         self, args: Sequence[Any], kwargs: dict[str, Any], offset_provider: Any
-    ) -> tuple[
-        list[ts.TypeSpec],
-        dict[str, ts.TypeSpec],
-        list[tuple[common.DimensionRef, common.Dimension]],
-    ]:
+    ) -> tuple[list[ts.TypeSpec], dict[str, ts.TypeSpec], list[common.CapturedClass]]:
         """Translate the arguments (as the type check does) and capture their dimension classes."""
         with common.capture_dimension_classes() as captured:
             arg_types = [type_translation.from_value(arg) for arg in args]
             kwarg_types = {k: type_translation.from_value(v) for k, v in kwargs.items()}
-            for conn in (offset_provider or {}).values():
+            for key, conn in (offset_provider or {}).items():
                 # NOTE: duck-typed: `isinstance(conn, common.Connectivity)` is a slow runtime
                 # protocol check. Domain (incl. a local dimension) and codomain are converted at
                 # the edge like everything else; a bare dimension is a named Cartesian offset.
@@ -218,6 +221,11 @@ class _CompilableGTEntryPointMixin(Generic[ffront_stages.DSLDefinitionT]):
                 elif (codomain := getattr(conn, "codomain", None)) is not None:
                     common.dimension_ref(codomain)
                     common.dimension_refs(conn.domain.dims)
+                    # the declaration the table is bound to, as `offset_provider_to_type` finds it
+                    if isinstance(key, str) and (
+                        declaration := common.bound_declaration(key, conn)
+                    ):
+                        common.connectivity_ref(declaration)
         return arg_types, kwarg_types, captured
 
     @functools.cached_property
@@ -258,7 +266,11 @@ class _CompilableGTEntryPointMixin(Generic[ffront_stages.DSLDefinitionT]):
             definition_stage=self.definition_stage,
             program_type=program_type,
             argument_descriptor_mapping=argument_descriptor_mapping,
-            dimension_classes=self._declared_dimension_classes,
+            dimension_classes={
+                ref: typing.cast(common.Dimension, cls)
+                for ref, cls in self._declared_dimension_classes.items()
+                if isinstance(ref, common.DimensionRef)
+            },
         )
 
     def compile(

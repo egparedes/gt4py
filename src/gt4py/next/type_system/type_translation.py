@@ -237,14 +237,12 @@ def from_type_hint(
     return type_spec
 
 
-_FROM_TYPE_HINT_CACHE: dict[
-    Any, tuple[ts.TypeSpec, tuple[tuple[common.DimensionRef, common.Dimension], ...], bool]
-] = {}
+_FROM_TYPE_HINT_CACHE: dict[Any, tuple[ts.TypeSpec, tuple[common.CapturedClass, ...], bool]] = {}
 
 
-def _is_current_dimension_class(cls: common.Dimension) -> bool:
+def _is_current_dimension_class(cls: common.Dimension | type[common.NeighborConnectivity]) -> bool:
     """Whether `cls` is still what its (loaded) module defines under its qualname."""
-    if common.is_staggered(cls):
+    if isinstance(cls, common.DimensionMeta) and common.is_staggered(cls):
         return _is_current_dimension_class(cls.base)  # type: ignore[attr-defined] # staggered
     obj: Any = sys.modules.get(cls.__module__)
     for attr in cls.__qualname__.split("."):

@@ -231,21 +231,12 @@ _COMMON_DECONSTRUCTORS: Final[dict[type, Deconstructor]] = {
         if "base" in obj.__dict__
         else EmptyDeconstruction.from_reference(obj)
     ),
-    # A connectivity declaration is a class, fingerprinted by reference like a dimension, *and*
-    # by what it declares: redefining `V2E` under the same name with other dimensions or counts
-    # (e.g. re-running a notebook cell) must not reuse artifacts built for the old declaration.
+    # A connectivity declaration is fingerprinted through its `ConnectivityRef`, i.e. by its name
+    # *and* by what it declares: redefining `V2E` under the same name with other dimensions or
+    # counts (e.g. re-running a notebook cell) must not reuse artifacts built for the old
+    # declaration. The ref holds dimension refs, so nothing here needs the classes importable.
     common.ConnectivityMeta: lambda obj: (
-        # NOTE: the name goes into the state unverified; the local dimension is fingerprinted as a
-        # class, so the strict fingerprinter still checks *its* importability (which is the
-        # connectivity's own, for a nested `Local`, and another module's for a shared one).
-        Deconstruction.from_pieces(
-            obj.domain,
-            obj.codomain,
-            common.local_dimension_of(obj),
-            common.local_dimension_of(obj).max_neighbors,
-            common.local_dimension_of(obj).min_neighbors,
-            state=b"neighbor_connectivity\0" + obj.tag.encode(),
-        )
+        Deconstruction.from_pieces(common.connectivity_ref(obj), state=b"neighbor_connectivity")
         if "Local" in obj.__dict__
         else EmptyDeconstruction.from_reference(obj)
     ),

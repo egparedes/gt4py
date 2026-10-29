@@ -317,15 +317,17 @@ class DimensionRef(metaclass=_InternedDimensionRefMeta):
         return cls(module=module, qualname=qualname, kind=kind, category=category)
 
 
-def _check_ref_class_comparison(ref: DimensionRef, cls: DimensionMeta) -> None:
+def _check_ref_class_comparison(
+    ref: DimensionRef | ConnectivityRef, cls: DimensionMeta | ConnectivityMeta
+) -> None:
     # Imported lazily: `config` must stay importable without `common`, and the flag is read at
     # call time so that tests can toggle it.
     from gt4py.next import config
 
     if config.STRICT_DIMENSION_REF_COMPARISON:
         raise TypeError(
-            f"Comparing {ref!r} with the dimension class {cls!r}: one side missed its"
-            " conversion at the Python edge (use 'common.dimension_ref(cls)')."
+            f"Comparing {ref!r} with the class {cls!r}: one side missed its conversion at the"
+            " Python edge (use 'common.dimension_ref(cls)' or 'common.connectivity_ref(cls)')."
         )
 
 
@@ -374,8 +376,14 @@ def dimension_ref(dim: Dimension | DimensionRef) -> DimensionRef:
     return ref
 
 
+#: A `(ref, class)` pair recorded by `capture_dimension_classes`: a dimension, or a connectivity
+#: declaration (see `connectivity_ref`).
+CapturedClass: TypeAlias = (
+    tuple["DimensionRef", "Dimension"] | tuple["ConnectivityRef", "type[NeighborConnectivity]"]
+)
+
 #: Set while `capture_dimension_classes` is active: the `(ref, class)` pairs converted so far.
-_DIMENSION_CLASS_CAPTURE: contextvars.ContextVar[Optional[list[tuple[DimensionRef, Dimension]]]] = (
+_DIMENSION_CLASS_CAPTURE: contextvars.ContextVar[Optional[list[CapturedClass]]] = (
     contextvars.ContextVar("_DIMENSION_CLASS_CAPTURE", default=None)
 )
 
@@ -385,16 +393,18 @@ def is_capturing_dimension_classes() -> bool:
     return _DIMENSION_CLASS_CAPTURE.get() is not None
 
 
-def replay_dimension_classes(pairs: Iterable[tuple[DimensionRef, Dimension]]) -> None:
+def replay_dimension_classes(pairs: Iterable[CapturedClass]) -> None:
     """Record `(ref, class)` pairs captured earlier (e.g. by a cached conversion), if capturing."""
     if (sink := _DIMENSION_CLASS_CAPTURE.get()) is not None:
         sink.extend(pairs)
 
 
 @contextlib.contextmanager
-def capture_dimension_classes() -> Iterator[list[tuple[DimensionRef, Dimension]]]:
+def capture_dimension_classes() -> Iterator[list[CapturedClass]]:
     """
     Record the `(ref, class)` pair of every dimension class converted to a ref in the block.
+
+    Connectivity declarations converted by `connectivity_ref` are recorded the same way.
 
     `dimension_ref` is *the* conversion point from the Python edge, so wrapping a conversion
     (`type_translation.from_type_hint` of a declaration, `from_value` of an argument) in this
@@ -402,7 +412,7 @@ def capture_dimension_classes() -> Iterator[list[tuple[DimensionRef, Dimension]]
     supports. The Python edge uses it to compare dimensions by class identity, below which only
     (equal-by-value) refs remain.
     """
-    sink: list[tuple[DimensionRef, Dimension]] = []
+    sink: list[CapturedClass] = []
     token = _DIMENSION_CLASS_CAPTURE.set(sink)
     try:
         yield sink
@@ -1656,7 +1666,7 @@ class NeighborTableType:
     The type of a neighbor table bound to a connectivity: what transformations and code generation
     see instead of the table (ADR 0019).
 
-    `connectivity` is the `NeighborConnectivity` declaration the table is bound to. It determines
+    `connectivity` is the `ConnectivityRef` of the declaration the table is bound to. It determines
     the table's `domain` -- the declaration's domain extended by its local dimension -- and its
     `codomain`. A table alone cannot name its declaration: one sharing another connectivity's
     local dimension has a table over the same domain as the owner's, with another codomain. So the
@@ -1668,26 +1678,33 @@ class NeighborTableType:
     also what `NeighborTable.__gt_type__()` returns.
     """
 
-    connectivity: type[NeighborConnectivity] | ConnectivityType
+    connectivity: ConnectivityRef | ConnectivityType
     dtype: core_defs.DType
     skip_value: Optional[core_defs.IntegralScalar]
     #: The table's number of entries per element. A declaration may leave it to the table; where
     #: it states one, `check_neighbor_table` checks the table against it.
     max_neighbors: int
 
+    def __post_init__(self) -> None:
+        # NOTE: a declaration class passed to the constructor is converted, as dimension classes
+        # are in `ConnectivityType`: below the Python edge only the ref appears.
+        if isinstance(self.connectivity, ConnectivityMeta):
+            object.__setattr__(self, "connectivity", connectivity_ref(self.connectivity))
+        elif not isinstance(self.connectivity, (ConnectivityRef, ConnectivityType)):
+            raise TypeError(
+                f"Expected a connectivity declaration or its type, got '{self.connectivity!r}'."
+            )
+
     @property
     def domain(self) -> tuple[DimensionRef, DimensionRef]:
         if isinstance(self.connectivity, ConnectivityType):
             first, second = self.connectivity.domain
             return (first, second)
-        return (
-            dimension_ref(self.connectivity.domain),
-            dimension_ref(local_dimension_of(self.connectivity)),
-        )
+        return (self.connectivity.domain, self.connectivity.local)
 
     @property
     def codomain(self) -> DimensionRef:
-        return dimension_ref(self.connectivity.codomain)
+        return self.connectivity.codomain
 
     @property
     def has_skip_values(self) -> bool:
@@ -1960,21 +1977,32 @@ def _neighbor_table_type(key: Tag, table: NeighborTable) -> NeighborTableType:
     """
     The type of `table` bound under `key`: typed by the declaration `key` is the `offset_tag` of.
 
-    The declaration is found through the table's local dimension, which knows its owner and the
-    connectivities sharing it; a key none of them answers to leaves the table undeclared.
+    A key no declaration answers to leaves the table typed by its structure.
     """
     table_type = _unbound_table_type(table)
-    # NOTE: the table's own class, not the ref in its type: owner and sharers are runtime
-    # bookkeeping on the class.
+    if (connectivity := bound_declaration(key, table)) is None:
+        return table_type
+    return check_neighbor_table(connectivity, table_type)
+
+
+def bound_declaration(key: Tag, table: Any) -> Optional[type[NeighborConnectivity]]:
+    """
+    The declaration whose `offset_tag` is `key`, for a table bound under `key` (or `None`).
+
+    Found through the table's local dimension, which knows its owner and the connectivities
+    sharing it: runtime bookkeeping on the classes, so this is for the Python edge only.
+    """
+    if not is_neighbor_table(table):
+        return None
     local = table.domain.dims[1]
     if not (isinstance(local, DimensionMeta) and issubclass(local, LocalDimensionIndex)):
-        return table_type
+        return None
     # NOTE: the most recent sharer first: a redefined declaration (a re-run notebook cell) is
     # appended again under the same tag.
     for connectivity in (local.owner, *reversed(local.sharers)):
         if connectivity is not None and connectivity.offset_tag == key:
-            return check_neighbor_table(connectivity, table_type)
-    return table_type
+            return connectivity
+    return None
 
 
 def get_offset(offset_provider: OffsetProvider, offset_tag: str) -> OffsetProviderElem:
@@ -2551,6 +2579,167 @@ def _check_neighbor_count(cls: type, name: str, count: Optional[int]) -> Optiona
     return int(count)
 
 
+#: Interned connectivity refs, for the same reason as `_DIMENSION_REF_INTERN`.
+_CONNECTIVITY_REF_INTERN: weakref.WeakValueDictionary[tuple[Any, ...], ConnectivityRef] = (
+    weakref.WeakValueDictionary()
+)
+_CONNECTIVITY_REF_INTERN_LOCK: Final = threading.RLock()
+
+
+class _InternedConnectivityRefMeta(type):
+    """Makes `ConnectivityRef(...)` an interning factory, as `_InternedDimensionRefMeta` does."""
+
+    def __call__(  # a factory with the dataclass's signature
+        cls,
+        module: str,
+        qualname: str,
+        offset_tag: Tag,
+        domain: DimensionRef,
+        codomain: DimensionRef,
+        local: DimensionRef,
+        max_neighbors: Optional[int] = None,
+        min_neighbors: Optional[int] = None,
+    ) -> ConnectivityRef:
+        if not all(isinstance(name, str) for name in (module, qualname, offset_tag)):
+            raise TypeError(
+                f"Invalid connectivity module, qualname or offset tag:"
+                f" {module!r}, {qualname!r}, {offset_tag!r}."
+            )
+        if not all(isinstance(dim, DimensionRef) for dim in (domain, codomain, local)):
+            raise TypeError(
+                f"A connectivity ref holds dimension refs, got {domain!r}, {codomain!r}, {local!r}."
+            )
+        key = (module, qualname, offset_tag, domain, codomain, local, max_neighbors, min_neighbors)
+        with _CONNECTIVITY_REF_INTERN_LOCK:
+            if (ref := _CONNECTIVITY_REF_INTERN.get(key)) is None:
+                ref = super().__call__(*key)  # validates in `__post_init__`, then registered
+                _CONNECTIVITY_REF_INTERN[key] = ref
+        return ref
+
+
+@dataclasses.dataclass(frozen=True, eq=False)
+class ConnectivityRef(metaclass=_InternedConnectivityRefMeta):
+    """
+    An immutable, interned value referring to a `NeighborConnectivity` declaration.
+
+    What a `DimensionRef` is to a dimension class: the declaration class stays the identity at
+    the Python edge, while type specifications, table types and the backends carry this value,
+    which holds everything they need from the declaration -- its offset tag, its dimensions as
+    refs and its neighbor counts -- without the class. `connectivity_ref(cls)` produces it.
+
+    The counts are those of the local dimension (for a connectivity sharing it, the owner's),
+    either of which may be `None` when the declaration leaves it to the table.
+
+    Equal refs are the identical object; two refs are equal if all their fields are, so a
+    declaration redefined with other dimensions or counts (a re-run notebook cell) has a
+    different ref. A ref never compares equal to a declaration class (see `DimensionRef`).
+
+    Examples:
+        >>> class Vertex(DimensionIndex): ...
+        >>> class Edge(DimensionIndex): ...
+        >>> class V2E(NeighborConnectivity[Vertex, Edge], max_neighbors=6):
+        ...     class Local(LocalDimensionIndex): ...
+        >>> ref = connectivity_ref(V2E)
+        >>> ref
+        ConnectivityRef(gt4py.next.common:V2E, Vertex -> Edge, local=gt4py.next.common:V2E.Local, max_neighbors=6, min_neighbors=None)
+        >>> ref.offset_tag == V2E.Local.tag, ref.local == dimension_ref(V2E.Local)
+        (True, True)
+        >>> str(ref)
+        'V2E'
+    """
+
+    module: str
+    qualname: str
+    #: The name of the connectivity in the IR and its offset-provider key, see
+    #: `ConnectivityMeta.offset_tag`.
+    offset_tag: Tag
+    domain: DimensionRef
+    codomain: DimensionRef
+    local: DimensionRef
+    max_neighbors: Optional[int] = None
+    min_neighbors: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        for role, dim in (("domain", self.domain), ("codomain", self.codomain)):
+            if is_local_dimension(dim):
+                raise ValueError(f"'{self!r}': its {role} '{dim}' is a local dimension.")
+        if not is_local_dimension(self.local):
+            raise ValueError(f"'{self!r}': its local dimension '{self.local}' is not local.")
+        if self.offset_tag not in (self.local.tag, self.tag):
+            raise ValueError(
+                f"'{self!r}': its offset tag '{self.offset_tag}' is neither its local dimension's"
+                " tag (an owner) nor its own (a connectivity sharing the local dimension)."
+            )
+        for count in (self.max_neighbors, self.min_neighbors):
+            if count is not None and (
+                not isinstance(count, int) or isinstance(count, bool) or count < 0
+            ):
+                raise ValueError(f"'{self!r}': invalid neighbor count {count!r}.")
+        if (
+            self.max_neighbors is not None
+            and self.min_neighbors is not None
+            and self.min_neighbors > self.max_neighbors
+        ):
+            raise ValueError(f"'{self!r}': 'min_neighbors' exceeds 'max_neighbors'.")
+        # NOTE: not a dataclass field, so neither pickled (see `__reduce__`) nor fingerprinted.
+        object.__setattr__(self, "_hash", hash(self._identity_key()))
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # By value, through the constructor, so an unpickled ref is interned too.
+        return (ConnectivityRef, self._identity_key())
+
+    @property
+    def tag(self) -> Tag:
+        """The connectivity's identity: `module:qualname`, as `ConnectivityMeta.tag`."""
+        return f"{self.module}:{self.qualname}"
+
+    def _identity_key(self) -> tuple[Any, ...]:
+        return (
+            self.module,
+            self.qualname,
+            self.offset_tag,
+            self.domain,
+            self.codomain,
+            self.local,
+            self.max_neighbors,
+            self.min_neighbors,
+        )
+
+    def __eq__(self, other: object) -> bool:
+        if self is other:
+            return True
+        if isinstance(other, ConnectivityRef):
+            return self._identity_key() == other._identity_key()
+        if isinstance(other, ConnectivityMeta):
+            _check_ref_class_comparison(self, other)
+            return False
+        return NotImplemented
+
+    def __ne__(self, other: object) -> bool:
+        result = self.__eq__(other)
+        return result if result is NotImplemented else not result
+
+    def __hash__(self) -> int:
+        return self._hash  # type: ignore[attr-defined] # set in `__post_init__`
+
+    def __str__(self) -> str:
+        # the display form, same as `str()` of the class
+        return self.qualname
+
+    def __repr__(self) -> str:
+        return (
+            f"ConnectivityRef({self.tag}, {self.domain.qualname} -> {self.codomain.qualname},"
+            f" local={self.local.tag}, max_neighbors={self.max_neighbors},"
+            f" min_neighbors={self.min_neighbors})"
+        )
+
+    def __copy__(self) -> Self:
+        return self
+
+    def __deepcopy__(self, memo: Any) -> Self:
+        return self
+
+
 class ConnectivityMeta(type):
     """
     Metaclass of `NeighborConnectivity` declarations.
@@ -2624,7 +2813,14 @@ class ConnectivityMeta(type):
         return cls.__qualname__
 
     def __gt_type__(cls) -> Any:
-        return cls.__gt_field_offset__().__gt_type__()
+        from gt4py.next.type_system import type_specifications as ts
+
+        # NOTE: built from the ref, so the type holds refs and tags only; converting also records
+        # the class for the identity check at the Python edge (see `capture_dimension_classes`).
+        ref = connectivity_ref(cast(type[NeighborConnectivity], cls))
+        return ts.ShiftType(
+            codomain=ref.codomain, domain=(ref.domain, ref.local), tag=ref.offset_tag
+        )
 
     def __gt_field_offset__(cls) -> Any:
         """
@@ -2784,8 +2980,36 @@ def local_dimension_of(connectivity: type[NeighborConnectivity]) -> type[LocalDi
     return cast(ConnectivityMeta, connectivity)._local()
 
 
+def connectivity_ref(connectivity: type[NeighborConnectivity] | ConnectivityRef) -> ConnectivityRef:
+    """
+    Return the value referring to a connectivity declaration (a class, or already a ref).
+
+    The conversion point from the Python edge, as `dimension_ref` is for dimensions. Not memoized
+    on the class: the neighbor counts of an adopted local dimension are written by its owner, so
+    they can change after the declaration (a re-run notebook cell redefining the owner).
+    """
+    if isinstance(connectivity, ConnectivityRef):
+        return connectivity
+    if not isinstance(connectivity, ConnectivityMeta):
+        raise TypeError(f"Expected a connectivity declaration, got '{connectivity!r}'.")
+    local = local_dimension_of(connectivity)  # raises for `NeighborConnectivity` itself
+    ref = ConnectivityRef(
+        module=connectivity.__module__,
+        qualname=connectivity.__qualname__,
+        offset_tag=connectivity.offset_tag,
+        domain=dimension_ref(connectivity.domain),
+        codomain=dimension_ref(connectivity.codomain),
+        local=dimension_ref(local),
+        max_neighbors=local.max_neighbors,
+        min_neighbors=local.min_neighbors,
+    )
+    if (sink := _DIMENSION_CLASS_CAPTURE.get()) is not None:
+        sink.append((ref, connectivity))
+    return ref
+
+
 def check_neighbor_table(
-    connectivity: type[NeighborConnectivity],
+    connectivity: type[NeighborConnectivity] | ConnectivityRef,
     table: NeighborTable | NeighborTableType,
 ) -> NeighborTableType:
     """
@@ -2795,7 +3019,7 @@ def check_neighbor_table(
     having skip values whether or not any entry uses it.
 
     Args:
-        connectivity: The declaration.
+        connectivity: The declaration, or its `ConnectivityRef`.
         table: The bound table, or its type (which is all an ahead-of-time compilation has).
 
     Returns:
@@ -2804,8 +3028,8 @@ def check_neighbor_table(
     Raises:
         ValueError: On the first mismatch, naming the connectivity and the mismatch.
     """
-    name = connectivity.__qualname__
-    local = local_dimension_of(connectivity)
+    ref = connectivity_ref(connectivity)
+    name = ref.qualname
 
     def fail(reason: str) -> NoReturn:
         raise ValueError(f"The table bound to '{name}' does not match its declaration: {reason}.")
@@ -2816,40 +3040,38 @@ def check_neighbor_table(
         table_type = _unbound_table_type(table)
     else:
         fail(f"expected a neighbor table, got '{table}'")
-    if isinstance(table_type.connectivity, ConnectivityMeta) and (
-        table_type.connectivity is not connectivity
-    ):
-        fail(f"its type is bound to '{table_type.connectivity.__qualname__}'")
-    expected_domain = (connectivity.domain, local)
-    if tuple(table_type.domain) != tuple(dimension_refs(expected_domain)):
+    if isinstance(table_type.connectivity, ConnectivityRef) and table_type.connectivity != ref:
+        fail(f"its type is bound to '{table_type.connectivity.qualname}'")
+    expected_domain = (ref.domain, ref.local)
+    if tuple(table_type.domain) != expected_domain:
         fail(
             f"its domain is '({', '.join(map(str, table_type.domain))})',"
             f" expected '({', '.join(map(str, expected_domain))})'"
         )
-    if table_type.codomain != dimension_ref(connectivity.codomain):
-        fail(f"its codomain is '{table_type.codomain}', expected '{connectivity.codomain}'")
+    if table_type.codomain != ref.codomain:
+        fail(f"its codomain is '{table_type.codomain}', expected '{ref.codomain}'")
     if not np.issubdtype(table_type.dtype.scalar_type, np.integer):
         fail(f"its dtype '{table_type.dtype}' is not integral")
-    if local.max_neighbors is not None and table_type.max_neighbors != local.max_neighbors:
+    if ref.max_neighbors is not None and table_type.max_neighbors != ref.max_neighbors:
         fail(
             f"it has {table_type.max_neighbors} neighbors per element,"
-            f" expected max_neighbors={local.max_neighbors}"
+            f" expected max_neighbors={ref.max_neighbors}"
         )
-    if local.min_neighbors is not None:
+    if ref.min_neighbors is not None:
         max_neighbors = table_type.max_neighbors
-        if local.min_neighbors > max_neighbors:
+        if ref.min_neighbors > max_neighbors:
             fail(
-                f"min_neighbors={local.min_neighbors} exceeds its {max_neighbors} neighbors"
+                f"min_neighbors={ref.min_neighbors} exceeds its {max_neighbors} neighbors"
                 " per element"
             )
-        if local.min_neighbors < max_neighbors and not table_type.has_skip_values:
+        if ref.min_neighbors < max_neighbors and not table_type.has_skip_values:
             fail(
-                f"min_neighbors={local.min_neighbors} < {max_neighbors} requires a skip value,"
+                f"min_neighbors={ref.min_neighbors} < {max_neighbors} requires a skip value,"
                 " but the table has none"
             )
-        if local.min_neighbors == max_neighbors and table_type.has_skip_values:
+        if ref.min_neighbors == max_neighbors and table_type.has_skip_values:
             fail(
                 f"min_neighbors == max_neighbors == {max_neighbors} means every element has all"
                 f" its neighbors, but the table has skip value {table_type.skip_value}"
             )
-    return dataclasses.replace(table_type, connectivity=connectivity)
+    return dataclasses.replace(table_type, connectivity=ref)

@@ -6,6 +6,8 @@
 # Please, refer to the LICENSE file in the root directory.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import copy
+import dataclasses
 import pickle
 import textwrap
 import typing
@@ -14,7 +16,7 @@ import numpy as np
 import pytest
 
 from gt4py._core import definitions as core_defs
-from gt4py.next import common, dimension_tags
+from gt4py.next import common, config, dimension_tags
 from gt4py.next.common import (
     CartesianAxisIndex,
     DimensionIndex,
@@ -394,7 +396,7 @@ class TestNeighborTableType:
 
     def test_domain_and_codomain_come_from_the_declaration(self):
         table_type = common.check_neighbor_table(V2E, self._v2e_shaped_table())
-        assert table_type.connectivity is V2E
+        assert table_type.connectivity == common.connectivity_ref(V2E)
         assert table_type.domain == (common.dimension_ref(Vertex), common.dimension_ref(V2E.Local))
         assert table_type.codomain == common.dimension_ref(Edge)
         assert table_type.max_neighbors == 4 and table_type.has_skip_values
@@ -418,8 +420,8 @@ class TestNeighborTableType:
         table_types = common.offset_provider_to_type(
             {V2E.offset_tag: v2e_table, sharer.offset_tag: v2v_table, "undeclared": v2e_table}
         )
-        assert table_types[V2E.offset_tag].connectivity is V2E
-        assert table_types[sharer.offset_tag].connectivity is sharer
+        assert table_types[V2E.offset_tag].connectivity == common.connectivity_ref(V2E)
+        assert table_types[sharer.offset_tag].connectivity == common.connectivity_ref(sharer)
         assert table_types[sharer.offset_tag].domain == table_types[V2E.offset_tag].domain
         assert table_types[sharer.offset_tag].codomain == common.dimension_ref(Vertex)
         # a key no declaration answers to leaves the table typed by its structure
@@ -453,13 +455,148 @@ class TestNeighborTableType:
         table = self._v2e_shaped_table()
         owner_type = common.check_neighbor_table(V2E, table)
         sharer_type = common.check_neighbor_table(sharer, table)
-        # lenient: `_declare` classes are not importable
-        assert fingerprinting.lenient_fingerprinter(
+        # strict, although `_declare` classes are not importable: a table type holds refs only
+        assert fingerprinting.strict_fingerprinter(
             owner_type
-        ) != fingerprinting.lenient_fingerprinter(sharer_type)
-        assert fingerprinting.lenient_fingerprinter(
+        ) != fingerprinting.strict_fingerprinter(sharer_type)
+        assert fingerprinting.strict_fingerprinter(
             owner_type
-        ) == fingerprinting.lenient_fingerprinter(common.check_neighbor_table(V2E, table))
+        ) == fingerprinting.strict_fingerprinter(common.check_neighbor_table(V2E, table))
+
+
+class TestConnectivityRef:
+    """The value below the Python edge, as `DimensionRef` is for a dimension class."""
+
+    def test_fields(self):
+        ref = common.connectivity_ref(V2E)
+        assert (ref.module, ref.qualname, ref.tag) == (__name__, "V2E", V2E.tag)
+        assert ref.offset_tag == V2E.offset_tag == V2E.Local.tag
+        assert ref.domain == common.dimension_ref(Vertex)
+        assert ref.codomain == common.dimension_ref(Edge)
+        assert ref.local == common.dimension_ref(V2E.Local)
+        assert (ref.max_neighbors, ref.min_neighbors) == (4, 3)
+        assert all(
+            isinstance(dim, common.DimensionRef) for dim in (ref.domain, ref.codomain, ref.local)
+        )
+
+    def test_a_sharer_has_its_own_offset_tag_and_the_owners_counts(self):
+        sharer = _declare(
+            """
+            class V2V(NeighborConnectivity[Vertex, Vertex]):
+                Local: typing.TypeAlias = V2E.Local
+            """
+        )["V2V"]
+        ref = common.connectivity_ref(sharer)
+        assert ref.offset_tag == ref.tag == sharer.tag
+        assert ref.local == common.connectivity_ref(V2E).local
+        assert (ref.max_neighbors, ref.min_neighbors) == (4, 3)
+
+    def test_undeclared_counts(self):
+        ref = common.connectivity_ref(E2V)
+        assert (ref.max_neighbors, ref.min_neighbors) == (None, None)
+
+    def test_interned(self):
+        ref = common.connectivity_ref(V2E)
+        assert common.connectivity_ref(V2E) is ref
+        assert common.connectivity_ref(ref) is ref
+        assert pickle.loads(pickle.dumps(ref)) is ref
+        assert copy.copy(ref) is ref and copy.deepcopy(ref) is ref
+        assert {ref: 1}[common.connectivity_ref(V2E)] == 1
+
+    def test_the_hash_is_not_pickled(self):
+        ref = common.connectivity_ref(V2E)
+        _, args = ref.__reduce__()
+        assert ref._hash not in args  # type: ignore[attr-defined] # cached, not a field
+        assert [f.name for f in dataclasses.fields(ref)] == [
+            "module",
+            "qualname",
+            "offset_tag",
+            "domain",
+            "codomain",
+            "local",
+            "max_neighbors",
+            "min_neighbors",
+        ]
+
+    def test_display(self):
+        ref = common.connectivity_ref(V2E)
+        assert str(ref) == str(V2E) == "V2E"
+        assert repr(ref) != repr(V2E)
+        assert repr(ref).startswith(f"ConnectivityRef({V2E.tag}, Vertex -> Edge,")
+
+    def test_never_equal_to_the_class(self, monkeypatch):
+        ref = common.connectivity_ref(V2E)
+        monkeypatch.setattr(config, "STRICT_DIMENSION_REF_COMPARISON", False)
+        assert ref != V2E and not (ref == V2E)
+        monkeypatch.setattr(config, "STRICT_DIMENSION_REF_COMPARISON", True)
+        with pytest.raises(TypeError, match="missed its conversion"):
+            _ = ref == V2E
+
+    def test_validation(self):
+        ref = common.connectivity_ref(V2E)
+        with pytest.raises(ValueError, match="neither its local dimension's tag"):
+            dataclasses.replace(ref, offset_tag="elsewhere")
+        with pytest.raises(ValueError, match="is a local dimension"):
+            dataclasses.replace(ref, domain=ref.local)
+        with pytest.raises(ValueError, match="is not local"):
+            dataclasses.replace(ref, local=ref.domain)
+        with pytest.raises(ValueError, match="exceeds"):
+            dataclasses.replace(ref, max_neighbors=2)
+        with pytest.raises(TypeError, match="holds dimension refs"):
+            dataclasses.replace(ref, codomain=Edge)
+        with pytest.raises(TypeError, match="Expected a connectivity declaration"):
+            common.connectivity_ref(Vertex)  # type: ignore[arg-type] # a dimension
+        # a rejected construction leaves the interned ref intact
+        assert common.connectivity_ref(V2E) is ref
+
+    def test_a_table_type_converts_a_declaration_class(self):
+        table_type = NeighborTableType(
+            connectivity=V2E,  # type: ignore[arg-type] # converted at the edge
+            dtype=core_defs.dtype(np.int32),
+            skip_value=None,
+            max_neighbors=4,
+        )
+        assert table_type.connectivity is common.connectivity_ref(V2E)
+        with pytest.raises(TypeError, match="Expected a connectivity declaration"):
+            NeighborTableType(
+                connectivity="V2E",  # type: ignore[arg-type] # not a connectivity
+                dtype=core_defs.dtype(np.int32),
+                skip_value=None,
+                max_neighbors=4,
+            )
+
+    def test_the_type_holds_refs_only(self):
+        shift = V2E.__gt_type__()
+        ref = common.connectivity_ref(V2E)
+        assert shift.tag == ref.offset_tag
+        assert shift.codomain is ref.codomain
+        assert shift.domain == (ref.domain, ref.local)
+
+    def test_conversion_is_captured_with_the_class(self):
+        with common.capture_dimension_classes() as captured:
+            ref = common.connectivity_ref(V2E)
+        assert (ref, V2E) in captured
+        # with the classes of its dimensions
+        assert (common.dimension_ref(V2E.Local), V2E.Local) in captured
+
+    def test_fingerprint_is_the_refs(self):
+        from gt4py.next import fingerprinting
+
+        ref = common.connectivity_ref(V2E)
+        assert fingerprinting.strict_fingerprinter(ref) == fingerprinting.strict_fingerprinter(
+            common.connectivity_ref(V2E)
+        )
+        # a redeclaration (a re-run cell) is a new class with an equal ref and fingerprint
+        source = """
+            class C(NeighborConnectivity[Vertex, Edge], max_neighbors=2):
+                class Local(LocalDimensionIndex): ...
+            """
+        first, second = _declare(source)["C"], _declare(source)["C"]
+        assert first is not second
+        assert common.connectivity_ref(first) == common.connectivity_ref(second)
+        assert fingerprinting.strict_fingerprinter(first) == (
+            fingerprinting.strict_fingerprinter(second)
+        )
 
 
 class TestFrontendIntegration:
@@ -513,8 +650,9 @@ class TestFrontendIntegration:
         from gt4py.next import fingerprinting
 
         def fingerprint_of(source: str) -> str:
-            # lenient: `_declare` classes are not importable, as in a re-run notebook cell
-            return fingerprinting.lenient_fingerprinter(_declare(source)["C"])
+            # strict, although `_declare` classes are not importable (as in a re-run notebook
+            # cell): a declaration is fingerprinted through its `ConnectivityRef`
+            return fingerprinting.strict_fingerprinter(_declare(source)["C"])
 
         base = fingerprint_of(
             """
