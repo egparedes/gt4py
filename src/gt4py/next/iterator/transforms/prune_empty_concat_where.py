@@ -85,9 +85,6 @@ class _PruneEmptyConcatWhere(PreserveLocationVisitor, NodeTranslator):
 
     >>> from gt4py.next import common
     >>> class IDim(common.CartesianAxisIndex): ...
-    >>> # IR passes rebuild a dimension from its tag by importing it (ADR 0029), and a
-    >>> # class declared in a doctest is not an attribute of the real module:
-    >>> import sys
     >>> field_t = ts.FieldType(dims=[IDim], dtype=ts.ScalarType(kind=ts.ScalarKind.FLOAT64))
     >>> expr = im.concat_where(
     ...     im.domain(common.GridType.CARTESIAN, {IDim: (10, itir.InfinityLiteral.POSITIVE)}),

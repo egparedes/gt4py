@@ -252,9 +252,6 @@ class FuseAsFieldOp(
     >>> from gt4py.next import utils
     >>> from gt4py.next.iterator.ir_utils import ir_makers as im
     >>> class IDim(gtx.CartesianAxisIndex): ...
-    >>> # IR passes rebuild a dimension from its tag by importing it (ADR 0029), and a
-    >>> # class declared in a doctest is not an attribute of the real module:
-    >>> import sys
     >>> field_type = ts.FieldType(dims=[IDim], dtype=ts.ScalarType(kind=ts.ScalarKind.INT32))
     >>> d = im.domain("cartesian_domain", {IDim: (0, 1)})
     >>> nested_as_fieldop = im.op_as_fieldop("plus", d)(

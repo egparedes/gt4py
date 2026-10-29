@@ -513,9 +513,6 @@ def _resolve_dimensions(
         >>> class IDim(common.CartesianAxisIndex): ...
         >>> IHalfDim = common.flip_staggered(IDim)
         >>> class JDim(common.CartesianAxisIndex): ...
-        >>> # IR passes rebuild a dimension from its tag by importing it (ADR 0029), and a
-        >>> # class declared in a doctest is not an attribute of the real module:
-        >>> import sys
         >>> JHalfDim = common.flip_staggered(JDim)
         >>> input_dims = [IDim, JDim]
         >>> shift_tuple = (
