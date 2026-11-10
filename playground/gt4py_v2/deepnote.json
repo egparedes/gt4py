@@ -1,0 +1,88 @@
+{
+  "project": "GT4Py V2",
+  "project_id": "f865aa9a-13c1-4f78-833b-d76177f8d438",
+  "files": [
+    "concepts.py",
+    "implementation.py"
+  ],
+  "notebooks": [
+    {
+      "name": "0. Overview",
+      "id": "e579d93bdb9349f0b71f58aa4a36ef49",
+      "file": "00_overview.ipynb"
+    },
+    {
+      "name": "1. Fields and domains",
+      "id": "014eafa122b84eafaf7c4d5484d171bc",
+      "file": "01_fields_and_domains.ipynb"
+    },
+    {
+      "name": "2. Connectivities",
+      "id": "b58f41ca3f0348ecb596984a0a71c391",
+      "file": "02_connectivities.ipynb"
+    },
+    {
+      "name": "3. DSL definitions and operators",
+      "id": "3767d001c0cb4f20b70ec700e33fa3f2",
+      "file": "03_dsl_definitions_and_operators.ipynb"
+    },
+    {
+      "name": "4. Scan operators",
+      "id": "384448dda06f4648b5846e3b6684c079",
+      "file": "04_scan_operators.ipynb"
+    },
+    {
+      "name": "5. Processors and backends",
+      "id": "a2a186e6e6a44c8bae7644f3e2993c88",
+      "file": "05_processors_and_backends.ipynb"
+    },
+    {
+      "name": "6. Compilation",
+      "id": "dda38d672f5e48b190d66dfb6d2fcbef",
+      "file": "06_compilation.ipynb"
+    },
+    {
+      "name": "7. Allocation",
+      "id": "d9be7e039519478ba3b2131f2d372c81",
+      "file": "07_allocation.ipynb"
+    },
+    {
+      "name": "8. Chains and partial relations",
+      "id": "7d7855e50dc244298f92d553ad92b221",
+      "file": "08_chains_and_partial_relations.ipynb"
+    },
+    {
+      "name": "9. Footprint algebra and pairs",
+      "id": "6857154f06d5461d8e7d0713caf7a3d6",
+      "file": "09_footprint_algebra_and_pairs.ipynb"
+    },
+    {
+      "name": "10. Local programs",
+      "id": "0b3edfa56ff3482ea9055f059f45feaa",
+      "file": "10_local_programs.ipynb"
+    },
+    {
+      "name": "11. Staggered axes",
+      "id": "6250933563a048fd9c06a3c441432cb1",
+      "file": "11_staggered_axes.ipynb"
+    },
+    {
+      "name": "12. Logical meshes",
+      "id": "1df2dea1154c4d2fa746b419101071e6",
+      "file": "12_logical_meshes.ipynb"
+    },
+    {
+      "name": "13. Global programs",
+      "id": "3ad6d2033e3242e2a880cd85f21b7f34",
+      "file": "13_global_programs.ipynb"
+    },
+    {
+      "name": "Semantics of domains, values and fields",
+      "id": "c4973b3297324ae8ad2c6859c629087a",
+      "file": "semantics_of_domains_values_and_fields.ipynb"
+    }
+  ],
+  "excluded": {
+    "8417acddb89f46d0a7809ae8c74c888b": "scratchpad (personal notes, not mirrored)"
+  }
+}
