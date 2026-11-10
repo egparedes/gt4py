@@ -262,6 +262,23 @@ def changes(snapshot: pathlib.Path, out: pathlib.Path) -> int:
     return 1 if errors else 0
 
 
+def _coalesced(outputs: list) -> list:
+    """Consecutive stream outputs of one stream merged: the chunking depends on timing."""
+    merged: list = []
+    for output in outputs:
+        last = merged[-1] if merged else None
+        if (
+            output.output_type == "stream"
+            and last is not None
+            and last.output_type == "stream"
+            and last.name == output.name
+        ):
+            last.text += output.text
+        else:
+            merged.append(output)
+    return merged
+
+
 def execute(names: list[str]) -> int:
     from nbconvert.preprocessors import ExecutePreprocessor
 
@@ -273,6 +290,8 @@ def execute(names: list[str]) -> int:
         )
         for cell in notebook.cells:  # no timestamps: unchanged outputs give unchanged files
             cell.metadata.pop("execution", None)
+            if cell.cell_type == "code":
+                cell.outputs = _coalesced(cell.outputs)
         nbformat.write(notebook, path)
         print(f"executed {path.relative_to(ROOT)}")
     return 0

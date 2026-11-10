@@ -1732,7 +1732,9 @@ class Program[**P, R]:
       given to an operator (also inside a container), summed, combined at program level, or
       returned, is a `TypeError`: pass it as an argument. Plain fields without a `Location`
       dimension (e.g. on `K`) are allowed;
-    - it returns a field, a scalar, or a (nested) tuple of them (else a `TypeError`).
+    - it returns a field, a scalar, or a (nested) tuple of them (else a `TypeError`); the
+      returned fields are fields of the program's mesh, their domains normalized by
+      `index_set` (see `_canonical`).
     Programs are called from Python, not from programs or local programs (a `RuntimeError`).
     `program.lower(distribution)` gives the program run on the ranks of a `Distribution`, with
     the same results (see `LoweredProgram`).
@@ -1797,7 +1799,7 @@ class Program[**P, R]:
         run_token = _program_run.set(run)
         try:
             with mesh:
-                return _returned(run, self.function(*args, **kwargs))
+                return _canonical(_returned(run, self.function(*args, **kwargs)), mesh)
         finally:
             _program_run.reset(run_token)
             program_mesh.reset(tokens[1])
@@ -1827,7 +1829,9 @@ class LoweredProgram[**P, R]:
     """A program lowered onto a `distribution`, from `Program.lower`: calling it runs the program
     on every rank of the distribution (`run_local`, ranks as threads), each on its local fields,
     and returns the results of the direct run (the simulation condition): fields gathered from
-    the owned points and branded, scalars of rank 0 (the same on all ranks).
+    the owned points and branded, scalars of rank 0 (the same on all ranks), also through
+    nested tuples (`_gathered_tree`). As in the direct run, the returned fields are fields of
+    the program's mesh, their domains normalized by `index_set` (see `_canonical`).
 
     Per rank (see `_LoweredRun`): the field inputs are given on the owned points they have
     (`_scatter_valid`); before each operator call, the arguments read through a relation are
@@ -1885,14 +1889,18 @@ class LoweredProgram[**P, R]:
         ]
         results = run_local(self.local_program, local_meshes, args_per_rank)
         self.log = logs[0]
-        first = results[0]
+        return cast(R, _canonical(self._gathered_tree(results, mesh), mesh))
+
+    def _gathered_tree(self, per_rank: list[Any], mesh: LogicalMesh) -> Any:
+        """The results of the ranks, gathered element by element through (nested) tuples, a
+        namedtuple keeping its type (`_make`), as in the direct result (see `_gathered`)."""
+        first = per_rank[0]
         if isinstance(first, tuple):
-            parts = [[r[i] for r in results] for i in range(len(first))]
-            gathered = [self._gathered(part, mesh) for part in parts]
-            # the type of the direct result: a namedtuple keeps its type (`_make`)
             make = getattr(type(first), "_make", tuple)
-            return cast(R, make(gathered))
-        return cast(R, self._gathered(results, mesh))
+            return make(
+                self._gathered_tree([r[i] for r in per_rank], mesh) for i in range(len(first))
+            )
+        return self._gathered(per_rank, mesh)
 
     def _gathered(self, per_rank: list[Any], mesh: LogicalMesh) -> Any:
         """One result of the ranks: a field with a distributed dimension gathered from their
@@ -1956,6 +1964,27 @@ def _separately(value: Any, who: str) -> None:
             f"{who} gets its fields as separate arguments: pass fields as separate arguments, "
             f"not in a {type(value).__name__}."
         )
+
+
+def _canonical[V](result: V, mesh: LogicalMesh) -> V:
+    """A program's `result` with its fields as fields of the program's `mesh`, the index sets of
+    their domains normalized by `index_set` (consecutive ones as ranges), in both runs, so that
+    they give equal results: the lowered run gathers with `index_set` (`gather_owned`) and brands
+    every field (`_gathered`), the direct run keeps requested index sets as given (`restrict`),
+    e.g. `region(R)` or a returned argument, and a plain field (e.g. a global on `K`) plain.
+    Every dimension is normalized, also non-distributed ones, in both runs. A field of `mesh`
+    whose domain is already normalized is returned as is, any other field as a new field of
+    `mesh` sharing its data; tuples are walked (a namedtuple keeps its type); anything else
+    (scalars) is returned as is. Index sets are sorted, so the values keep their order."""
+    if isinstance(result, tuple):
+        make = getattr(type(result), "_make", tuple)
+        return cast(V, make(_canonical(element, mesh) for element in result))
+    if isinstance(result, NumPyArrayField):
+        domain = {d: index_set(p) if isinstance(p, tuple) else p for d, p in result.domain.items()}
+        if domain != dict(result.domain) or not isinstance(result, NumPyMeshField):
+            # a plain field (from a global, without a `Location`) is branded, as lowered
+            return cast(V, mesh_field(mesh, domain, np.asarray(result.data)))
+    return result
 
 
 def _returned[V](run: _ProgramRun, result: V) -> V:

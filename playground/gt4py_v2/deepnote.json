@@ -14,6 +14,18 @@
       "url_slug": "0-Overview-e579d93bdb9349f0b71f58aa4a36ef49"
     },
     {
+      "name": "Quickstart L1: local semantics",
+      "id": "3104cffdf36b43e6a0aafe300f86d1e9",
+      "file": "quickstart_l1.ipynb",
+      "url_slug": "Quickstart-L1-local-semantics-3104cffdf36b43e6a0aafe300f86d1e9"
+    },
+    {
+      "name": "Quickstart L2: global semantics",
+      "id": "d3ebc86c9ed64fad9956410cd41e2458",
+      "file": "quickstart_l2.ipynb",
+      "url_slug": "Quickstart-L2-global-semantics-d3ebc86c9ed64fad9956410cd41e2458"
+    },
+    {
       "name": "1. Fields and domains",
       "id": "014eafa122b84eafaf7c4d5484d171bc",
       "file": "01_fields_and_domains.ipynb",

@@ -7,8 +7,10 @@ here.
 - `concepts.py`: the vocabulary, mostly `Protocol`s, type aliases and a few helpers (no numpy).
 - `implementation.py`: simple numpy implementations: fields, builtins, decorators, backends,
   logical meshes and programs.
-- `notebooks/`: one notebook per Deepnote notebook, starting with `00_overview.ipynb`. The
-  outputs come from a local run of the notebooks (Python 3.13, numpy).
+- `notebooks/`: one notebook per Deepnote notebook: `00_overview.ipynb`, then the quickstarts
+  `quickstart_l1.ipynb` (L1, local semantics) and `quickstart_l2.ipynb` (L2, global semantics),
+  then the in-depth notebooks `01_…` to `13_…`. The outputs come from a local run of the
+  notebooks (Python 3.13, numpy).
 - `deepnote.json`: the Deepnote project and notebook ids, and the notebook files.
 - `tools/deepnote_mirror.py`: checks the mirror against a snapshot of the Deepnote project
   (block ids and content hashes), imports notebooks from a snapshot, and runs the notebooks.
