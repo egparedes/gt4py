@@ -13,6 +13,11 @@ here.
 - `tools/deepnote_mirror.py`: checks the mirror against a snapshot of the Deepnote project
   (block ids and content hashes), imports notebooks from a snapshot, and runs the notebooks.
 
+Links between notebooks are relative file links here (e.g. `08_chains_and_partial_relations.ipynb`),
+so they work on GitHub and in a local Jupyter, and absolute Deepnote URLs on Deepnote: the sync
+tool translates them both ways (`web_notebook_base` and `url_slug` in `deepnote.json`). Apart from
+these links, the mirror is byte for byte the Deepnote project.
+
 The notebooks import the two modules from this directory; run them with it as the working
 directory:
 

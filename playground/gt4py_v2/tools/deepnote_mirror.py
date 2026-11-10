@@ -13,6 +13,13 @@ The mirror holds the project files (`concepts.py`, `implementation.py`) byte for
 notebook stores the Deepnote notebook id, so a snapshot of the remote project can be compared
 cell by cell: Deepnote reports `contentHash = "sha256:" + sha256(block content)` per block.
 
+Links between notebooks: on Deepnote, a markdown link to another notebook of the project is its
+absolute URL, `web_notebook_base + url_slug` from `deepnote.json`; in the mirror it is the
+relative file name, e.g. `[8](08_chains_and_partial_relations.ipynb#anchor)`, so that it works
+on GitHub and in a local Jupyter too. `to_local` and `to_remote` translate the link targets of
+markdown cells exactly (only these two forms), and the comparisons with Deepnote are made on
+`to_remote` of the mirror: apart from these links, the mirror is byte for byte the project.
+
 A snapshot is a directory of JSON files, one per notebook, in the shape returned by the
 Deepnote MCP `get_notebook` tool (`{"notebook": {"id", "name", "blocks": [{"id", "type",
 "content"?, "contentHash"}]}}`, or the inner object directly). `content` may be omitted when
@@ -63,6 +70,37 @@ def file_name(name: str) -> str:
     return number + re.sub(r"[^a-z0-9]+", "_", rest.lower()).strip("_") + ".ipynb"
 
 
+_LINK = r"\]\((?P<target>{})(?P<anchor>#[^)\s]*)?\)"
+
+
+def _links(meta: dict) -> tuple[dict[str, str], dict[str, str]]:
+    """The URL -> file and file -> URL maps of the notebooks of the manifest."""
+    base = meta["web_notebook_base"]
+    to_file = {base + e["url_slug"]: e["file"] for e in meta["notebooks"]}
+    return to_file, {file: url for url, file in to_file.items()}
+
+
+def _translate(text: str, mapping: dict[str, str]) -> str:
+    if not mapping:
+        return text
+    pattern = _LINK.format("|".join(re.escape(k) for k in sorted(mapping, key=len, reverse=True)))
+    return re.sub(
+        pattern,
+        lambda m: f"]({mapping[m['target']]}{m['anchor'] or ''})",
+        text,
+    )
+
+
+def to_local(text: str, kind: str, meta: dict) -> str:
+    """The mirror form of a block: Deepnote notebook URLs -> relative file names."""
+    return _translate(text, _links(meta)[0]) if kind == "markdown" else text
+
+
+def to_remote(text: str, kind: str, meta: dict) -> str:
+    """The Deepnote form of a cell: relative notebook file names -> Deepnote URLs."""
+    return _translate(text, _links(meta)[1]) if kind == "markdown" else text
+
+
 def load_snapshot(folder: pathlib.Path) -> dict[str, dict]:
     notebooks = {}
     for path in sorted(folder.glob("*.json")):
@@ -108,6 +146,11 @@ def import_snapshot(snapshot: pathlib.Path, drafts: pathlib.Path | None) -> int:
             if sha256(content) != block["contentHash"]:
                 print(f"HASH MISMATCH {entry['name']} block {index} ({block['id']})")
                 errors += 1
+            kind = "code" if block["type"] == "code" else "markdown"
+            content = to_local(content, kind, meta)
+            if to_remote(content, kind, meta) != block.get("content", content):
+                print(f"LINKS do not round-trip: {entry['name']} block {index} ({block['id']})")
+                errors += 1
             metadata = {"deepnote_block_id": block["id"]}
             if block["type"] == "code":
                 cell = nbformat.v4.new_code_cell(content, metadata=metadata)
@@ -129,7 +172,10 @@ def import_snapshot(snapshot: pathlib.Path, drafts: pathlib.Path | None) -> int:
         }
         path = NOTEBOOKS / entry["file"]
         old = nbformat.read(path, as_version=4) if path.exists() else None
-        if old is not None:  # keep the outputs of unchanged code cells
+        if (
+            old is not None
+        ):  # keep the metadata of the last run, and the outputs of unchanged code cells
+            notebook.metadata = {**old.metadata, "deepnote": notebook.metadata["deepnote"]}
             outputs = {
                 c.id: (c.source, c.get("outputs", []), c.get("execution_count"))
                 for c in old.cells
@@ -161,7 +207,10 @@ def check(snapshot: pathlib.Path) -> int:
             continue
         local = nbformat.read(path, as_version=4)
         theirs = [(b["id"], b["contentHash"]) for b in remote[entry["id"]]["blocks"]]
-        ours = [(c.metadata.get("deepnote_block_id"), sha256(c.source)) for c in local.cells]
+        ours = [
+            (c.metadata.get("deepnote_block_id"), sha256(to_remote(c.source, c.cell_type, meta)))
+            for c in local.cells
+        ]
         if remote[entry["id"]]["name"] != entry["name"]:
             print(f"RENAMED {entry['name']!r} -> {remote[entry['id']]['name']!r}")
             errors += 1
@@ -179,9 +228,10 @@ def check(snapshot: pathlib.Path) -> int:
 
 
 def changes(snapshot: pathlib.Path, out: pathlib.Path) -> int:
+    meta = manifest()
     remote = load_snapshot(snapshot)
     updates, errors = [], 0
-    for entry in manifest()["notebooks"]:
+    for entry in meta["notebooks"]:
         local = nbformat.read(NOTEBOOKS / entry["file"], as_version=4)
         blocks = remote[entry["id"]]["blocks"]
         theirs = [b["id"] for b in blocks]
@@ -195,15 +245,15 @@ def changes(snapshot: pathlib.Path, out: pathlib.Path) -> int:
             if block["type"] != kind:
                 print(f"TYPE {entry['file']} {block['id']}: remote {block['type']}, local {kind}")
                 errors += 1
-            elif block["contentHash"] != sha256(cell.source):
+            elif block["contentHash"] != sha256(content := to_remote(cell.source, kind, meta)):
                 updates.append(
                     {
                         "notebook_id": entry["id"],
                         "notebook": entry["name"],
                         "block_id": block["id"],
                         "type": kind,
-                        "content": cell.source,
-                        "contentHash": sha256(cell.source),
+                        "content": content,
+                        "contentHash": sha256(content),
                     }
                 )
                 print(f"update   {entry['file']} block {block['id']}")
