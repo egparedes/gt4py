@@ -25,6 +25,10 @@ Usage (from the repository root):
     ... deepnote_mirror.py import SNAPSHOT_DIR [DRAFTS_DIR]
                                   # (re)write the notebooks from a snapshot; blocks without
                                   # `content` are read from DRAFTS_DIR/nK/NN.{md,py}
+    ... deepnote_mirror.py changes SNAPSHOT_DIR OUT.json
+                                  # the blocks to update on Deepnote after local edits: a list
+                                  # of {notebook_id, block_id, type, content}; added, removed or
+                                  # reordered cells are reported and must be handled by hand
     ... deepnote_mirror.py execute [NOTEBOOK ...]
                                   # run the notebooks and store their outputs (needs
                                   # `--with nbconvert --with ipykernel --with numpy`)
@@ -174,6 +178,40 @@ def check(snapshot: pathlib.Path) -> int:
     return errors
 
 
+def changes(snapshot: pathlib.Path, out: pathlib.Path) -> int:
+    remote = load_snapshot(snapshot)
+    updates, errors = [], 0
+    for entry in manifest()["notebooks"]:
+        local = nbformat.read(NOTEBOOKS / entry["file"], as_version=4)
+        blocks = remote[entry["id"]]["blocks"]
+        theirs = [b["id"] for b in blocks]
+        ours = [c.metadata.get("deepnote_block_id") for c in local.cells]
+        if theirs != ours:
+            print(f"STRUCTURE {entry['file']}: remote blocks {theirs}, local cells {ours}")
+            errors += 1
+            continue
+        for block, cell in zip(blocks, local.cells):
+            kind = "code" if cell.cell_type == "code" else "markdown"
+            if block["type"] != kind:
+                print(f"TYPE {entry['file']} {block['id']}: remote {block['type']}, local {kind}")
+                errors += 1
+            elif block["contentHash"] != sha256(cell.source):
+                updates.append(
+                    {
+                        "notebook_id": entry["id"],
+                        "notebook": entry["name"],
+                        "block_id": block["id"],
+                        "type": kind,
+                        "content": cell.source,
+                        "contentHash": sha256(cell.source),
+                    }
+                )
+                print(f"update   {entry['file']} block {block['id']}")
+    out.write_text(json.dumps(updates, indent=1) + "\n")
+    print(f"{len(updates)} block updates written to {out}")
+    return 1 if errors else 0
+
+
 def execute(names: list[str]) -> int:
     from nbconvert.preprocessors import ExecutePreprocessor
 
@@ -204,6 +242,8 @@ def main(argv: list[str]) -> int:
     if command == "import":
         drafts = pathlib.Path(args[1]) if len(args) > 1 else None
         return 1 if import_snapshot(pathlib.Path(args[0]), drafts) else 0
+    if command == "changes":
+        return changes(pathlib.Path(args[0]), pathlib.Path(args[1]))
     if command == "execute":
         return execute(args)
     if command == "modules":

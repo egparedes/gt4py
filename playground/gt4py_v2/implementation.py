@@ -50,8 +50,8 @@ dimensions, leaves first, skipping the skip positions along their ancestry
 of a relation and its pairs, `Pairs[C2E]` (the meshes derive the tables of `C2E.to_pairs`,
 `C2E.pair_source` and `C2E.pair_target` with `pairs_rows`), and a gather through a functional
 relation adds no neighbor dimension: `e(C2E.pair_target)`. Half offsets premap fields between
-the two cell classes of an axis (`_half_domain`, `Staggered[K]` in `concepts`): `w(K - 0.5)`
-reads the interfaces of each level. Arithmetic broadcasts fields with
+the integer and the half-integer positions of an axis (`_half_domain`, `Staggered[K]` in
+`concepts`): `w(K - 0.5)` reads the interfaces of each level. Arithmetic broadcasts fields with
 different dimensions; field operators return their results in the dimension order of their
 annotation (`as_annotated`).
 Extents: `read_extents` finds the reads of each argument, as chains of steps, by a small

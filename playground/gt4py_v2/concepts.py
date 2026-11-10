@@ -4,11 +4,11 @@ of its *domain* to a *value* of its *codomain* (the value type). The pairs `(poi
 form its *graph*. The *extent* of a stencil along a dimension is the `(min, max)` range of the
 offsets at which it reads its arguments.
 
-Staggered axes: an `Axis` has a staggered partner, `Staggered[K]`, the second cell class of
-the axis at its half-integer positions (e.g. the interfaces between the full levels, the layer
+Staggered axes: an `Axis` has a staggered partner, `Staggered[K]`, the same axis at its
+half-integer positions (e.g. the interfaces between the full levels, the layer
 midpoints), an involution (`flip_staggered`), with extents declared, never both in one domain.
-Half offsets, `K + 0.5`, premap fields between the two cell classes (see `Staggered`,
-`HalfOffset`).
+Half offsets, `K + 0.5`, premap fields between the integer and the half-integer positions of
+an axis (see `Staggered`, `HalfOffset`).
 
 Connectivities: on an unstructured mesh, the neighbors of a point are not found by offsets
 but through a *relation*, e.g. `C2E` from cells to their edges, whose *neighbor table* is
@@ -249,7 +249,7 @@ def check_domain(domain: Domain) -> None:
             if issubclass(dim, Staggered) and dim.base in domain:
                 raise ValueError(
                     f"A domain cannot have both '{dim.base.__name__}' and '{dim.__name__}': "
-                    "they are the two cell classes of one axis."
+                    "they are the integer and the half-integer positions of one axis."
                 )
             continue
         if issubclass(dim, (Axis, Neighbor)) or list(indices) != sorted(set(indices)):
