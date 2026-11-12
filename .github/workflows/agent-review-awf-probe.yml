@@ -1,0 +1,113 @@
+# Phase 0 probe for the sandboxed agent review (see agent-review plan):
+# AWF setup, API proxy against CSCS, security canaries, spend controls.
+# Test-only: runs on pushes to ci/awf-probe-* branches of a personal fork.
+name: Agent review AWF probe
+
+on:
+  push:
+    branches:
+      - "ci/awf-probe-*"
+
+permissions:
+  contents: read
+
+env:
+  AWF_VERSION: v0.29.12
+  CSCS_OPENAI_BASE_URL: https://api.inference.cscs.ch/v1
+
+jobs:
+  # Q1: does the setup action work with no token permissions at all?
+  setup-no-permissions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: Setup AWF
+        id: awf
+        uses: github/gh-aw-firewall@7dc485464a58130d6ac2e73fe632424eb5d06823 # v0.29.12
+        with:
+          version: ${{ env.AWF_VERSION }}
+          pull-images: "true"
+      - name: Report
+        env:
+          AWF_OUT_VERSION: ${{ steps.awf.outputs.version }}
+          AWF_IMAGE_TAG: ${{ steps.awf.outputs.image-tag }}
+        run: |
+          echo "PROBE setup(permissions: {}) version=$AWF_OUT_VERSION"
+          echo "PROBE image-tag=$AWF_IMAGE_TAG"
+          awf --version
+
+  # Q3 with the real key: one chat completion, one tool call, /v1/messages,
+  # allowedModels enforcement. Prints status, model, usage and truncated text only.
+  real-key:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Detect CSCS key
+        id: key
+        env:
+          HAS_KEY: ${{ secrets.CSCS_INFERENCE_API_KEY != '' }}
+        run: |
+          echo "present=$HAS_KEY" >> "$GITHUB_OUTPUT"
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::notice::CSCS_INFERENCE_API_KEY is not set; skipping the real-key probe."
+          fi
+
+      - name: Checkout probe scripts
+        if: steps.key.outputs.present == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup AWF
+        if: steps.key.outputs.present == 'true'
+        id: awf
+        uses: github/gh-aw-firewall@7dc485464a58130d6ac2e73fe632424eb5d06823 # v0.29.12
+        with:
+          version: ${{ env.AWF_VERSION }}
+          pull-images: "true"
+
+      - name: Install probe files read-only under /opt
+        if: steps.key.outputs.present == 'true'
+        run: |
+          sudo install -d -m 0755 /opt/awf-probe
+          sudo install -m 0755 .github/awf-probe/*.sh .github/awf-probe/*.py /opt/awf-probe/
+          sudo install -m 0644 .github/awf-probe/*.yaml /opt/awf-probe/
+          ls -la /opt/awf-probe
+          awf --version
+          awf --help > "$RUNNER_TEMP/awf-help.txt" 2>&1 || true
+          grep -nE -- '--(openai-base-url-env|reflect|rate-limit-rpm|work-dir|audit-dir|agent-timeout|image-tag)' "$RUNNER_TEMP/awf-help.txt" || true
+
+      - name: Run listeners against CSCS (real key, output redacted)
+        if: steps.key.outputs.present == 'true'
+        timeout-minutes: 10
+        env:
+          OPENAI_API_KEY: ${{ secrets.CSCS_INFERENCE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.CSCS_INFERENCE_API_KEY }}
+          AWF_IMAGE_TAG: ${{ steps.awf.outputs.image-tag }}
+          PROBE_MODEL_CANDIDATES: ${{ vars.AWF_PROBE_MODEL || 'zai-org/GLM-5.3-Flash Qwen/Qwen3.8-Flash-Next-FP8' }}
+        run: |
+          set +e
+          # Every line (awf logs and probe output) goes through the redactor,
+          # which hides any fragment of the key.
+          sudo -E awf \
+            --config /opt/awf-probe/awf-cscs.yaml \
+            --image-tag "$AWF_IMAGE_TAG" \
+            --audit-dir "$RUNNER_TEMP/awf-audit" \
+            -e PROBE_MODEL_CANDIDATES="$PROBE_MODEL_CANDIDATES" \
+            -- bash /opt/awf-probe/real-key.sh 2>&1 \
+            | python3 -I /opt/awf-probe/redact.py OPENAI_API_KEY
+          echo "PROBE awf exit=${PIPESTATUS[0]}"
+          exit 0
+
+      - name: Token usage (redacted)
+        if: always() && steps.key.outputs.present == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.CSCS_INFERENCE_API_KEY }}
+        run: |
+          sudo find "$RUNNER_TEMP/awf-audit" -maxdepth 3 -type f -printf '%p %s\n' 2>/dev/null | head -50
+          for f in $(sudo find "$RUNNER_TEMP/awf-audit" /tmp -name 'token-usage*.jsonl' 2>/dev/null); do
+            echo "== $f"
+            sudo cat "$f" | head -c 6000 | python3 -I /opt/awf-probe/redact.py OPENAI_API_KEY
+            echo
+          done

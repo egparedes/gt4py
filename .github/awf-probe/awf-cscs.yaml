@@ -1,0 +1,19 @@
+# AWF config for the Phase 0 probe: CSCS upstreams, no harness.
+# The OpenAI base URL comes from the runner env var named below
+# (value https://api.inference.cscs.ch/v1); the key from OPENAI_API_KEY /
+# ANTHROPIC_API_KEY in the awf step env.
+network:
+  allowDomains:
+    - github.com
+apiProxy:
+  targets:
+    openai:
+      baseUrlEnv: CSCS_OPENAI_BASE_URL
+    anthropic:
+      host: api.inference.cscs.ch
+  allowedModels:
+    - zai-org/GLM-5.3-Flash
+    - Qwen/*
+  maxTurns: 20
+container:
+  agentTimeout: 5
