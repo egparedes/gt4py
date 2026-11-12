@@ -41,19 +41,19 @@ on:
   ## branch, since 'pull_request_target' and 'workflow_dispatch' read the
   ## workflow from the default branch. Re-enable together with the 'env'
   ## block marked like this one, and never merge either enabled.
-  # push:
-  #   branches:
-  #     - 'ci/agent-review-*'
+  push:
+    branches:
+      - 'ci/agent-review-*'
   ## END
 
 ## COMMENTED OUT: test parameters for the 'push' trigger above. Use literal
 ## values only: the pull request reviewed and commented on, the harness, and
 ## whether to post the comment or only show it in the run summary.
-# env:
-#   TEST_PR: "9"
-#   TEST_HARNESS: stub
-#   TEST_DRY_RUN: "true"
-#   TEST_STUB_PADDING_KIB: "0"
+env:
+  TEST_PR: "8"
+  TEST_HARNESS: stub
+  TEST_DRY_RUN: "true"
+  TEST_STUB_PADDING_KIB: "0"
 ## END
 
 # Each job widens what it needs.
