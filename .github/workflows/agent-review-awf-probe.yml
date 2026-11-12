@@ -125,7 +125,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        workdir: [default, runner-temp, proxy-logs-dir, allow-write]
+        workdir: [default, runner-temp, proxy-logs-dir, allow-write-openai, allow-write-home]
     steps:
       - name: Checkout probe scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -188,18 +188,22 @@ jobs:
           if [ "$MODE" = proxy-logs-dir ]; then
             PROXY_LOGS="$RUNNER_TEMP/awf-proxy-logs"; WD_ARGS+=(--proxy-logs-dir "$PROXY_LOGS")
           fi
-          if [ "$MODE" = allow-write ]; then
+          if [[ "$MODE" == allow-write-* ]]; then
             # v0.29.12 fails to start if these tmpfs-mask mountpoints are
             # missing once /tmp is read-only; pre-create them.
+            # (allowWrite + --work-dir under $RUNNER_TEMP also fails to start:
+            # the work-dir mask mountpoint cannot be created.)
             mkdir -p /tmp/gh-aw/sandbox/firewall/audit /tmp/gh-aw/sandbox/firewall/logs /tmp/gh-aw/mcp-logs
-            # (allowWrite + --work-dir under $RUNNER_TEMP fails to start in
-            # v0.29.12: the work-dir mask mountpoint cannot be created.)
-            # Only one host path stays writable; every other host bind mount
-            # (workspace, /tmp, ~/.config, ...) should become read-only.
+            # Only the listed host paths stay writable; every other host bind
+            # mount (workspace, /tmp, ~/.config, ...) should become read-only.
             CFG="$RUNNER_TEMP/awf-allow-write.yaml"
             { cat /opt/awf-probe/awf-cscs.yaml
               printf 'filesystem:\n  allowWrite:\n    - %s\n' "$GITHUB_WORKSPACE/probe-out"
+              # The entrypoint writes ~/.claude.json when an Anthropic key is set.
+              [ "$MODE" = allow-write-home ] && printf '    - %s\n' "$HOME"
             } > "$CFG"
+            # Without an Anthropic key the entrypoint skips the Claude helper.
+            [ "$MODE" = allow-write-openai ] && unset ANTHROPIC_API_KEY
             cat "$CFG"
           fi
           # Host-side watcher: where does the key live while awf runs?
