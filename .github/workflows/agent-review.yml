@@ -41,21 +41,21 @@ on:
   ## branch, since 'pull_request_target' and 'workflow_dispatch' read the
   ## workflow from the default branch. Re-enable together with the 'env'
   ## block marked like this one, and never merge either enabled.
-  # push:
-  #   branches:
-  #     - 'ci/agent-review-*'
+  push:
+    branches:
+      - 'ci/agent-review-*'
   ## END
 
 ## COMMENTED OUT: test parameters for the 'push' trigger above. Use literal
 ## values only: the pull request reviewed and commented on, the harness, the
 ## model (instead of AGENT_REVIEW_MODEL), and whether to post the comment or
 ## only show it in the run summary.
-# env:
-#   TEST_PR: "9"
-#   TEST_HARNESS: stub
-#   TEST_MODEL: ""
-#   TEST_DRY_RUN: "true"
-#   TEST_STUB_PADDING_KIB: "0"
+env:
+  TEST_PR: "11"
+  TEST_HARNESS: memdoor
+  TEST_MODEL: zai-org/GLM-5.3-Flash
+  TEST_DRY_RUN: "false"
+  TEST_STUB_PADDING_KIB: "0"
 ## END
 
 # Each job widens what it needs.
@@ -334,7 +334,7 @@ jobs:
             --arg base_sha "${BASE_SHA}" --arg harness "${HARNESS}" --arg model "${MODEL}" \
             --arg padding "${STUB_PADDING_KIB}" \
             '{repo: $repo, pr: $pr, head_sha: $head_sha, base_sha: $base_sha,
-              harness: $harness, model: $model, harness_timeout_minutes: 20,
+              harness: $harness, model: $model, harness_timeout_minutes: 12,
               stub_padding_kib: $padding}' > "${WS}/in/params.json"
 
       - name: Download the harness
@@ -455,6 +455,23 @@ jobs:
           path: ${{ runner.temp }}/result
           if-no-files-found: ignore
           retention-days: 7
+
+      # TEST ONLY: request paths and egress, from the logs under $RUNNER_TEMP.
+      - name: TEST ONLY paths and egress
+        if: always() && steps.agent.outputs.skipped != 'true'
+        shell: /usr/bin/bash --noprofile --norc -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+        run: |
+          /usr/bin/sudo /usr/bin/find "${RUNNER_TEMP}/awf-logs" -type f -printf '%P %s\n' | /usr/bin/sed 's/^/| /'
+          echo "== api-proxy requests by path and status"
+          /usr/bin/sudo /usr/bin/cat "${RUNNER_TEMP}/awf-logs/api-proxy-logs/token-usage.jsonl" \
+            | /usr/bin/jq -r '"\(.provider) \(.path) \(.status) in=\(.input_tokens) out=\(.output_tokens) ms=\(.duration_ms // .latency_ms // "?")"' | /usr/bin/sed 's/^/| /'
+          echo "== squid: client dest method status (count)"
+          for f in $(/usr/bin/sudo /usr/bin/find "${RUNNER_TEMP}/awf-logs" -name access.log); do
+            /usr/bin/sudo /usr/bin/cat "$f" | /usr/bin/awk '{print $2 " " $3 " " $6 " " $7}' | /usr/bin/sed 's/:[0-9]* / /' \
+              | /usr/bin/sort | /usr/bin/uniq -c | /usr/bin/sed 's/^/| /'
+          done
 
       # Cost of the review, from the API proxy's own log (written by the
       # sidecar under $RUNNER_TEMP, out of the sandbox's reach). Numbers only.
