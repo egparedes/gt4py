@@ -11,9 +11,11 @@ apiProxy:
       baseUrlEnv: CSCS_OPENAI_BASE_URL
     anthropic:
       host: api.inference.cscs.ch
+  # A pattern containing "/" is matched against "<provider>/<model>"
+  # (e.g. "openai/zai-org/GLM-5.3-Flash"), so CSCS ids need a "*/" prefix.
   allowedModels:
-    - zai-org/GLM-5.3-Flash
-    - Qwen/*
+    - "*/zai-org/GLM-5.3-Flash"
+    - "*/Qwen/*"
   maxTurns: 20
 container:
   agentTimeout: 5
