@@ -154,6 +154,9 @@ say "net wireserver 168.63.129.16 direct: $(curl -sS -m 5 --noproxy '*' -H 'x-ms
 say "net wireserver 168.63.129.16 via proxy: $(code -H 'x-ms-version: 2012-11-30' 'http://168.63.129.16/machine/?comp=goalstate')"
 say "net host gateway 172.30.0.1:18080 direct: $(curl -sS -m 5 --noproxy '*' -o /dev/null -w '%{http_code}' http://172.30.0.1:18080/ 2>&1 | tail -c 160)"
 say "net host gateway 172.30.0.1:18080 via proxy: $(code http://172.30.0.1:18080/)"
+say "net host gateway 172.30.0.1:18081 (service bound to 127.0.0.1): $(curl -sS -m 5 --noproxy '*' -o /dev/null -w '%{http_code}' http://172.30.0.1:18081/ 2>&1 | tail -c 160)"
+say "net docker0 172.17.0.1:18080 direct: $(curl -sS -m 5 --noproxy '*' -o /dev/null -w '%{http_code}' http://172.17.0.1:18080/ 2>&1 | tail -c 160)"
+say "net host.docker.internal:18080: $(curl -sS -m 5 --noproxy '*' -o /dev/null -w '%{http_code}' http://host.docker.internal:18080/ 2>&1 | tail -c 160)"
 say "net docker tcp 172.30.0.1:2375: $(timeout 5 bash -c '</dev/tcp/172.30.0.1/2375' 2>&1 && echo CONNECTED || echo failed)"
 say "net dns (resolver) github.com: $(getent hosts github.com | head -1)"
 say "net dns direct to 1.1.1.1: $(python3 -I -c '

@@ -34,12 +34,19 @@ MODELS = [
 ]
 
 
-def classify(value: str) -> str:
-    if KEY and KEY in value:
-        return value.replace(KEY, "<DUMMY>")
-    if len(value) > 60:
-        return value[:20] + "...(" + str(len(value)) + " chars)"
-    return value
+def classify(value: str) -> dict:
+    # Split "Scheme credential" so log masking of "Bearer ..." cannot hide it.
+    parts = value.split(" ", 1)
+    scheme, cred = (parts[0], parts[1]) if len(parts) == 2 else ("", value)
+    if KEY and cred == KEY:
+        cred = "<DUMMY>"
+    elif KEY and KEY in cred:
+        cred = cred.replace(KEY, "<DUMMY>")
+    elif len(cred) > 60:
+        cred = cred[:20] + "...(" + str(len(cred)) + " chars)"
+    else:
+        cred = "client:" + cred.replace("-", "_")
+    return {"scheme": scheme or None, "credential": cred}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -55,7 +62,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             pass
         auth = {
-            k.lower(): classify(v)
+            k.lower(): (v if k.lower() == "anthropic-version" else classify(v))
             for k, v in self.headers.items()
             if k.lower() in ("authorization", "x-api-key", "api-key", "anthropic-version")
             or (KEY and KEY in v)

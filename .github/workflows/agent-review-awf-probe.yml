@@ -40,6 +40,8 @@ jobs:
   # Q3 with the real key: one chat completion, one tool call, /v1/messages,
   # allowedModels enforcement. Prints status, model, usage and truncated text only.
   real-key:
+    # Spends CSCS tokens: only when the commit message asks for it.
+    if: contains(github.event.head_commit.message, '[real-key]')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -122,7 +124,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        workdir: [default, runner-temp]
+        workdir: [default, runner-temp, allow-write]
     steps:
       - name: Checkout probe scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -146,6 +148,10 @@ jobs:
           # A host service, to test whether the agent can reach host ports.
           mkdir -p "$RUNNER_TEMP/hostsvc" && echo host-service > "$RUNNER_TEMP/hostsvc/index.html"
           (cd "$RUNNER_TEMP/hostsvc" && nohup python3 -m http.server 18080 --bind 0.0.0.0 >/dev/null 2>&1 &)
+          (cd "$RUNNER_TEMP/hostsvc" && nohup python3 -m http.server 18081 --bind 127.0.0.1 >/dev/null 2>&1 &)
+          sleep 1
+          echo "PROBE host: listening TCP sockets on the runner:"; sudo ss -ltnpH | sed 's/^/PROBE   /'
+          echo "PROBE host: listening UDP sockets on the runner:"; sudo ss -lunpH | sed 's/^/PROBE   /'
           worker=$(pgrep -f Runner.Worker | head -1)
           runner_dir=$(dirname "$(dirname "$(readlink -f "/proc/$worker/exe")")")
           echo "runner_dir=$runner_dir" >> "$GITHUB_OUTPUT"
@@ -172,22 +178,35 @@ jobs:
           DECOY="AWFCANARY-d$(openssl rand -hex 16)"
           echo "$DECOY" > /tmp/awf-probe-decoy.txt
           WD_ARGS=(); PROBE_WORK_DIR=""
-          if [ "$MODE" = runner-temp ]; then
+          CFG=/opt/awf-probe/awf-cscs.yaml
+          mkdir -p "$GITHUB_WORKSPACE/probe-out"
+          if [ "$MODE" != default ]; then
             WD_ARGS=(--work-dir "$RUNNER_TEMP/awf"); PROBE_WORK_DIR="$RUNNER_TEMP/awf"
           fi
+          if [ "$MODE" = allow-write ]; then
+            # Only one host path stays writable; every other host bind mount
+            # (workspace, /tmp, ~/.config, ...) should become read-only.
+            CFG="$RUNNER_TEMP/awf-allow-write.yaml"
+            { cat /opt/awf-probe/awf-cscs.yaml
+              printf 'filesystem:\n  allowWrite:\n    - %s\n' "$GITHUB_WORKSPACE/probe-out"
+            } > "$CFG"
+            cat "$CFG"
+          fi
           # Host-side watcher: where does the key live while awf runs?
+          : > "$RUNNER_TEMP/key-locations.txt"
           (
             for i in $(seq 1 200); do
-              sudo -E bash -c 'grep -rlF -e "$OPENAI_API_KEY" /tmp "$RUNNER_TEMP" /run /var/lib/docker/containers /etc 2>/dev/null'
-              if sudo docker inspect awf-api-proxy >/dev/null 2>&1; then
-                sudo -E bash -c 'docker inspect awf-api-proxy awf-agent awf-squid --format "{{.Name}} {{json .Config.Env}}" 2>/dev/null | grep -F -e "$OPENAI_API_KEY" | cut -d" " -f1 | sed "s/^/docker-inspect-env:/"'
-              fi
-              sleep 3
-            done | sort -u > "$RUNNER_TEMP/key-locations.txt"
+              sudo -E bash -c 'grep -rlF -e "$OPENAI_API_KEY" /tmp "$RUNNER_TEMP" /run /var/lib/docker/containers /etc 2>/dev/null' >> "$RUNNER_TEMP/key-locations.txt"
+              for c in awf-api-proxy awf-agent awf-squid; do
+                sudo -E bash -c 'docker inspect "$0" --format "{{json .Config.Env}}" 2>/dev/null | grep -qF -e "$OPENAI_API_KEY"' "$c" \
+                  && echo "docker-inspect-env:$c" >> "$RUNNER_TEMP/key-locations.txt"
+              done
+              sleep 2
+            done
           ) &
           WATCHER=$!
           sudo -E "$(command -v awf)" \
-            --config /opt/awf-probe/awf-cscs.yaml \
+            --config "$CFG" \
             --image-tag "$AWF_IMAGE_TAG" \
             --log-level debug \
             "${WD_ARGS[@]}" \
@@ -205,7 +224,7 @@ jobs:
           # this keeps the log greppable for real leaks of the shape only).
           sed -E 's/AWFCANARY-k[0-9a-f]{32}/<CANARY-KEY-SHAPE>/g' "$RUNNER_TEMP/awf-output.txt"
           echo "PROBE host: key occurrences in awf stdout/stderr: $(grep -cF -e "$OPENAI_API_KEY" "$RUNNER_TEMP/awf-output.txt")"
-          echo "PROBE host: key locations during run: $(tr '\n' ' ' < "$RUNNER_TEMP/key-locations.txt")"
+          echo "PROBE host: key locations during run: $(sort -u "$RUNNER_TEMP/key-locations.txt" | tr '\n' ' ')"
           echo "PROBE host: key locations after run: $(sudo -E bash -c 'grep -rlF -e "$OPENAI_API_KEY" /tmp "$RUNNER_TEMP" "$HOME" "$GITHUB_WORKSPACE" /run /var/lib/docker/containers 2>/dev/null' | tr '\n' ' ')"
           for p in "$GITHUB_WORKSPACE" /tmp /var/tmp /dev/shm "$HOME" "$HOME/.config" "$HOME/.config/git" \
                    "$HOME/.cache" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.npm" "$HOME/.cargo" \
