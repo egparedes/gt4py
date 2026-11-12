@@ -90,7 +90,9 @@ jobs:
           set +e
           # Every line (awf logs and probe output) goes through the redactor,
           # which hides any fragment of the key.
-          sudo -E awf \
+          # sudo resets PATH (secure_path); the action installs awf under
+          # $RUNNER_TEMP/awf-bin, so call it by absolute path.
+          sudo -E "$(command -v awf)" \
             --config /opt/awf-probe/awf-cscs.yaml \
             --image-tag "$AWF_IMAGE_TAG" \
             --audit-dir "$RUNNER_TEMP/awf-audit" \
