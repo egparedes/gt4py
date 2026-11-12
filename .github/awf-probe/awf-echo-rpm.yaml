@@ -1,0 +1,17 @@
+# Probe config: local echo upstream; rate limit, agentTimeout, Anthropic authHeader.
+network:
+  allowDomains:
+    - github.com
+apiProxy:
+  targets:
+    openai:
+      baseUrlEnv: PROBE_ECHO_OPENAI_BASE_URL
+    anthropic:
+      host: "http://@ECHO_HOST@:18080"
+      authHeader: Authorization
+  allowedModels:
+    - "*/zai-org/GLM-5.3-Flash"
+rateLimiting:
+  requestsPerMinute: 3
+container:
+  agentTimeout: 1

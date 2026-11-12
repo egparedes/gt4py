@@ -1,0 +1,19 @@
+# Probe config: local echo upstream (@ECHO_HOST@ is substituted by the workflow).
+network:
+  allowDomains:
+    - github.com
+apiProxy:
+  targets:
+    openai:
+      baseUrlEnv: PROBE_ECHO_OPENAI_BASE_URL
+    anthropic:
+      host: "http://@ECHO_HOST@:18080"
+  # Patterns with "/" match "<provider>/<model>"; without "/" they match the bare id.
+  allowedModels:
+    - openai/zai-org/GLM-5.3-Flash
+    - "*/Qwen/*"
+    - swiss*instruct
+    - zai-org/GLM-5.2
+  maxTurns: 8
+container:
+  agentTimeout: 5

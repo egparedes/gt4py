@@ -42,7 +42,7 @@ if isinstance(d, dict):
         info["content"] = [
             {"type": c.get("type"), "text": (c.get("text") or "")[:120],
              "name": c.get("name"), "input": c.get("input")}
-            for c in d.get("content", [])
+            for c in (d.get("content") or [])
         ]
     elif "error" in d or "detail" in d or "message" in d:
         info["error"] = json.dumps(d)[:300]

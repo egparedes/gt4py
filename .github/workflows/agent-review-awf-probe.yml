@@ -113,3 +113,194 @@ jobs:
             sudo cat "$f" | head -c 6000 | python3 -I /opt/awf-probe/redact.py OPENAI_API_KEY
             echo
           done
+
+  # Q2: security canaries with a DUMMY key, once with AWF's default work dir and
+  # once with --work-dir under $RUNNER_TEMP.
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        workdir: [default, runner-temp]
+    steps:
+      - name: Checkout probe scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup AWF
+        id: awf
+        uses: github/gh-aw-firewall@7dc485464a58130d6ac2e73fe632424eb5d06823 # v0.29.12
+        with:
+          version: ${{ env.AWF_VERSION }}
+          pull-images: "true"
+
+      - name: Prepare host (read-only /opt files, a host service, runner paths)
+        id: prep
+        run: |
+          sudo install -d -m 0755 /opt/awf-probe
+          sudo install -m 0755 .github/awf-probe/*.sh .github/awf-probe/*.py /opt/awf-probe/
+          sudo install -m 0644 .github/awf-probe/*.yaml /opt/awf-probe/
+          ls -lad /opt /opt/awf-probe; getfacl -p /opt 2>/dev/null | head -12
+          # A host service, to test whether the agent can reach host ports.
+          mkdir -p "$RUNNER_TEMP/hostsvc" && echo host-service > "$RUNNER_TEMP/hostsvc/index.html"
+          (cd "$RUNNER_TEMP/hostsvc" && nohup python3 -m http.server 18080 --bind 0.0.0.0 >/dev/null 2>&1 &)
+          worker=$(pgrep -f Runner.Worker | head -1)
+          runner_dir=$(dirname "$(dirname "$(readlink -f "/proc/$worker/exe")")")
+          echo "runner_dir=$runner_dir" >> "$GITHUB_OUTPUT"
+          echo "PROBE host: runner dir $runner_dir; HOME=$HOME; RUNNER_TEMP=$RUNNER_TEMP"
+          ls -la "$HOME" | head -40
+          ls -la /tmp | head -40
+
+      - name: Run canary inside AWF (dummy key)
+        env:
+          AWF_IMAGE_TAG: ${{ steps.awf.outputs.image-tag }}
+          MODE: ${{ matrix.workdir }}
+          RUNNER_DIR: ${{ steps.prep.outputs.runner_dir }}
+        run: |
+          set +e
+          TS=$(date +%s); sleep 1
+          # The dummy exists only in this step's environment, like a real
+          # secret passed through step env. Never in a file, GITHUB_ENV or output.
+          OPENAI_API_KEY="AWFCANARY-k$(openssl rand -hex 16)"
+          ANTHROPIC_API_KEY="$OPENAI_API_KEY"
+          export OPENAI_API_KEY ANTHROPIC_API_KEY
+          KEY_SHA=$(printf '%s' "$OPENAI_API_KEY" | sha256sum | cut -d' ' -f1)
+          # Positive control: a decoy of the same shape (prefix -d), planted in
+          # /tmp and in the agent env. The scanner must find it.
+          DECOY="AWFCANARY-d$(openssl rand -hex 16)"
+          echo "$DECOY" > /tmp/awf-probe-decoy.txt
+          WD_ARGS=(); PROBE_WORK_DIR=""
+          if [ "$MODE" = runner-temp ]; then
+            WD_ARGS=(--work-dir "$RUNNER_TEMP/awf"); PROBE_WORK_DIR="$RUNNER_TEMP/awf"
+          fi
+          # Host-side watcher: where does the key live while awf runs?
+          (
+            for i in $(seq 1 200); do
+              sudo -E bash -c 'grep -rlF -e "$OPENAI_API_KEY" /tmp "$RUNNER_TEMP" /run /var/lib/docker/containers /etc 2>/dev/null'
+              if sudo docker inspect awf-api-proxy >/dev/null 2>&1; then
+                sudo -E bash -c 'docker inspect awf-api-proxy awf-agent awf-squid --format "{{.Name}} {{json .Config.Env}}" 2>/dev/null | grep -F -e "$OPENAI_API_KEY" | cut -d" " -f1 | sed "s/^/docker-inspect-env:/"'
+              fi
+              sleep 3
+            done | sort -u > "$RUNNER_TEMP/key-locations.txt"
+          ) &
+          WATCHER=$!
+          sudo -E "$(command -v awf)" \
+            --config /opt/awf-probe/awf-cscs.yaml \
+            --image-tag "$AWF_IMAGE_TAG" \
+            --log-level debug \
+            "${WD_ARGS[@]}" \
+            --audit-dir "$RUNNER_TEMP/awf-audit" \
+            -e PROBE_KEY_SHA256="$KEY_SHA" -e PROBE_TS="$TS" -e PROBE_DECOY="$DECOY" \
+            -e PROBE_WORKSPACE="$GITHUB_WORKSPACE" -e PROBE_RUNNER_TEMP="$RUNNER_TEMP" \
+            -e PROBE_GITHUB_ENV="$GITHUB_ENV" -e PROBE_GITHUB_OUTPUT="$GITHUB_OUTPUT" \
+            -e PROBE_GITHUB_PATH="$GITHUB_PATH" -e PROBE_RUNNER_DIR="$RUNNER_DIR" \
+            -e PROBE_HOST_HOME="$HOME" -e PROBE_WORK_DIR="$PROBE_WORK_DIR" \
+            -e PROBE_OUT="$GITHUB_WORKSPACE/probe-out" \
+            -- bash /opt/awf-probe/canary.sh > "$RUNNER_TEMP/awf-output.txt" 2>&1
+          echo "PROBE awf exit=$?"
+          kill "$WATCHER" 2>/dev/null; sleep 1
+          # Print the awf output with the dummy replaced (it is not secret, but
+          # this keeps the log greppable for real leaks of the shape only).
+          sed -E 's/AWFCANARY-k[0-9a-f]{32}/<CANARY-KEY-SHAPE>/g' "$RUNNER_TEMP/awf-output.txt"
+          echo "PROBE host: key occurrences in awf stdout/stderr: $(grep -cF -e "$OPENAI_API_KEY" "$RUNNER_TEMP/awf-output.txt")"
+          echo "PROBE host: key locations during run: $(tr '\n' ' ' < "$RUNNER_TEMP/key-locations.txt")"
+          echo "PROBE host: key locations after run: $(sudo -E bash -c 'grep -rlF -e "$OPENAI_API_KEY" /tmp "$RUNNER_TEMP" "$HOME" "$GITHUB_WORKSPACE" /run /var/lib/docker/containers 2>/dev/null' | tr '\n' ' ')"
+          for p in "$GITHUB_WORKSPACE" /tmp /var/tmp /dev/shm "$HOME" "$HOME/.config" "$HOME/.config/git" \
+                   "$HOME/.cache" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.npm" "$HOME/.cargo" \
+                   "$HOME/.claude" "$HOME/.copilot" "$HOME/.ssh" /opt /opt/awf-probe /usr/local/bin /etc /root \
+                   "$RUNNER_TEMP" "$PROBE_WORK_DIR"; do
+            [ -z "$p" ] && continue
+            if sudo test -e "$p/.awf-probe-write-marker"; then
+              echo "PROBE host: marker PERSISTED on host at $p"; sudo rm -f "$p/.awf-probe-write-marker"
+            fi
+          done
+          echo "PROBE host: home after run:"; ls -la "$HOME" "$HOME/.claude" "$HOME/.m2" "$HOME/.gradle" 2>&1 | head -60
+          echo "PROBE host: /tmp after run:"; sudo ls -la /tmp | head -60
+          [ -n "$PROBE_WORK_DIR" ] && { echo "PROBE host: work dir:"; sudo ls -la "$PROBE_WORK_DIR"; }
+          exit 0
+
+      - name: Did the sandbox inject into GITHUB_ENV?
+        run: echo "PROBE GITHUB_ENV injection -> AWF_PROBE_INJECTED=${AWF_PROBE_INJECTED:-unset}"
+
+      - name: Collect evidence
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/evidence"
+          sudo cp -r "$RUNNER_TEMP/awf-audit" "$GITHUB_WORKSPACE/probe-out" "$RUNNER_TEMP/evidence/" 2>/dev/null
+          sudo cp "$RUNNER_TEMP/awf-output.txt" "$RUNNER_TEMP/evidence/" 2>/dev/null
+          sudo chown -R "$(id -u)" "$RUNNER_TEMP/evidence"
+          sed -i -E 's/AWFCANARY-k[0-9a-f]{32}/<CANARY-KEY-SHAPE>/g' "$RUNNER_TEMP/evidence/awf-output.txt" 2>/dev/null
+          ls -laR "$RUNNER_TEMP/evidence" | head -60
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: canary-${{ matrix.workdir }}
+          path: ${{ runner.temp }}/evidence
+          retention-days: 7
+
+  # Q3/Q4 without a key: path mapping, auth headers, allowedModels, maxTurns,
+  # rate limit, agentTimeout, against a local echo upstream on the host.
+  proxy-echo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout probe scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup AWF
+        id: awf
+        uses: github/gh-aw-firewall@7dc485464a58130d6ac2e73fe632424eb5d06823 # v0.29.12
+        with:
+          version: ${{ env.AWF_VERSION }}
+          pull-images: "true"
+
+      - name: Install probe files
+        run: |
+          sudo install -d -m 0755 /opt/awf-probe
+          sudo install -m 0755 .github/awf-probe/*.sh .github/awf-probe/*.py /opt/awf-probe/
+          sudo install -m 0644 .github/awf-probe/*.yaml /opt/awf-probe/
+
+      - name: Run proxy probes against the local echo upstream
+        env:
+          AWF_IMAGE_TAG: ${{ steps.awf.outputs.image-tag }}
+        run: |
+          set +e
+          OPENAI_API_KEY="echo-dummy-$(openssl rand -hex 12)"
+          ANTHROPIC_API_KEY="$OPENAI_API_KEY"
+          export OPENAI_API_KEY ANTHROPIC_API_KEY
+          PROBE_ECHO_KEY="$OPENAI_API_KEY" nohup python3 -I /opt/awf-probe/echo_server.py 18080 "$RUNNER_TEMP/echo.jsonl" >"$RUNNER_TEMP/echo.err" 2>&1 &
+          sleep 1
+          curl -sS -m 5 http://127.0.0.1:18080/v1/models; echo
+          for mode in turns rpm; do
+            for host in host.docker.internal 172-30-0-1.sslip.io; do
+              echo "::group::mode=$mode upstream host=$host"
+              : > "$RUNNER_TEMP/echo.jsonl"
+              sed "s/@ECHO_HOST@/$host/" "/opt/awf-probe/awf-echo-$mode.yaml" > "$RUNNER_TEMP/awf-echo.yaml"
+              extra=()
+              [ "$host" = host.docker.internal ] && extra=(--enable-host-access)
+              PROBE_ECHO_OPENAI_BASE_URL="http://$host:18080/v1" \
+              sudo -E "$(command -v awf)" \
+                --config "$RUNNER_TEMP/awf-echo.yaml" \
+                --image-tag "$AWF_IMAGE_TAG" \
+                --log-level debug \
+                "${extra[@]}" \
+                -- bash /opt/awf-probe/proxy.sh "$mode" 2>&1 \
+                | sed -e "s/$OPENAI_API_KEY/<DUMMY>/g"
+              echo "PROBE awf exit=${PIPESTATUS[0]} (mode=$mode host=$host)"
+              echo "::endgroup::"
+              echo "PROBE echo upstream saw $(wc -l < "$RUNNER_TEMP/echo.jsonl") request(s) (mode=$mode host=$host):"
+              sed -e "s/$OPENAI_API_KEY/<DUMMY>/g" "$RUNNER_TEMP/echo.jsonl" | sed 's/^/PROBE   upstream /'
+              for f in $(sudo find /tmp -maxdepth 2 -path '/tmp/api-proxy-logs-*' -type f -newer "$RUNNER_TEMP/awf-echo.yaml" 2>/dev/null); do
+                echo "PROBE sidecar log $f:"; sudo head -c 4000 "$f" | sed -e "s/$OPENAI_API_KEY/<DUMMY>/g"; echo
+              done
+              [ -s "$RUNNER_TEMP/echo.jsonl" ] && break
+            done
+          done
+          cat "$RUNNER_TEMP/echo.err"
+          exit 0
