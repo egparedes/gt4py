@@ -39,7 +39,9 @@ else:
     print("proxy/other:", json.dumps(d)[:400])
 PY
 )
-  say "#$N $label $method ${url#http://} model=$model -> $st | $body"
+  local runs
+  runs=$(curl -sS -m 5 "$OAI/reflect" 2>/dev/null | python3 -I -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("runs"))[:200])' 2>/dev/null)
+  say "#$N $label $method ${url#http://} model=$model -> $st | $body | reflect.runs=$runs"
 }
 
 say "mode=$MODE listeners openai=$OAI anthropic=$ANT"

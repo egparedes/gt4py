@@ -263,6 +263,11 @@ jobs:
           for f in $(sudo find /tmp/api-proxy-logs-* ${PROXY_LOGS:+"$PROXY_LOGS"} -name 'token-usage.jsonl' 2>/dev/null); do
             echo "PROBE host: $f: lines=$(sudo wc -l < "$f") planted_marker=$(sudo grep -c PLANTED-BY-AGENT "$f")"
           done
+          echo "PROBE host: write markers in AWF-moved agent logs/session state: $(sudo find /tmp/awf-agent-logs-* /tmp/awf-agent-session-state-* "$RUNNER_TEMP" -name .awf-probe-write-marker 2>/dev/null | tr '\n' ' ')"
+          echo "PROBE host: Squid access.log lines for the explicit-proxy probes:"
+          sudo find /tmp/squid-logs-* ${PROXY_LOGS:+"$PROXY_LOGS"} -name access.log 2>/dev/null | while read -r f; do
+            sudo grep -aE 'example\.com|169\.254\.169\.254|168\.63\.129\.16|172\.30\.0\.1:|1\.1\.1\.1|github\.com' "$f" | sed 's/^/PROBE host:   /' | head -20
+          done
           echo "PROBE host: symlink target contents: $(ls -la "$GITHUB_WORKSPACE/probe-out/symlink-target" 2>&1 | tr '\n' ';')"
           echo "PROBE host: auth-header strings in AWF logs: $(sudo grep -rliE 'authorization|x-api-key|bearer ' /tmp/api-proxy-logs-* /tmp/squid-logs-* ${PROXY_LOGS:+"$PROXY_LOGS"} 2>/dev/null | tr '\n' ' ')"
           exit 0

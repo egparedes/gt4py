@@ -152,7 +152,7 @@ fi
 MARK=".awf-probe-write-marker"
 for d in "$PROBE_WORKSPACE" /tmp /var/tmp /dev/shm "$HOME" "$HOME/.config" "$HOME/.config/git" \
          "$HOME/.cache" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.npm" "$HOME/.cargo" \
-         "$HOME/.claude" "$HOME/.copilot" "$HOME/.ssh" /opt /opt/awf-probe /usr/local/bin /etc /root \
+         "$HOME/.claude" "$HOME/.copilot" "$HOME/.copilot/logs" "$HOME/.copilot/session-state" "$HOME/.ssh" /opt /opt/awf-probe /usr/local/bin /etc /root \
          "$PROBE_RUNNER_TEMP" "$PROBE_WORK_DIR" "$PROBE_HOST_HOME"; do
   [ -z "$d" ] && continue
   mkdir -p "$d" 2>/dev/null
@@ -192,6 +192,13 @@ try:
     s.sendto(q,("1.1.1.1",53)); d=s.recv(512); print("ANSWERED",len(d),"bytes")
 except Exception as e: print("failed:",e)
 ' 2>&1)"
+# Explicit-proxy probes (curl ignores uppercase HTTP_PROXY for http:// URLs,
+# and the sandbox sets no lowercase http_proxy). Evidence: Squid access.log.
+P="${HTTPS_PROXY:-http://172.30.0.10:3128}"
+for u in http://example.com/ https://example.com/ http://169.254.169.254/metadata/instance \
+         http://168.63.129.16/machine/ http://172.30.0.1:18080/ https://1.1.1.1/ http://github.com/; do
+  say "net explicit -x squid $u: $(curl -sS -k -m 8 -x "$P" -o /dev/null -w '%{http_code}' "$u" 2>&1 | tail -c 160)"
+done
 say "resolv.conf: $(grep -v '^#' /etc/resolv.conf 2>/dev/null | tr '\n' ';')"
 
 # --------------------------------------------------------------------------
