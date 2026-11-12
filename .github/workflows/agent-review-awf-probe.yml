@@ -18,6 +18,7 @@ env:
 jobs:
   # Q1: does the setup action work with no token permissions at all?
   setup-no-permissions:
+    if: ${{ !contains(github.event.head_commit.message, '[canary-only]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions: {}
@@ -184,6 +185,9 @@ jobs:
             WD_ARGS=(--work-dir "$RUNNER_TEMP/awf"); PROBE_WORK_DIR="$RUNNER_TEMP/awf"
           fi
           if [ "$MODE" = allow-write ]; then
+            # v0.29.12 fails to start if these tmpfs-mask mountpoints are
+            # missing once /tmp is read-only; pre-create them.
+            mkdir -p /tmp/gh-aw/sandbox/firewall/audit /tmp/gh-aw/sandbox/firewall/logs /tmp/gh-aw/mcp-logs
             # Only one host path stays writable; every other host bind mount
             # (workspace, /tmp, ~/.config, ...) should become read-only.
             CFG="$RUNNER_TEMP/awf-allow-write.yaml"
@@ -195,13 +199,14 @@ jobs:
           # Host-side watcher: where does the key live while awf runs?
           : > "$RUNNER_TEMP/key-locations.txt"
           (
-            for i in $(seq 1 200); do
+            for i in $(seq 1 1200); do
               sudo -E bash -c 'grep -rlF -e "$OPENAI_API_KEY" /tmp "$RUNNER_TEMP" /run /var/lib/docker/containers /etc 2>/dev/null' >> "$RUNNER_TEMP/key-locations.txt"
+              sudo find /tmp -maxdepth 1 -name 'runc-*' -printf 'perm:%m %u:%g %p\n' 2>/dev/null >> "$RUNNER_TEMP/key-locations.txt"
               for c in awf-api-proxy awf-agent awf-squid; do
                 sudo -E bash -c 'docker inspect "$0" --format "{{json .Config.Env}}" 2>/dev/null | grep -qF -e "$OPENAI_API_KEY"' "$c" \
                   && echo "docker-inspect-env:$c" >> "$RUNNER_TEMP/key-locations.txt"
               done
-              sleep 2
+              sleep 0.5
             done
           ) &
           WATCHER=$!
@@ -264,6 +269,7 @@ jobs:
   # Q3/Q4 without a key: path mapping, auth headers, allowedModels, maxTurns,
   # rate limit, agentTimeout, against a local echo upstream on the host.
   proxy-echo:
+    if: ${{ !contains(github.event.head_commit.message, '[canary-only]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

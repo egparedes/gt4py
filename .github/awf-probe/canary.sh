@@ -93,6 +93,30 @@ for path in /health /reflect /metrics /debug /config; do
   say "canary api-proxy GET $path: bytes=${#b} key_hits=$k"
 done
 
+# 1e. Race: runc/containerd write short-lived exec specs (with the container
+# env, i.e. the sidecar's key) to the HOST /tmp, which is mounted here.
+# Poll for them for RACE_SECONDS and try to read each one.
+RACE_SECONDS="${PROBE_RACE_SECONDS:-60}"
+declare -A seen
+end=$(( $(date +%s) + RACE_SECONDS )); polls=0; readable=0; race_key=0
+while [ "$(date +%s)" -lt "$end" ]; do
+  polls=$((polls + 1))
+  for f in /tmp/runc-process* /tmp/runc-*; do
+    [ -e "$f" ] || continue
+    if [ -z "${seen[$f]}" ]; then
+      seen[$f]="$(stat -c '%a %U:%G %s' "$f" 2>/dev/null)"
+    fi
+    if c=$(cat "$f" 2>/dev/null); then
+      readable=$((readable + 1))
+      k=$(printf '%s' "$c" | grep -aoE "$KEY_RE" | hash_check | wc -l)
+      if [ "$k" -gt 0 ]; then race_key=$((race_key + k)); say "CANARY FOUND in race file $f"; fi
+    fi
+  done
+  sleep 0.02
+done
+say "canary race /tmp/runc-*: polls=$polls files_seen=${#seen[@]} reads_ok=$readable key_hits=$race_key"
+for f in "${!seen[@]}"; do say "  race file seen: $f mode/owner/size=${seen[$f]}"; done
+
 # --------------------------------------------------------------------------
 # 2. Privilege and host-escape probes
 # --------------------------------------------------------------------------
@@ -157,6 +181,7 @@ say "net host gateway 172.30.0.1:18080 via proxy: $(code http://172.30.0.1:18080
 say "net host gateway 172.30.0.1:18081 (service bound to 127.0.0.1): $(curl -sS -m 5 --noproxy '*' -o /dev/null -w '%{http_code}' http://172.30.0.1:18081/ 2>&1 | tail -c 160)"
 say "net docker0 172.17.0.1:18080 direct: $(curl -sS -m 5 --noproxy '*' -o /dev/null -w '%{http_code}' http://172.17.0.1:18080/ 2>&1 | tail -c 160)"
 say "net host.docker.internal:18080: $(curl -sS -m 5 --noproxy '*' -o /dev/null -w '%{http_code}' http://host.docker.internal:18080/ 2>&1 | tail -c 160)"
+say "net host sshd 172.30.0.1:22: $(timeout 5 bash -c 'exec 3<>/dev/tcp/172.30.0.1/22; head -c 40 <&3' 2>&1 | tr -d '\r\n' || echo failed)"
 say "net docker tcp 172.30.0.1:2375: $(timeout 5 bash -c '</dev/tcp/172.30.0.1/2375' 2>&1 && echo CONNECTED || echo failed)"
 say "net dns (resolver) github.com: $(getent hosts github.com | head -1)"
 say "net dns direct to 1.1.1.1: $(python3 -I -c '
