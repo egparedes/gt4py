@@ -125,7 +125,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        workdir: [default, runner-temp, allow-write]
+        workdir: [default, runner-temp, proxy-logs-dir, allow-write]
     steps:
       - name: Checkout probe scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -181,13 +181,19 @@ jobs:
           WD_ARGS=(); PROBE_WORK_DIR=""
           CFG=/opt/awf-probe/awf-cscs.yaml
           mkdir -p "$GITHUB_WORKSPACE/probe-out"
-          if [ "$MODE" != default ]; then
+          PROXY_LOGS=""
+          if [ "$MODE" = runner-temp ] || [ "$MODE" = proxy-logs-dir ]; then
             WD_ARGS=(--work-dir "$RUNNER_TEMP/awf"); PROBE_WORK_DIR="$RUNNER_TEMP/awf"
+          fi
+          if [ "$MODE" = proxy-logs-dir ]; then
+            PROXY_LOGS="$RUNNER_TEMP/awf-proxy-logs"; WD_ARGS+=(--proxy-logs-dir "$PROXY_LOGS")
           fi
           if [ "$MODE" = allow-write ]; then
             # v0.29.12 fails to start if these tmpfs-mask mountpoints are
             # missing once /tmp is read-only; pre-create them.
             mkdir -p /tmp/gh-aw/sandbox/firewall/audit /tmp/gh-aw/sandbox/firewall/logs /tmp/gh-aw/mcp-logs
+            # (allowWrite + --work-dir under $RUNNER_TEMP fails to start in
+            # v0.29.12: the work-dir mask mountpoint cannot be created.)
             # Only one host path stays writable; every other host bind mount
             # (workspace, /tmp, ~/.config, ...) should become read-only.
             CFG="$RUNNER_TEMP/awf-allow-write.yaml"
@@ -214,6 +220,7 @@ jobs:
             --config "$CFG" \
             --image-tag "$AWF_IMAGE_TAG" \
             --log-level debug \
+            --agent-timeout 15 \
             "${WD_ARGS[@]}" \
             --audit-dir "$RUNNER_TEMP/awf-audit" \
             -e PROBE_KEY_SHA256="$KEY_SHA" -e PROBE_TS="$TS" -e PROBE_DECOY="$DECOY" \
@@ -221,7 +228,7 @@ jobs:
             -e PROBE_GITHUB_ENV="$GITHUB_ENV" -e PROBE_GITHUB_OUTPUT="$GITHUB_OUTPUT" \
             -e PROBE_GITHUB_PATH="$GITHUB_PATH" -e PROBE_RUNNER_DIR="$RUNNER_DIR" \
             -e PROBE_HOST_HOME="$HOME" -e PROBE_WORK_DIR="$PROBE_WORK_DIR" \
-            -e PROBE_OUT="$GITHUB_WORKSPACE/probe-out" \
+            -e PROBE_OUT="$GITHUB_WORKSPACE/probe-out" -e PROBE_PROXY_LOGS_DIR="$PROXY_LOGS" \
             -- bash /opt/awf-probe/canary.sh > "$RUNNER_TEMP/awf-output.txt" 2>&1
           echo "PROBE awf exit=$?"
           kill "$WATCHER" 2>/dev/null; sleep 1
@@ -243,10 +250,23 @@ jobs:
           echo "PROBE host: home after run:"; ls -la "$HOME" "$HOME/.claude" "$HOME/.m2" "$HOME/.gradle" 2>&1 | head -60
           echo "PROBE host: /tmp after run:"; sudo ls -la /tmp | head -60
           [ -n "$PROBE_WORK_DIR" ] && { echo "PROBE host: work dir:"; sudo ls -la "$PROBE_WORK_DIR"; }
+          echo "PROBE host: AWF log dirs after run:"
+          for d in /tmp/api-proxy-logs-* /tmp/squid-logs-* /tmp/awf-agent-logs-* ${PROXY_LOGS:+$PROXY_LOGS $PROXY_LOGS/*}; do
+            [ -e "$d" ] || continue
+            echo "PROBE host:   $d -> $(sudo stat -c '%F %a %U:%G' "$d") $( [ -L "$d" ] && readlink "$d")"
+            [ -d "$d" ] && sudo ls -la "$d" | sed 's/^/PROBE host:     /'
+          done
+          for f in $(sudo find /tmp/api-proxy-logs-* ${PROXY_LOGS:+"$PROXY_LOGS"} -name 'token-usage.jsonl' 2>/dev/null); do
+            echo "PROBE host: $f: lines=$(sudo wc -l < "$f") planted_marker=$(sudo grep -c PLANTED-BY-AGENT "$f")"
+          done
+          echo "PROBE host: symlink target contents: $(ls -la "$GITHUB_WORKSPACE/probe-out/symlink-target" 2>&1 | tr '\n' ';')"
+          echo "PROBE host: auth-header strings in AWF logs: $(sudo grep -rliE 'authorization|x-api-key|bearer ' /tmp/api-proxy-logs-* /tmp/squid-logs-* ${PROXY_LOGS:+"$PROXY_LOGS"} 2>/dev/null | tr '\n' ' ')"
           exit 0
 
       - name: Did the sandbox inject into GITHUB_ENV?
-        run: echo "PROBE GITHUB_ENV injection -> AWF_PROBE_INJECTED=${AWF_PROBE_INJECTED:-unset}"
+        run: |
+          echo "PROBE GITHUB_ENV injection -> AWF_PROBE_INJECTED=${AWF_PROBE_INJECTED:-unset}"
+          echo "PROBE AWF_TOKEN_USAGE_LOG=${AWF_TOKEN_USAGE_LOG:-unset}"
 
       - name: Collect evidence
         if: always()
