@@ -60,7 +60,7 @@ on:
 ## only show it in the run summary.
 env:
   TEST_PR: "11"
-  TEST_HARNESS: stub
+  TEST_HARNESS: memdoor
   TEST_MODEL: "zai-org/GLM-5.3-Flash"
   TEST_DRY_RUN: "false"
   TEST_STUB_PADDING_KIB: "0"
