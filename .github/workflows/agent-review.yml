@@ -52,7 +52,7 @@ on:
 ## only show it in the run summary.
 env:
   TEST_PR: "11"
-  TEST_HARNESS: memdoor
+  TEST_HARNESS: pi
   TEST_MODEL: zai-org/GLM-5.3-Flash
   TEST_DRY_RUN: "false"
   TEST_STUB_PADDING_KIB: "0"
@@ -467,6 +467,16 @@ jobs:
           echo "== api-proxy requests by path and status"
           /usr/bin/sudo /usr/bin/cat "${RUNNER_TEMP}/awf-logs/api-proxy-logs/token-usage.jsonl" \
             | /usr/bin/jq -r '"\(.provider) \(.path) \(.status) in=\(.input_tokens) out=\(.output_tokens) ms=\(.duration_ms // .latency_ms // "?")"' | /usr/bin/sed 's/^/| /'
+          echo "== squid audit.jsonl: first record keys, then aggregated"
+          /usr/bin/sudo /usr/bin/cat "${RUNNER_TEMP}/awf-logs/audit.jsonl" | /usr/bin/head -n 1 | /usr/bin/jq -c 'keys' | /usr/bin/sed 's/^/| /'
+          /usr/bin/sudo /usr/bin/cat "${RUNNER_TEMP}/awf-logs/audit.jsonl" \
+            | /usr/bin/jq -r '[.client // .src // .client_ip // "?", .host // .domain // .dest // .url // "?", .method // "?", .status // .decision // "?"] | map(tostring) | join(" ")' \
+            | /usr/bin/sort | /usr/bin/uniq -c | /usr/bin/sed 's/^/| /'
+          echo "== squid cache.log lines mentioning cscs or github"
+          /usr/bin/sudo /usr/bin/grep -iE 'cscs|github' "${RUNNER_TEMP}/awf-logs/cache.log" | /usr/bin/head -n 20 | /usr/bin/cut -c1-250 | /usr/bin/sed 's/^/| /'
+          echo "== api-proxy models.json and harness-observation"
+          /usr/bin/sudo /usr/bin/head -c 600 "${RUNNER_TEMP}/awf-logs/api-proxy-logs/harness-observation.json" | /usr/bin/sed 's/^/| /'; echo
+          /usr/bin/sudo /usr/bin/cat "${RUNNER_TEMP}/awf-logs/api-proxy-logs/otel.jsonl" | /usr/bin/head -n 2 | /usr/bin/cut -c1-1500 | /usr/bin/sed 's/^/| /'
           echo "== squid: client dest method status (count)"
           for f in $(/usr/bin/sudo /usr/bin/find "${RUNNER_TEMP}/awf-logs" -name access.log); do
             /usr/bin/sudo /usr/bin/cat "$f" | /usr/bin/awk '{print $2 " " $3 " " $6 " " $7}' | /usr/bin/sed 's/:[0-9]* / /' \
