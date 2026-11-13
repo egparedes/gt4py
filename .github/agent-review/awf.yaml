@@ -42,7 +42,7 @@ apiProxy:
   # Spend caps. The primary cap is the dedicated CSCS key's own token budget.
   # AWF prices unpriced CSCS models with a median estimate, so its AI-credit
   # cap is not a hard limit; the turn cap is used here.
-  maxTurns: 80
+  maxTurns: 40
   maxPermissionDenied: 5
 
 rateLimiting:
@@ -52,7 +52,7 @@ rateLimiting:
 container:
   # Minutes; the review step's own timeout is a few minutes longer so this
   # one triggers first and the result is still collected.
-  agentTimeout: 25
+  agentTimeout: 15
   memoryLimit: 6g
   # TODO(phase0): pin images by digest with 'container.images' if passing
   # the setup action's 'image-tag' output (with digests) is not enough.
