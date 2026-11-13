@@ -1,0 +1,3 @@
+[submodule "evilsub"]
+	path = evilsub
+	url = file:///tmp/evil-local-repo
