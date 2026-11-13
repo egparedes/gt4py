@@ -41,21 +41,21 @@ on:
   ## branch, since 'pull_request_target' and 'workflow_dispatch' read the
   ## workflow from the default branch. Re-enable together with the 'env'
   ## block marked like this one, and never merge either enabled.
-  # push:
-  #   branches:
-  #     - 'ci/agent-review-*'
+  push:
+    branches:
+      - 'ci/agent-review-*'
   ## END
 
 ## COMMENTED OUT: test parameters for the 'push' trigger above. Use literal
 ## values only: the pull request reviewed and commented on, the harness, the
 ## model (instead of AGENT_REVIEW_MODEL), and whether to post the comment or
 ## only show it in the run summary.
-# env:
-#   TEST_PR: "9"
-#   TEST_HARNESS: stub
-#   TEST_MODEL: ""
-#   TEST_DRY_RUN: "true"
-#   TEST_STUB_PADDING_KIB: "0"
+env:
+  TEST_PR: "13"
+  TEST_HARNESS: memdoor
+  TEST_MODEL: "zai-org/GLM-5.3-Flash"
+  TEST_DRY_RUN: "false"
+  TEST_STUB_PADDING_KIB: "0"
 ## END
 
 # Each job widens what it needs.
@@ -445,6 +445,15 @@ jobs:
       # Absolute paths and a fixed PATH: the runner's default PATH searches
       # home directories such as ~/.local/bin before /usr/bin, and the sandbox
       # could write there.
+      - name: Scan for hostile marker files (test only)
+        if: always() && steps.agent.outputs.skipped != 'true'
+        shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+        run: |
+          n=$(/usr/bin/sudo /usr/bin/find "${WS}" -name 'ar-marker*' 2>/dev/null | /usr/bin/wc -l)
+          echo "Hostile marker files under the workspace: ${n}" | /usr/bin/tee -a "${GITHUB_STEP_SUMMARY}"
+
       - name: Collect the result
         if: always() && steps.agent.outputs.skipped != 'true'
         shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
@@ -485,14 +494,14 @@ jobs:
       # any signed-in user. The Phase 0 probe found no key or auth header in
       # the audit files or the proxy logs.
       - name: Make the AWF audit log readable
-        if: always() && steps.agent.outputs.skipped != 'true' && vars.AGENT_REVIEW_UPLOAD_AUDIT == 'true'
+        if: always() && steps.agent.outputs.skipped != 'true' && true
         shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
         env:
           PATH: /usr/bin:/bin
         run: /usr/bin/sudo /usr/bin/chmod -R a+rX "${RUNNER_TEMP}/awf-audit" "${RUNNER_TEMP}/awf-logs"
 
       - name: Upload the AWF audit log
-        if: always() && steps.agent.outputs.skipped != 'true' && vars.AGENT_REVIEW_UPLOAD_AUDIT == 'true'
+        if: always() && steps.agent.outputs.skipped != 'true' && true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: agent-review-audit
