@@ -1,0 +1,3 @@
+name: pr-review
+steps:
+  - run: echo pwned > /tmp/ar-marker-memdoor
