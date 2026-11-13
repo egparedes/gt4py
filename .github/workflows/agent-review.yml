@@ -408,7 +408,7 @@ jobs:
             | jq --arg model "${MODEL}" --arg ws "${WS}" \
               '.apiProxy.allowedModels = ["openai/" + $model] | .filesystem.allowWrite = [$ws]' \
             > "${RUNNER_TEMP}/awf.json"
-          jq '.network.allowDomains = ["github.com"] | .container.agentTimeout = 10' \
+          jq '.network.allowDomains = [] | .container.agentTimeout = 10' \
             "${RUNNER_TEMP}/awf.json" > "${RUNNER_TEMP}/awf-fetch.json"
           # Under $RUNNER_TEMP, root-only: without '--proxy-logs-dir', AWF
           # moves its logs to /tmp after the run, where the sandbox can plant
