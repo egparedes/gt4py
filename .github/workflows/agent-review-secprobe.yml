@@ -1,0 +1,109 @@
+name: Agent Review security probe
+
+# Test-only (branch agent-review-secprobe, never merged). Two jobs:
+#   echo   the production AWF configuration against a fake upstream on the
+#          host, with a DUMMY key: which methods, paths and bodies the API
+#          proxy forwards, and what 'maxTurns' and the rate limits count.
+#   cscs   TRUSTED context, no agent and no PR content: which CSCS endpoints
+#          the fork's key can use. Status codes and sizes only.
+
+on:
+  push:
+    branches: ['ci/agent-review-secprobe-*']
+
+permissions: {}
+
+jobs:
+  echo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up AWF
+        id: awf
+        uses: github/gh-aw-firewall@7dc485464a58130d6ac2e73fe632424eb5d06823 # v0.29.12
+        with:
+          version: v0.29.12
+          pull-images: "true"
+
+      - name: Install the probe files
+        run: |
+          sudo install -d -m 0755 /opt/secprobe
+          sudo install -m 0755 .github/secprobe/probe.sh .github/secprobe/echo_server.py /opt/secprobe/
+
+      - name: Probe the API proxy
+        env:
+          IMAGE_TAG: ${{ steps.awf.outputs.image-tag }}
+        run: |
+          set +e
+          WS="${GITHUB_WORKSPACE}/agent-review"
+          mkdir -p "${WS}" /tmp/gh-aw/sandbox/firewall/audit /tmp/gh-aw/sandbox/firewall/logs /tmp/gh-aw/mcp-logs
+          OPENAI_API_KEY="echo-dummy-$(openssl rand -hex 12)"
+          export OPENAI_API_KEY
+          export AGENT_REVIEW_OPENAI_BASE_URL=http://host.docker.internal:18080/v1
+          awf_bin=$(command -v awf)
+          base=$(yq -o=json '.' .github/agent-review/awf.yaml | jq --arg ws "${WS}" \
+            '.apiProxy.allowedModels = ["openai/zai-org/GLM-5.3-Flash"] | .filesystem.allowWrite = [$ws]')
+          echo "Production limits: $(jq -c '{maxTurns: .apiProxy.maxTurns, rateLimiting}' <<< "${base}")"
+          for variant in paths race prod rph; do
+            case "${variant}" in
+              paths) delay=0; patch='.rateLimiting.requestsPerMinute = 1000 | .rateLimiting.requestsPerHour = 1000' ;;
+              race) delay=3; patch='.apiProxy.maxTurns = 20 | .rateLimiting.requestsPerMinute = 1000 | .rateLimiting.requestsPerHour = 1000' ;;
+              prod) delay=3; patch='.' ;;
+              rph) delay=0; patch='.rateLimiting.requestsPerMinute = 1000' ;;
+            esac
+            jq "${patch}" <<< "${base}" > "${RUNNER_TEMP}/awf-${variant}.json"
+            echo "::group::variant ${variant}: $(jq -c '{maxTurns: .apiProxy.maxTurns, rateLimiting}' "${RUNNER_TEMP}/awf-${variant}.json")"
+            log="${RUNNER_TEMP}/echo-${variant}.jsonl"
+            : > "${log}"
+            PROBE_ECHO_KEY="${OPENAI_API_KEY}" PROBE_ECHO_DELAY="${delay}" \
+              nohup python3 -I /opt/secprobe/echo_server.py 18080 "${log}" > "${RUNNER_TEMP}/echo.err" 2>&1 &
+            echo_pid=$!
+            sleep 1
+            sudo install -d -m 0700 "${RUNNER_TEMP}/audit-${variant}" "${RUNNER_TEMP}/logs-${variant}"
+            sudo -E "${awf_bin}" \
+              --config "${RUNNER_TEMP}/awf-${variant}.json" \
+              --audit-dir "${RUNNER_TEMP}/audit-${variant}" \
+              --proxy-logs-dir "${RUNNER_TEMP}/logs-${variant}" \
+              --image-tag "${IMAGE_TAG}" \
+              --enable-host-access \
+              --container-workdir "${WS}" \
+              -- bash /opt/secprobe/probe.sh "${variant}" 2>&1 \
+              | sed -e "s/${OPENAI_API_KEY}/<DUMMY>/g" | grep -E '^PROBE|ERROR|WARN|API proxy'
+            echo "PROBE ${variant} awf exit=${PIPESTATUS[0]}"
+            kill "${echo_pid}"
+            echo "::endgroup::"
+            echo "PROBE ${variant} upstream saw $(wc -l < "${log}") request(s), by method and path:"
+            jq -r '"\(.method) \(.path) model=\(.model) auth=\(.auth.authorization.credential // "none")"' "${log}" \
+              | sed -e "s/${OPENAI_API_KEY}/<DUMMY>/g" | sort | uniq -c | sed "s/^/PROBE ${variant}   upstream /"
+            tu="${RUNNER_TEMP}/logs-${variant}/api-proxy-logs/token-usage.jsonl"
+            echo "PROBE ${variant} token-usage.jsonl: $(sudo cat "${tu}" 2>/dev/null | wc -l) line(s), by path and status:"
+            sudo cat "${tu}" 2>/dev/null | jq -r '"\(.path) \(.status)"' | sort | uniq -c | sed "s/^/PROBE ${variant}   tokens /"
+          done
+          cat "${RUNNER_TEMP}/echo.err"
+          exit 0
+
+  cscs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      # No checkout: the script is fetched from this commit with an anonymous
+      # request, so the job holds no token and runs nothing from a PR.
+      - name: Fetch the probe script
+        env:
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: curl -fsSL -o "${RUNNER_TEMP}/cscs.sh" "https://raw.githubusercontent.com/${REPO}/${SHA}/.github/secprobe/cscs-endpoints.sh"
+
+      - name: Probe CSCS endpoints
+        env:
+          KEY: ${{ secrets.CSCS_INFERENCE_API_KEY }}
+        run: |
+          if [ -z "${KEY}" ]; then echo "No key; skipping."; exit 0; fi
+          bash "${RUNNER_TEMP}/cscs.sh"
