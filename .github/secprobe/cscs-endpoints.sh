@@ -11,7 +11,7 @@ M=zai-org/GLM-5.3-Flash
 
 probe() { # method path [body]
   local method=$1 path=$2 body=${3:-} with without
-  local args=(-sS -m 60 -o /dev/null -w '%{http_code}/%{size_download}B' -X "${method}")
+  local args=(-sS -m 60 --path-as-is -o /dev/null -w '%{http_code}/%{size_download}B' -X "${method}")
   [ -z "${body}" ] || args+=(-H 'content-type: application/json' -H 'anthropic-version: 2023-06-01' --data-binary "${body}")
   without=$(curl "${args[@]}" "${BASE}${path}" 2>/dev/null) || without="curl-error"
   # The key is passed in a header file, so it never appears in a command line.
@@ -25,6 +25,13 @@ printf 'Authorization: Bearer %s\n' "${KEY}" >"${HDR}"
 unset KEY
 
 probe GET /v1/models
+# Paths that AWF forwards with the separator still encoded: does CSCS decode
+# them into another route? '/v1/x%2f..%2fmodels' is '/v1/models' if decoded.
+probe GET '/v1/x%2f..%2fmodels'
+probe GET '/v1/..%2fv1/models'
+probe GET '/v1/..%2fhealth'
+probe GET '/v1/..%2f..%2fmetrics'
+probe GET '/v1/chat%2fcompletions'
 probe GET "/v1/models/${M}"
 probe POST /v1/chat/completions "{\"model\":\"${M}\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
 probe POST /v1/completions "{\"model\":\"${M}\",\"prompt\":\"hi\",\"max_tokens\":1}"

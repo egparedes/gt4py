@@ -10,7 +10,9 @@
 VARIANT=${1:?}
 OAI="${AWF_API_PROXY_OPENAI_URL:-http://172.30.0.30:10000}"
 M=zai-org/GLM-5.3-Flash
-TMP=$(mktemp -d)
+# Under the workspace (the working directory): with 'filesystem.allowWrite'
+# it is the only writable path, /tmp included.
+TMP=$(mktemp -d "${PWD}/probe.XXXXXX")
 say() { printf 'PROBE %s %s\n' "${VARIANT}" "$*"; }
 
 # /reflect has the 'maxTurns' counter ('runs'), /health the rate limiter's.
@@ -108,6 +110,7 @@ case "${VARIANT}" in
     done
     wait
     say "100 concurrent chat calls: $(cat "${TMP}"/c.* | sort | uniq -c | tr -s ' \n' ' ')"
+    say "after: ${TMP}/c.* count $(ls "${TMP}"/c.* | wc -l)"
     reflect after-concurrent
     req chat-after POST /v1/chat/completions "$(chat)"
     req embeddings-after POST /v1/embeddings "{\"model\":\"$M\",\"input\":\"hi\"}"
