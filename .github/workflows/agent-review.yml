@@ -41,28 +41,28 @@ on:
   ## branch, since 'pull_request_target' and 'workflow_dispatch' read the
   ## workflow from the default branch. Re-enable together with the 'env'
   ## block marked like this one, and never merge either enabled.
-  # push:
-  #   branches:
-  #     - 'ci/agent-review-*'
-  #     - 'ci/quality-eval-*'
+  push:
+    branches:
+      - 'ci/agent-review-*'
+      - 'ci/quality-eval-*'
   ## END
 
 ## COMMENTED OUT: test parameters for the 'push' trigger above. Use literal
 ## values only: the pull request reviewed and commented on, the harness, the
 ## model (instead of AGENT_REVIEW_MODEL), and whether to post the comment or
 ## only show it in the run summary.
-# env:
-#   TEST_PR: "9"
-#   TEST_HARNESS: stub
-#   TEST_MODEL: ""
-#   TEST_DRY_RUN: "true"
-#   TEST_STUB_PADDING_KIB: "0"
-#   # Optional, to review a public pull request of another repository
-#   # (read-only; the run is forced to dry-run): its slug, and the head and
-#   # base commits to review instead of the ones the API reports now.
-#   TEST_REPO: ""
-#   TEST_HEAD_SHA: ""
-#   TEST_BASE_SHA: ""
+env:
+  TEST_PR: "2980"
+  TEST_HARNESS: "opencode"
+  TEST_MODEL: "zai-org/GLM-5.3"
+  TEST_DRY_RUN: "true"
+  TEST_STUB_PADDING_KIB: "0"
+  # Optional, to review a public pull request of another repository
+  # (read-only; the run is forced to dry-run): its slug, and the head and
+  # base commits to review instead of the ones the API reports now.
+  TEST_REPO: "GridTools/gt4py"
+  TEST_HEAD_SHA: "00276801b1f3a86e080b9a7a52059a4a8a78e6ef"
+  TEST_BASE_SHA: "cf9e415a94ff9dcfc5625c0a8b0dba6f2e8e8183"
 ## END
 
 # Each job widens what it needs.
