@@ -56,6 +56,13 @@ if [ "${rc}" -eq 0 ]; then
     | map(select(.type == "text").part.text) | join("")' \
     "${OUT_DIR}/harness.jsonl" >"${OUT_DIR}/review.md" || rc=1
 fi
+# At the step cap the model tends to open with a note such as "Maximum steps
+# for this agent have been reached ...". Keep the review from its first
+# heading, if it has one.
+if [ "${rc}" -eq 0 ] && grep -q '^### ' "${OUT_DIR}/review.md"; then
+  awk 'f || /^### /{f = 1} f' "${OUT_DIR}/review.md" >"${OUT_DIR}/review.trimmed" &&
+    mv -f "${OUT_DIR}/review.trimmed" "${OUT_DIR}/review.md" || rc=1
+fi
 if [ "${rc}" -eq 0 ] && ! jq -es 'any(.[]; .type == "error")' "${OUT_DIR}/harness.jsonl" >/dev/null &&
   has_text "${OUT_DIR}/review.md"; then
   exit 0
